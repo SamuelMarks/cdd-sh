@@ -113,6 +113,7 @@ case "${CMD}" in
       for t in openapi routes classes docstrings tests mocks docsjson; do
         h="${LIBSCRIPT_ROOT_DIR}/src/${t}/emit.sh"
         if [ -f "$h" ]; then
+          # shellcheck disable=SC1090
           . "$h"
           ext="sh"
           if [ "$t" = "openapi" ] || [ "$t" = "mocks" ] || [ "$t" = "docsjson" ]; then ext="json"; fi
