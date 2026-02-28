@@ -4,7 +4,14 @@
 
 ## Command Reference
 
-The CLI syntax is:
+The primary CLI commands are:
+```sh
+./cdd.sh from_openapi -i <spec.json>
+./cdd.sh to_openapi -f <code_file>
+./cdd.sh to_docs_json [-i <spec.json>]
+```
+
+For granular module-by-module control, the internal compiler syntax is:
 ```sh
 ./cdd.sh <command> <module_type> [file_path]
 ```

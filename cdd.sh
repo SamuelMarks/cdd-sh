@@ -89,11 +89,15 @@ case "${CMD}" in
     . "${LIBSCRIPT_ROOT_DIR}/src/docsjson/emit.sh"
     handle_to_docs_json "$@"
     ;;
-  parse|emit)
+  parse|emit|sync)
     TYPE="${1:-}"
     FILE="${2:-}"
     
-    HANDLER="${LIBSCRIPT_ROOT_DIR}/src/${TYPE}/${CMD}.sh"
+    if [ "${CMD}" = "sync" ]; then
+      HANDLER="${LIBSCRIPT_ROOT_DIR}/src/${TYPE}/parse.sh"
+    else
+      HANDLER="${LIBSCRIPT_ROOT_DIR}/src/${TYPE}/${CMD}.sh"
+    fi
     if [ ! -f "${HANDLER}" ]; then
       printf "Error: Unsupported type '%s' or handler missing (%s)\n" "${TYPE}" "${HANDLER}" >&2
       exit 1
@@ -104,7 +108,21 @@ case "${CMD}" in
     # shellcheck disable=SC1090
     . "${HANDLER}"
     
-    "handle_${CMD}_${TYPE}" "${FILE}"
+    if [ "${CMD}" = "sync" ]; then
+      "handle_parse_${TYPE}" "${FILE}"
+      for t in openapi routes classes docstrings tests mocks docsjson; do
+        h="${LIBSCRIPT_ROOT_DIR}/src/${t}/emit.sh"
+        if [ -f "$h" ]; then
+          . "$h"
+          ext="sh"
+          if [ "$t" = "openapi" ] || [ "$t" = "mocks" ] || [ "$t" = "docsjson" ]; then ext="json"; fi
+          if [ "$t" = "docstrings" ]; then ext="md"; fi
+          "handle_emit_${t}" "emitted_${t}.${ext}"
+        fi
+      done
+    else
+      "handle_${CMD}_${TYPE}" "${FILE}"
+    fi
     ;;
   *)
     printf "Error: Unknown command '%s'\n" "${CMD}" >&2

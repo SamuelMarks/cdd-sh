@@ -48,12 +48,17 @@ handle_parse_routes() {
     /^# @function / {
       operationId = $3
       if (operationId ~ /^auth_login_/) { in_func = 0; next }
-      method = ""; path = ""; summary = ""; reqBody = "false"; param_count = 0; delete params; in_func = 1; in_webhook = 0
+      method = ""; path = ""; summary = ""; reqBody = "false"; reqBodyType = "application/json"; param_count = 0; delete params; in_func = 1; in_webhook = 0
     }
     /^# @param/ {
       if (in_func) {
         if ($3 == "requestBody" || $4 == "requestBody") {
           reqBody = "true"
+          if ($4 == "requestBody") {
+             p_in = $5
+             gsub(/[\(\)]/, "", p_in)
+             if (p_in != "") reqBodyType = p_in
+          }
         } else {
           p_name = $4; p_in = $5
           if (substr(p_name, length(p_name)) == ":") p_name = substr(p_name, 1, length(p_name)-1)
@@ -101,7 +106,7 @@ handle_parse_routes() {
           }
           printf "]" >> "ops_temp.jsonl"
         }
-        if (reqBody == "true") printf ", \"requestBody\": {\"content\": {\"application/json\": {}}}" >> "ops_temp.jsonl"
+        if (reqBody == "true") printf ", \"requestBody\": {\"content\": {\"%s\": {}}}", reqBodyType >> "ops_temp.jsonl"
         printf "}\n" >> "ops_temp.jsonl"
         in_func = 0
       }

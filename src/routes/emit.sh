@@ -78,7 +78,7 @@ handle_emit_routes() {
       if .paths then
         .paths | to_entries[] | .key as $path | .value | (.parameters // []) as $pathParams | to_entries[] | select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers") | .key as $method | .value |
         (if .summary == null then "Call \($method | ascii_upcase) \($path)" else .summary end) as $desc |
-        ((.parameters // []) + $pathParams) as $params |
+        ((.parameters // []) + $pathParams | map(if ."$ref" then ($root.components.parameters[."$ref" | sub("^#/components/parameters/"; "")] // .) else . end)) as $params |
         (.security // $root.security // []) as $secReqs |
         (if .operationId then .operationId else "\($method | ascii_upcase)_\($path | gsub("/"; "_") | gsub("[{}]"; ""))" end) as $opId |
         
@@ -88,7 +88,15 @@ handle_emit_routes() {
           "# @param $\($i + 1): \($params[$i].name) (\($params[$i].in)) - \($pdesc)"
         ] | join("\n")) as $paramDocs |
         
-        (if .requestBody then "# @param $\(($params | length) + 1): requestBody" else "" end) as $reqBodyDoc |
+        (if .requestBody then
+          (if .requestBody.content and .requestBody.content["multipart/form-data"] then
+            "# @param $\(($params | length) + 1): requestBody (multipart/form-data)"
+          elif .requestBody.content and .requestBody.content["application/x-www-form-urlencoded"] then
+            "# @param $\(($params | length) + 1): requestBody (application/x-www-form-urlencoded)"
+          else
+            "# @param $\(($params | length) + 1): requestBody (application/json)"
+          end)
+        else "" end) as $reqBodyDoc |
         
         ([
           range(0; $params | length) as $i |
@@ -142,6 +150,12 @@ handle_emit_routes() {
           "  [ -n \"${\($varname)}\" ] && curl_args=\"${curl_args} -H \\\"\(.name): ${\($varname)}\\\"\""
         ] | join("\n")) as $headerBuild |
         
+        ([
+          $params[] | select(.in == "cookie") |
+          (.name | gsub("-"; "_")) as $varname |
+          "  [ -n \"${\($varname)}\" ] && curl_args=\"${curl_args} -b \\\"\(.name)=${\($varname)}\\\"\""
+        ] | join("\n")) as $cookieBuild |
+        
         (if ($secReqs | length > 0) and $root.components and $root.components.securitySchemes then
           ($secReqs | map(keys) | flatten | unique) as $schemes |
           ([
@@ -149,7 +163,7 @@ handle_emit_routes() {
             if .type == "oauth2" or (.type == "http" and (.scheme | ascii_downcase) == "bearer") then
               "  if [ -n \"${OAUTH_TOKEN:-}\" ]; then\n    curl_args=\"${curl_args} -H \\\"Authorization: Bearer ${OAUTH_TOKEN}\\\"\"\n  fi"
             elif .type == "http" and (.scheme | ascii_downcase) == "basic" then
-              "  if [ -n \"${BASIC_AUTH:-}\" ]; then\n    curl_args=\"${curl_args} -u \"${BASIC_AUTH}\"\"\n  fi"
+              "  if [ -n \"${BASIC_AUTH:-}\" ]; then\n    curl_args=\"${curl_args} -u \\\"${BASIC_AUTH}\\\"\"\n  fi"
             elif .type == "apiKey" and .in == "header" then
               "  if [ -n \"${API_KEY:-}\" ]; then\n    curl_args=\"${curl_args} -H \\\"\(.name): ${API_KEY}\\\"\"\n  fi"
             elif .type == "apiKey" and .in == "query" then
@@ -162,7 +176,7 @@ handle_emit_routes() {
           (if .requestBody.content and .requestBody.content["application/x-www-form-urlencoded"] then
             "  if [ -n \"${requestBody}\" ]; then\n    curl_args=\"${curl_args} -H \\\"Content-Type: application/x-www-form-urlencoded\\\" -d \\\"${requestBody}\\\"\"\n  fi"
           elif .requestBody.content and .requestBody.content["multipart/form-data"] then
-            "  if [ -n \"${requestBody}\" ]; then\n    curl_args=\"${curl_args} -H \\\"Content-Type: multipart/form-data\\\" -d \\\"${requestBody}\\\"\"\n  fi"
+            "  if [ -n \"${requestBody}\" ]; then\n    curl_args=\"${curl_args} -F \\\"file=@${requestBody}\\\"\"\n  fi"
           else
             "  [ -n \"${requestBody}\" ] && curl_args=\"${curl_args} -H \\\"Content-Type: application/json\\\" -d \\\"${requestBody}\\\"\""
           end)
@@ -182,10 +196,19 @@ handle_emit_routes() {
         (if $queryBuild != "" then $queryBuild + "\n" else "" end) +
         "  [ -n \"${qs}\" ] && url=\"${url}?${qs#&}\"\n" +
         (if $headerBuild != "" then $headerBuild + "\n" else "" end) +
+        (if $cookieBuild != "" then $cookieBuild + "\n" else "" end) +
         (if $bodyBuild != "" then $bodyBuild + "\n" else "" end) +
         "  # shellcheck disable=SC2086\n" +
         "  curl -s -X \($method | ascii_upcase) ${curl_args} \"${url}\"\n}\n\n"
       else empty end
     ' "${ast}"
-  } > "${file_path}"
+  } > "${file_path}.tmp"
+  
+  if [ -f "${file_path}" ]; then
+    awk -v new_file="${file_path}.tmp" -f "${LIBSCRIPT_ROOT_DIR}/lib/_common/merge.awk" "${file_path}" > "${file_path}.merged"
+    mv "${file_path}.merged" "${file_path}"
+    rm -f "${file_path}.tmp"
+  else
+    mv "${file_path}.tmp" "${file_path}"
+  fi
 }

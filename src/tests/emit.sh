@@ -45,5 +45,13 @@ handle_emit_tests() {
         "test_\($opId)\n"
       else empty end
     ' "${ast}"
-  } > "${file_path}"
+  } > "${file_path}.tmp"
+
+  if [ -f "${file_path}" ]; then
+    awk -v new_file="${file_path}.tmp" -f "${LIBSCRIPT_ROOT_DIR}/lib/_common/merge.awk" "${file_path}" > "${file_path}.merged"
+    mv "${file_path}.merged" "${file_path}"
+    rm -f "${file_path}.tmp"
+  else
+    mv "${file_path}.tmp" "${file_path}"
+  fi
 }

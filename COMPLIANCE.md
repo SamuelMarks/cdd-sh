@@ -41,3 +41,16 @@ The emitted artifacts and the generator source code itself operate under zero-to
 * **0 Shellcheck Errors/Warnings** across all scripts (`SC3043` for `local`, `SC3054` for arrays, etc., are fundamentally solved).
 * **State Management**: Avoiding `local` requires careful dynamic variable naming during recursive functions. In array validation, `_i_\($className)` is generated to sandbox loop indices dynamically per class.
 * **Dependency Free**: Strictly leverages `awk`, `sed`, `grep`, `/bin/sh`. Requires `jq` and `curl` to be installed on the host.
+### 6. Media Types and Request Bodies
+* **[COMPLIANT]** `requestBody` validation and `curl` formatting.
+* **[COMPLIANT]** `application/json` (Defaults to `-H "Content-Type: application/json" -d "{...}"`).
+* **[COMPLIANT]** `application/x-www-form-urlencoded` (Defaults to `-H "Content-Type: application/x-www-form-urlencoded" -d "{...}"`).
+* **[COMPLIANT]** `multipart/form-data` (Uses native `-F "file=@{...}"` mapping).
+* **[COMPLIANT]** Media Type Parsing: Infers `requestBody` type natively via shell parser comments (e.g. `# @param $1: requestBody (multipart/form-data)`).
+
+### 7. References and `$ref` Parameters
+* **[COMPLIANT]** Component parameter references (e.g., `{"$ref": "#/components/parameters/limitParam"}`) are safely resolved and merged into operations during script generation.
+
+### 8. Bidirectional Synchronization & White-space Sensitivity
+* **[COMPLIANT]** Incremental/Surgical Generation: The codebase natively leverages `merge.awk` to splice generated AST nodes back into the user's shell files *without* destroying hand-written functions or comments (`# @custom`).
+* **[COMPLIANT]** `sync` workflow ensures tests, mocks, classes, and OpenAPI JSON are all perfectly cross-updated from the editing of a single artifact (e.g., editing `emitted_routes.sh` updates `openapi.json`).

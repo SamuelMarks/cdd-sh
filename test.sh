@@ -1,5 +1,5 @@
 #!/bin/sh
-set -feu
+set -eu
 # shellcheck disable=SC1090
 
 # We need absolute paths or relative from ROOT
