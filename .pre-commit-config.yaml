@@ -1,18 +1,8 @@
 repos:
--   repo: local
+  - repo: local
     hooks:
-    -   id: tests
-        name: Run test.sh
-        entry: ./test.sh
-        language: system
-        pass_filenames: false
-    -   id: shields
-        name: Update Shields
+      - id: run-tests-and-update-shields
+        name: Run tests and update shields
         entry: ./update_shields.sh
-        language: system
-        pass_filenames: false
-    -   id: git-add-readme
-        name: Git Add README.md
-        entry: git add README.md
-        language: system
+        language: script
         pass_filenames: false

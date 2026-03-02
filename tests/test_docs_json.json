@@ -1,0 +1,18 @@
+{
+  "openapi": "3.2.0",
+  "paths": {
+    "/pets": {
+      "get": {
+        "operationId": "listPets"
+      }
+    },
+    "/pets/{petId}": {
+      "get": {
+        "operationId": "showPetById",
+        "parameters": [
+          {"name": "petId", "in": "path"}
+        ]
+      }
+    }
+  }
+}

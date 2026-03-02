@@ -1,0 +1,29 @@
+{
+  "openapi": "3.2.0",
+  "components": {
+    "schemas": {
+      "Dog": {
+        "type": "object",
+        "properties": { "bark": { "type": "boolean" } },
+        "required": ["bark"]
+      },
+      "Cat": {
+        "type": "object",
+        "properties": { "meow": { "type": "boolean" } },
+        "required": ["meow"]
+      },
+      "Pet": {
+        "type": "object",
+        "properties": {
+          "animal": {
+            "oneOf": [
+              { "$ref": "#/components/schemas/Dog" },
+              { "$ref": "#/components/schemas/Cat" }
+            ]
+          }
+        },
+        "required": ["animal"]
+      }
+    }
+  }
+}

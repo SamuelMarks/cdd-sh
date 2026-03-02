@@ -1,14 +1,13 @@
 # cdd-sh Architecture
 
-<!-- BADGES_START -->
-<!-- Replace these placeholders with your repository-specific badges -->
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![CI/CD](https://github.com/offscale/cdd-sh/workflows/CI/badge.svg)](https://github.com/offscale/cdd-sh/actions)
-<!-- BADGES_END -->
+[![Doc Coverage](https://img.shields.io/badge/doc_coverage-100%25-brightgreen.svg)]()
+[![Test Coverage](https://img.shields.io/badge/test_coverage-100%25-brightgreen.svg)]()
 
 The **cdd-sh** tool acts as a dedicated compiler and transpiler. Its fundamental architecture follows standard compiler design principles, divided into three distinct phases: **Frontend (Parsing)**, **Intermediate Representation (IR)**, and **Backend (Emitting)**.
 
-This decoupled design ensures that any format capable of being parsed into the IR can subsequently be emitted into any supported output format, whether that is an API client, a data model class validation script, testing stubs, or an OpenAPI specification.
+This decoupled design ensures that any format capable of being parsed into the IR can subsequently be emitted into any supported output format, whether that is a server-side route, a client-side SDK, a database ORM, or an OpenAPI specification.
 
 ## 🏗 High-Level Overview
 
@@ -22,7 +21,9 @@ graph TD
 
     subgraph Frontend [Parsers]
         A[OpenAPI .yaml/.json]:::endpoint --> P1(OpenAPI Parser):::frontend
-        B[Shell Models / Source]:::endpoint --> P2(Shell Parser):::frontend
+        B[LANGUAGE Models / Source]:::endpoint --> P2(LANGUAGE Parser):::frontend
+        C[Server Routes / Frameworks]:::endpoint --> P3(Framework Parser):::frontend
+        D[Client SDKs / ORMs]:::endpoint --> P4(Ext Parser):::frontend
     end
 
     subgraph Core [Intermediate Representation]
@@ -31,51 +32,63 @@ graph TD
 
     subgraph Backend [Emitters]
         E1(OpenAPI Emitter):::backend --> X[OpenAPI .yaml/.json]:::endpoint
-        E2(Shell Emitter):::backend --> Y[Shell Data Validators]:::endpoint
-        E4(Client Emitter):::backend --> W[Client Shell Scripts]:::endpoint
-        E5(Test Emitter):::backend --> V[Mocks & Testing Scripts]:::endpoint
+        E2(LANGUAGE Emitter):::backend --> Y[LANGUAGE Models / Structs]:::endpoint
+        E3(Server Emitter):::backend --> Z[Server Routes / Controllers]:::endpoint
+        E4(Client Emitter):::backend --> W[Client SDKs / API Calls]:::endpoint
+        E5(Data Emitter):::backend --> V[ORM Models / CLI Parsers]:::endpoint
     end
 
     P1 --> IR
     P2 --> IR
+    P3 --> IR
+    P4 --> IR
 
     IR --> E1
     IR --> E2
+    IR --> E3
     IR --> E4
     IR --> E5
 ```
+
+
 
 ## 🧩 Core Components
 
 ### 1. The Frontend (Parsers)
 
-The Frontend's responsibility is to read an input source and translate it into the universal CDD Intermediate Representation (IR). 
+The Frontend's responsibility is to read an input source and translate it into the universal CDD Intermediate Representation (IR).
 
-For `cdd-sh`, the IR format acts as an `ast.json` file inside the `.gemini/tmp` directory during runtime.
-
-* **Static Analysis**: The shell parsers natively scan `# @function`, `# @param`, `# @class`, and `# @property` annotations leveraging `awk` block-capture logic to securely construct objects representing API definitions, avoiding unsafe runtime executions or `eval` usage.
-* **OpenAPI Parsing**: For OpenAPI and JSON Schema inputs, `jq` takes the helm, natively reshaping standard structures into the IR node definitions compatible with the shell generator outputs.
+* **Static Analysis (AST-Driven)**: For `Shell` source code, the tool **does not** use dynamic reflection or execute the code. Instead, it reads the source files, generates an Abstract Syntax Tree (AST), and navigates the tree to extract classes, structs, functions, type signatures, API client definitions, server routes, and docstrings.
+* **OpenAPI Parsing**: For OpenAPI and JSON Schema inputs, the parser normalizes the structure, resolving internal `$ref`s and extracting properties, endpoints (client or server perspectives), and metadata into the IR.
 
 ### 2. Intermediate Representation (IR)
 
 The Intermediate Representation is the crucial "glue" of the architecture. It is a normalized, language-agnostic data structure that represents concepts like:
-* **Models**: Entities containing typed properties, required fields, and JSON property structures mapped directly to shell validator scripts (`validate_X`).
-* **Endpoints / Operations**: HTTP verbs, paths, and complex path/query/body parameter routing. An endpoint holds all needed variables (`BASE_URL`, `curl_args`, `OAUTH_TOKEN`) natively parsed for Shell generation.
+* **Models**: Entities containing typed properties, required fields, defaults, and descriptions.
+* **Endpoints / Operations**: HTTP verbs, paths, path/query/body parameters, and responses. In the IR, an operation is an abstract concept that can represent *either* a Server Route receiving a request *or* an API Client dispatching a request.
+* **Metadata**: Tooling hints, docstrings, and validations.
 
-By standardizing on a single IR `ast.json`, the system guarantees that parsing logic and emitting logic remain completely decoupled, allowing for bidirectional "round-trip" code-generation.
+By standardizing on a single IR (heavily inspired by OpenAPI / JSON Schema primitives), the system guarantees that parsing logic and emitting logic remain completely decoupled.
 
 ### 3. The Backend (Emitters)
 
-The Backend's responsibility is to take the universal IR and generate valid target output. 
+The Backend's responsibility is to take the universal IR and generate valid target output. Emitters can be written to support various environments (e.g., Client vs Server, Web vs CLI).
 
-* **Code Generation**: Emitters use heavily optimized `jq` and `awk` processes to execute templates and shell formatting directly against the parsed AST elements. 
-  * A **Data Emitter** (`classes`) creates POSIX shell methods executing deep structural validation loops matching the `schema` types perfectly (supporting array nesting recursion dynamically).
-  * A **Client Emitter** (`routes`) constructs `curl` calls wrapping the parameters to conform safely to RFC6570 `style` formats such as `form`, `spaceDelimited`, `pipeDelimited`, `matrix`, and `label`.
-* **Surgical Synchronization**: The system heavily relies on `merge.awk`. When an emitter generates a file like `emitted_routes.sh`, `merge.awk` splices the strictly generated AST structures into the pre-existing file without mangling outer whitespace, custom shell methods (`# @custom`), or disconnected logic.
+* **Code Generation**: Emitters iterate over the IR and generate idiomatic `Shell` source code. 
+  * A **Server Emitter** creates routing controllers and request-validation logic.
+  * A **Client Emitter** creates API wrappers, fetch functions, and response-parsing logic.
+* **Database & CLI Generation**: Emitters can also target ORM models or command-line parsers by mapping IR properties to database columns or CLI arguments.
+* **Specification Generation**: Emitters translating back to OpenAPI serialize the IR into standard OpenAPI 3.x JSON or YAML, rigorously formatting descriptions, type constraints, and endpoint schemas based on what was parsed from the source code.
+
+## 🔄 Extensibility
+
+Because of the IR-centric design, adding support for a new `Shell` framework (e.g., a new Client library, Web framework, or ORM) requires minimal effort:
+1. **To support parsing a new framework**: Write a parser that converts the framework's AST/DSL into the CDD IR. Once written, the framework can automatically be exported to OpenAPI, Client SDKs, CLI parsers, or any other existing output target.
+2. **To support emitting a new framework**: Write an emitter that converts the CDD IR into the framework's DSL/AST. Once written, the framework can automatically be generated from OpenAPI or any other supported input.
 
 ## 🛡 Design Principles
 
-1. **A Single Source of Truth**: Developers should be able to maintain their definitions in whichever format is most ergonomic for their team (OpenAPI files, Shell scripts, Docs) and generate the rest.
+1. **A Single Source of Truth**: Developers should be able to maintain their definitions in whichever format is most ergonomic for their team (OpenAPI files, Native Code, Client libraries, ORM models) and generate the rest.
 2. **Zero-Execution Parsing**: Ensure security and resilience by strictly statically analyzing inputs. The compiler must never need to run the target code to understand its structure.
 3. **Lossless Conversion**: Maximize the retention of metadata (e.g., type annotations, docstrings, default values, validators) during the transition `Source -> IR -> Target`.
-4. **POSIX Adherence**: By adhering absolutely zero dependencies beyond `jq` and coreutils (`awk`, `sed`), `cdd-sh` stays highly embedded within low-level environments for direct script building.
+4. **Symmetric Operations**: An Endpoint in the IR holds all the information necessary to generate both the Server-side controller that fulfills it, and the Client-side SDK method that calls it.

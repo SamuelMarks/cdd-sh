@@ -1,0 +1,50 @@
+{
+  "openapi": "3.2.0",
+  "components": {
+    "schemas": {
+      "BasePet": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": ["name"]
+      },
+      "Dog": {
+        "allOf": [
+          { "$ref": "#/components/schemas/BasePet" }
+        ],
+        "properties": {
+          "bark": {
+            "type": "boolean"
+          }
+        },
+        "required": ["bark"]
+      },
+      "Cat": {
+        "allOf": [
+          { "$ref": "#/components/schemas/BasePet" }
+        ],
+        "properties": {
+          "meow": {
+            "type": "boolean"
+          }
+        },
+        "required": ["meow"]
+      },
+      "Pet": {
+        "oneOf": [
+          { "$ref": "#/components/schemas/Dog" },
+          { "$ref": "#/components/schemas/Cat" }
+        ]
+      },
+      "AnyPet": {
+        "anyOf": [
+          { "$ref": "#/components/schemas/Dog" },
+          { "$ref": "#/components/schemas/Cat" }
+        ]
+      }
+    }
+  }
+}

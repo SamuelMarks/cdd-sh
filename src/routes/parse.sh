@@ -24,7 +24,27 @@ handle_parse_routes() {
   fi
   
   awk '
-    BEGIN { in_func = 0; in_webhook = 0 }
+    BEGIN { in_func = 0; in_webhook = 0; in_callback = 0 }
+
+    /^# @callback / {
+      callbackName = $3
+      method = ""
+      summary = ""
+      in_callback = 1
+      in_func = 0
+    }
+    /^# @method / {
+      if (in_callback) method = tolower($3)
+    }
+    /^# @description / {
+      if (in_callback) summary = substr($0, 16)
+    }
+    /^handle_callback_/ {
+      if (in_callback) {
+        printf "{\"name\": \"%s\", \"method\": \"%s\", \"summary\": \"%s\"}\n", callbackName, method, summary > "callbacks_temp.jsonl"
+        in_callback = 0
+      }
+    }
     /^# @webhook / {
       webhookName = $3
       method = ""
@@ -115,7 +135,7 @@ handle_parse_routes() {
 
   ast="${LIBSCRIPT_ROOT_DIR}/ast.json"
   if [ ! -f "${ast}" ]; then
-    echo '{"openapi": "3.2.0", "info": {"title": "Parsed API", "version": "1.0.0"}}' > "${ast}"
+    echo '{"openapi": "3.2.0", "info": {"title": "Parsed API", "version": "0.0.1"}}' > "${ast}"
   fi
 
   if [ -f "ops_temp.jsonl" ]; then
@@ -136,6 +156,24 @@ handle_parse_routes() {
     
     jq --slurpfile newpaths parsed_paths.json '.paths = $newpaths[0]' "${ast}" > "${ast}.tmp" && mv "${ast}.tmp" "${ast}"
     rm -f ops_temp.jsonl parsed_paths.json
+  fi
+
+
+  if [ -f "callbacks_temp.jsonl" ]; then
+    jq -s '
+      reduce .[] as $cb ({};
+        .[$cb.name] = {
+          "{url}": {
+            ($cb.method): {
+              summary: $cb.summary
+            }
+          }
+        }
+      )
+    ' "callbacks_temp.jsonl" > parsed_callbacks.json
+    
+    jq --slurpfile newcallbacks parsed_callbacks.json '.components.callbacks = $newcallbacks[0]' "${ast}" > "${ast}.tmp" && mv "${ast}.tmp" "${ast}"
+    rm -f callbacks_temp.jsonl parsed_callbacks.json
   fi
 
   if [ -f "webhooks_temp.jsonl" ]; then

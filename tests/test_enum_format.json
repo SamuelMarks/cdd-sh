@@ -1,0 +1,21 @@
+{
+  "openapi": "3.2.0",
+  "components": {
+    "schemas": {
+      "Contact": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["active", "inactive"]
+          }
+        },
+        "required": ["email", "status"]
+      }
+    }
+  }
+}

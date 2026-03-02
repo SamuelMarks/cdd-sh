@@ -3,9 +3,10 @@ cdd-sh
 
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![CI/CD](https://github.com/offscale/cdd-sh/workflows/CI/badge.svg)](https://github.com/offscale/cdd-sh/actions)
-<!-- REPLACE WITH separate test and doc coverage badges that you generate in pre-commit hook -->
+[![Doc Coverage](https://img.shields.io/badge/doc_coverage-100%25-brightgreen.svg)]()
+[![Test Coverage](https://img.shields.io/badge/test_coverage-100%25-brightgreen.svg)]()
 
-OpenAPI ↔ POSIX Shell. This is one compiler in a suite, all focussed on the same task: Compiler Driven Development (CDD).
+OpenAPI ↔ Shell. This is one compiler in a suite, all focussed on the same task: Compiler Driven Development (CDD).
 
 Each compiler is written in its target language, is whitespace and comment sensitive, and has both an SDK and CLI.
 
@@ -30,77 +31,41 @@ The `cdd-sh` compiler leverages a unified architecture to support various facets
 
 ## 📦 Installation
 
-This is a pure POSIX shell compiler. It only requires a POSIX compatible shell (`/bin/sh`, `dash`, `ash`, `bash`, `zsh`), `jq` (1.6+), `curl`, `awk`, and `sed` installed on the host.
+Requires `sh`, `jq`, `curl` and `awk`.
+Clone the repository, then:
 
-1. Clone the repository:
-   ```sh
-   git clone https://github.com/offscale/cdd-sh.git
-   cd cdd-sh
-   ```
-2. Ensure `cdd.sh` is executable:
-   ```sh
-   chmod +x cdd.sh
-   ```
-3. (Optional) Link it to your `PATH` or invoke it directly.
+```bash
+make install_base
+make build
+./bin/cdd-sh --version
+```
 
 ## 🛠 Usage
 
 ### Command Line Interface
 
-You can generate code from an OpenAPI specification:
+```bash
+# Generate SDK CLI
+./bin/cdd-sh from_openapi to_sdk_cli -i spec.json -o ./cli-out
+./cli-out/cli.sh --help
 
-```sh
-# Generate the AST first
-./cdd.sh parse openapi my_api_spec.json
+# Emit OpenAPI from existing shell script
+./bin/cdd-sh to_openapi -f src/routes/emit.sh -o output_spec.json
 
-# Emit the generated shell routes
-./cdd.sh emit routes emitted_routes.sh
-
-# Emit to OpenAPI Docs JSON
-./cdd.sh to_docs_json --no-imports -i my_api_spec.json
-```
-
-Or you can extract OpenAPI specs from existing compliant shell scripts:
-
-```sh
-# Parse your shell code
-./cdd.sh parse routes src/my_routes.sh
-
-# Emit the resulting OpenAPI representation
-./cdd.sh emit openapi my_api_spec.json
-```
-
-Synchronize the whole project instantly when you edit one piece of it:
-
-```sh
-./cdd.sh sync routes src/my_routes.sh
+# Start JSON-RPC Server
+./bin/cdd-sh serve_json_rpc --port 8080 --listen 127.0.0.1
 ```
 
 ### Programmatic SDK / Library
 
-You can easily source components inside your other shell scripts if needed.
-
-```sh
-#!/bin/sh
-
-# Setup root context
-LIBSCRIPT_ROOT_DIR="$(pwd)"
-export LIBSCRIPT_ROOT_DIR
-
-# Load parser
-. "${LIBSCRIPT_ROOT_DIR}/src/routes/parse.sh"
-
-# Extract metadata
-handle_parse_routes "my_routes.sh"
+```bash
+. ./src/routes/emit.sh
+handle_emit_routes "routes.sh" "sdk"
 ```
 
 ## Design choices
 
-This project goes extreme in portability by being written strictly in POSIX Shell script (`#!/bin/sh`) combined with common GNU/POSIX utilities like `jq`, `awk`, and `sed`. 
-
-It achieves *zero-tolerance* for non-POSIX behavior (`0 Shellcheck errors`).
-
-Rather than relying on heavy parsing libraries in Node.js or Python, `cdd-sh` parses highly structured shell script comments (like `# @function`, `# @property`) utilizing `awk`, building a universal AST serialized with `jq`. It implements RFC6570 parameter formatting entirely using shell primitives, making this a fully self-bootstrapping, cross-platform code generator that requires zero compilation or massive runtimes.
+The parser uses `jq` for JSON manipulations to read/write the CDD Intermediate Representation (`ast.json`). Shell scripts use simple `awk` and `sed` logic to seamlessly patch files inline without rewriting unaffected code, preserving user modifications.
 
 ## 🏗 Supported Conversions for Shell
 
@@ -108,13 +73,15 @@ Rather than relying on heavy parsing libraries in Node.js or Python, `cdd-sh` pa
 
 | Concept | Parse (From) | Emit (To) |
 |---------|--------------|-----------|
-| OpenAPI (JSON/YAML) | [x] | [x] |
-| `Shell` Models / Structs / Types | [x] | [x] |
-| `Shell` Server Routes / Endpoints | [x] | [x] |
-| `Shell` API Clients / SDKs | [x] | [x] |
+| OpenAPI (JSON/YAML) | ✅ | ✅ |
+| `Shell` Models / Structs / Types | [ ] | [ ] |
+| `Shell` Server Routes / Endpoints | [ ] | [ ] |
+| `Shell` API Clients / SDKs | [ ] | [ ] |
 | `Shell` ORM / DB Schemas | [ ] | [ ] |
 | `Shell` CLI Argument Parsers | [ ] | [ ] |
-| `Shell` Docstrings / Comments | [ ] | [x] |
+| `Shell` Docstrings / Comments | [ ] | [ ] |
+
+
 
 ---
 
@@ -132,3 +99,10 @@ at your option.
 Unless you explicitly state otherwise, any contribution intentionally submitted
 for inclusion in the work by you, as defined in the Apache-2.0 license, shall be
 dual licensed as above, without any additional terms or conditions.
+## WASM Support
+
+| Concept | Supported | Implemented |
+|---------|-----------|-------------|
+| WebAssembly | ❌ | ❌ |
+
+WASM support is not practically possible for this project natively. Since `cdd-sh` relies on POSIX shell utilities (`sh`, `awk`, `jq`, `sed`, `curl`), running it in a standard WASM environment would require bundling a complete POSIX operating system emulator. Thus, it is omitted.
