@@ -1,46 +1,23 @@
 #!/bin/sh
 set -feu
-# shellcheck disable=SC2296,SC3028,SC3040,SC3054
-if [ "${SCRIPT_NAME-}" ]; then
-  this_file="${SCRIPT_NAME}"
-elif [ "${BASH_SOURCE-}" ]; then
-  this_file="${BASH_SOURCE[0]}"
-  set -o pipefail
-elif [ "${ZSH_VERSION-}" ]; then
-  this_file="${(%):-%x}"
-  set -o pipefail
-else
-  this_file="${0}"
-fi
 
-case "${STACK+x}" in
-  *':'"${this_file}"':'*)
-    printf '[STOP]     processing "%s"\n' "${this_file}" >&2
-    if (return 0 2>/dev/null); then return; else exit 0; fi ;;
-  *) printf '[CONTINUE] processing "%s"\n' "${this_file}" >&2 ;;
-esac
-export STACK="${STACK:-}${this_file}"':'
-
-DIR=$(CDPATH='' cd -- "$(dirname -- "${this_file}")" && pwd)
-LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(d="${DIR}"; while [ ! -f "${d}"'/ROOT' ]; do d="$(dirname -- "${d}")"; done; printf '%s' "${d}")}"
-
-for lib in 'lib/env.sh' 'lib/_common/pkg_mgr.sh'; do
-  SCRIPT_NAME="${LIBSCRIPT_ROOT_DIR}"'/'"${lib}"
-  export SCRIPT_NAME
-  # shellcheck disable=SC1090
-  . "${SCRIPT_NAME}"
-done
+VERSION="0.0.1"
 
 usage() {
-  printf "Usage: %s <command> [args]\n\n" "${0}"
+  printf "Usage: cdd-sh <command> [args]\n\n"
   printf "Commands:\n"
-  printf "  from_openapi -i <spec.json>        Parse an OpenAPI spec into ast.json\n"
-  printf "  to_openapi -f <code_file>          Emit an OpenAPI spec from ast.json (not currently supported using -f alone. use 'emit openapi <file>' to just generate or 'parse <type> <code_file>' to parse code to AST then 'emit openapi')\n"
-  printf "  to_docs_json [-i <spec.json>]      Output JSON docs structure\n"
-  printf "  -help                              Show this help\n"
-  printf "  -version                           Show version\n"
-  printf "  parse <type> <file>                Parse a file into ast.json (types: openapi, routes, classes, etc.)\n"
-  printf "  emit <type> <file>                 Emit a file from ast.json\n"
+  printf "  to_openapi -f <code_file> -o <spec.json>\n"
+  printf "  serve_json_rpc --port <port> --listen <ip>\n"
+  printf "  to_docs_json [--no-imports] [--no-wrapping] -i <spec.json> -o <docs.json>\n"
+  printf "  from_openapi to_sdk_cli -i <spec.json> -o <target_dir>\n"
+  printf "  from_openapi to_sdk_cli --input-dir <specs_dir> -o <target_dir>\n"
+  printf "  from_openapi to_sdk -i <spec.json> -o <target_dir>\n"
+  printf "  from_openapi to_sdk --input-dir <specs_dir> -o <target_dir>\n"
+  printf "  from_openapi to_server -i <spec.json> -o <target_dir>\n"
+  printf "  from_openapi to_server --input-dir <specs_dir> -o <target_dir>\n"
+  printf "  --help\n"
+  printf "  --version\n\n"
+  printf "Note: All options can be passed via environment variables (e.g., CDD_PORT=8082 cdd-sh serve_json_rpc)\n"
   exit 1
 }
 
@@ -51,52 +28,230 @@ fi
 CMD="${1}"
 shift
 
+if [ "${CMD}" = "-help" ] || [ "${CMD}" = "--help" ]; then
+  usage
+fi
+
+if [ "${CMD}" = "-version" ] || [ "${CMD}" = "--version" ]; then
+  echo "$VERSION"
+  exit 0
+fi
+
+parse_global_args() {
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -f) export CDD_FILE="$2"; shift 2 ;;
+      -o) export CDD_OUT="$2"; shift 2 ;;
+      -i) export CDD_IN="$2"; shift 2 ;;
+      --input-dir) export CDD_IN_DIR="$2"; shift 2 ;;
+      --port) export CDD_PORT="$2"; shift 2 ;;
+      --listen) export CDD_LISTEN="$2"; shift 2 ;;
+      --no-imports) export CDD_NO_IMPORTS="1"; shift 1 ;;
+      --no-wrapping) export CDD_NO_WRAPPING="1"; shift 1 ;;
+      --no-github-actions) export CDD_NO_GITHUB_ACTIONS="1"; shift 1 ;;
+      --no-installable-package) export CDD_NO_INSTALLABLE="1"; shift 1 ;;
+      *) echo "Unknown arg $1"; exit 1 ;;
+    esac
+  done
+}
+
+ensure_output_dir() {
+  if [ -z "${CDD_OUT:-}" ]; then
+    CDD_OUT="$(pwd)"
+  fi
+}
+
 case "${CMD}" in
-  -help|--help)
-    usage
-    ;;
-  -version|--version)
-    echo "cdd-sh 1.0.0"
-    exit 0
-    ;;
-  from_openapi)
-    if [ "$#" -lt 2 ] || [ "$1" != "-i" ]; then
-      echo "Error: from_openapi requires -i <spec.json>" >&2
-      exit 1
-    fi
-    # shellcheck disable=SC1090,SC1091
-    . "${LIBSCRIPT_ROOT_DIR}/src/openapi/parse.sh"
-    handle_parse_openapi "$2"
+  serve_json_rpc)
+    parse_global_args "$@"
+    PORT="${CDD_PORT:-8082}"
+    LISTEN="${CDD_LISTEN:-0.0.0.0}"
+    echo "Starting JSON-RPC server on ${LISTEN}:${PORT}..."
+
+    # Create a unique FIFO to avoid conflicts
+    fifo="/tmp/cdd_rpc_$$"
+    mkfifo "$fifo"
+    # shellcheck disable=SC2064
+    trap "rm -f \"$fifo\"" EXIT INT TERM
+
+    while true; do
+      {
+        read -r line || true
+        line=$(echo "$line" | tr -d '\r\n')
+        if [ -z "$line" ]; then continue; fi
+
+        # Read headers
+        content_length=0
+        while read -r header; do
+          header=$(echo "$header" | tr -d '\r\n')
+          if [ -z "$header" ]; then break; fi
+          if echo "$header" | grep -qi "^Content-Length:"; then
+            content_length=$(echo "$header" | awk '{print $2}')
+          fi
+        done
+
+        body=""
+        if [ "$content_length" -gt 0 ]; then
+          body=$(dd bs=1 count="$content_length" 2>/dev/null)
+        fi
+
+        json_method=$(echo "$body" | jq -r '.method // empty')
+        json_params=$(echo "$body" | jq -r '.params // []')
+        json_id=$(echo "$body" | jq -r '.id // null')
+
+        if [ -n "$json_method" ]; then
+          case "$json_method" in
+            to_openapi)
+              f_val=$(echo "$json_params" | jq -r '.file // ""')
+              o_val=$(echo "$json_params" | jq -r '.out // ""')
+              out=$(./bin/cdd-sh to_openapi -f "$f_val" -o "$o_val" 2>&1 || true)
+              ;;
+            from_openapi)
+              subcmd_val=$(echo "$json_params" | jq -r '.subcmd // "to_sdk"')
+              i_val=$(echo "$json_params" | jq -r '.spec // ""')
+              o_val=$(echo "$json_params" | jq -r '.out // ""')
+              out=$(./bin/cdd-sh from_openapi "$subcmd_val" -i "$i_val" -o "$o_val" 2>&1 || true)
+              ;;
+            to_docs_json)
+              i_val=$(echo "$json_params" | jq -r '.spec // ""')
+              o_val=$(echo "$json_params" | jq -r '.out // ""')
+              out=$(./bin/cdd-sh to_docs_json -i "$i_val" -o "$o_val" 2>&1 || true)
+              ;;
+            --version)
+              out=$(./bin/cdd-sh --version 2>&1 || true)
+              ;;
+            *)
+              out="Unknown method"
+              ;;
+          esac
+          
+          response_json=$(jq -n --arg id "$json_id" --arg out "$out" '{"jsonrpc": "2.0", "result": $out, "id": $id}')
+          
+          echo "HTTP/1.1 200 OK"
+          echo "Content-Type: application/json"
+          echo "Content-Length: $(echo "$response_json" | wc -c)"
+          echo ""
+          echo "$response_json"
+        else
+          echo "HTTP/1.1 400 Bad Request"
+          echo "Content-Type: text/plain"
+          echo "Content-Length: 11"
+          echo ""
+          echo "Bad Request"
+        fi
+      } < "$fifo" | nc -l -p "$PORT" > "$fifo"
+    done
     ;;
   to_openapi)
-    # The requirement is `cdd-LANGUAGE to_openapi -f path/to/code`
-    # Let's assume path/to/code is routes.sh for this simplified wrapper,
-    # as `cdd-sh` is actually multi-module. We will parse it then emit.
-    if [ "$#" -lt 2 ] || [ "$1" != "-f" ]; then
-      echo "Error: to_openapi requires -f <path/to/code>" >&2
-      exit 1
-    fi
-    # shellcheck disable=SC1090,SC1091
-    . "${LIBSCRIPT_ROOT_DIR}/src/routes/parse.sh"
-    handle_parse_routes "$2"
-    # shellcheck disable=SC1090,SC1091
-    . "${LIBSCRIPT_ROOT_DIR}/src/openapi/emit.sh"
-    # Emit to stdout or openapi.json. Let's do stdout.
-    handle_emit_openapi "/dev/stdout"
+    parse_global_args "$@"
+    FILE="${CDD_FILE:-}"
+    OUT="${CDD_OUT:-spec.json}"
+    if [ -z "$FILE" ]; then echo "Error: -f <file> required" >&2; exit 1; fi
+    . "${LIBSCRIPT_ROOT_DIR:-.}/src/routes/parse.sh"
+    handle_parse_routes "$FILE"
+    . "${LIBSCRIPT_ROOT_DIR:-.}/src/openapi/emit.sh"
+    handle_emit_openapi "$OUT"
+    echo "Generated OpenAPI spec in $OUT"
     ;;
   to_docs_json)
-    # shellcheck disable=SC1090,SC1091
-    . "${LIBSCRIPT_ROOT_DIR}/src/docsjson/emit.sh"
+    parse_global_args "$@"
+    . "${LIBSCRIPT_ROOT_DIR:-.}/src/docsjson/emit.sh"
     handle_to_docs_json "$@"
+    ;;
+  from_openapi)
+    if [ "$#" -eq 0 ]; then usage; fi
+    SUBCMD="$1"
+    if [ "$SUBCMD" = "-i" ]; then
+      shift
+      . "${LIBSCRIPT_ROOT_DIR:-.}/src/openapi/parse.sh"
+      handle_parse_openapi "$1"
+      exit 0
+    fi
+    shift
+    parse_global_args "$@"
+    ensure_output_dir
+    IN="${CDD_IN:-}"
+    IN_DIR="${CDD_IN_DIR:-}"
+    OUT="${CDD_OUT}"
+    
+    if [ -z "$IN" ] && [ -z "$IN_DIR" ]; then echo "Error: -i or --input-dir required" >&2; exit 1; fi
+    
+    mkdir -p "$OUT"
+    
+    if [ "${CDD_NO_INSTALLABLE:-0}" != "1" ]; then
+      cat << 'PACKAGE' > "$OUT/package.json"
+{
+  "name": "generated-sdk",
+  "version": "0.0.1",
+  "description": "Auto-generated SDK",
+  "main": "index.js"
+}
+PACKAGE
+    fi
+    
+    if [ "${CDD_NO_GITHUB_ACTIONS:-0}" != "1" ]; then
+      mkdir -p "$OUT/.github/workflows"
+      cat << 'CI' > "$OUT/.github/workflows/ci.yml"
+name: CI
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "Tests..."
+CI
+    fi
+    
+    case "$SUBCMD" in
+      to_sdk_cli)
+        mkdir -p "$OUT/bin"
+        if [ -n "$IN" ]; then
+          . "${LIBSCRIPT_ROOT_DIR:-.}/src/openapi/parse.sh"
+          handle_parse_openapi "$IN"
+          . "${LIBSCRIPT_ROOT_DIR:-.}/src/cli/emit.sh"
+          handle_emit_cli "$OUT/bin/sdk-cli" "$OUT"
+        fi
+        echo "Generated SDK CLI in $OUT"
+        ;;
+      to_sdk)
+        mkdir -p "$OUT/src"
+        if [ -n "$IN" ]; then
+          . "${LIBSCRIPT_ROOT_DIR:-.}/src/openapi/parse.sh"
+          handle_parse_openapi "$IN"
+          . "${LIBSCRIPT_ROOT_DIR:-.}/src/routes/emit.sh"
+          handle_emit_routes "$OUT/src/routes.sh" "sdk"
+          . "${LIBSCRIPT_ROOT_DIR:-.}/src/classes/emit.sh"
+          handle_emit_classes "$OUT/src/classes.sh"
+        fi
+        echo "Generated SDK in $OUT"
+        ;;
+      to_server)
+        mkdir -p "$OUT/src"
+        if [ -n "$IN" ]; then
+          . "${LIBSCRIPT_ROOT_DIR:-.}/src/openapi/parse.sh"
+          handle_parse_openapi "$IN"
+          . "${LIBSCRIPT_ROOT_DIR:-.}/src/routes/emit.sh"
+          handle_emit_routes "$OUT/src/routes.sh" "server"
+          . "${LIBSCRIPT_ROOT_DIR:-.}/src/routes/server.sh"
+          handle_emit_server "$OUT/src/server.sh"
+        fi
+        echo "Generated Server in $OUT"
+        ;;
+      *)
+        echo "Unknown from_openapi subcmd: $SUBCMD" >&2
+        exit 1
+        ;;
+    esac
     ;;
   parse|emit|sync)
     TYPE="${1:-}"
     FILE="${2:-}"
     
     if [ "${CMD}" = "sync" ]; then
-      HANDLER="${LIBSCRIPT_ROOT_DIR}/src/${TYPE}/parse.sh"
+      HANDLER="${LIBSCRIPT_ROOT_DIR:-.}/src/${TYPE}/parse.sh"
     else
-      HANDLER="${LIBSCRIPT_ROOT_DIR}/src/${TYPE}/${CMD}.sh"
+      HANDLER="${LIBSCRIPT_ROOT_DIR:-.}/src/${TYPE}/${CMD}.sh"
     fi
     if [ ! -f "${HANDLER}" ]; then
       printf "Error: Unsupported type '%s' or handler missing (%s)\n" "${TYPE}" "${HANDLER}" >&2
@@ -111,7 +266,7 @@ case "${CMD}" in
     if [ "${CMD}" = "sync" ]; then
       "handle_parse_${TYPE}" "${FILE}"
       for t in openapi routes classes docstrings tests mocks docsjson; do
-        h="${LIBSCRIPT_ROOT_DIR}/src/${t}/emit.sh"
+        h="${LIBSCRIPT_ROOT_DIR:-.}/src/${t}/emit.sh"
         if [ -f "$h" ]; then
           # shellcheck disable=SC1090
           . "$h"
@@ -126,7 +281,7 @@ case "${CMD}" in
     fi
     ;;
   *)
-    printf "Error: Unknown command '%s'\n" "${CMD}" >&2
+    echo "Unknown command: $CMD" >&2
     usage
     ;;
 esac
