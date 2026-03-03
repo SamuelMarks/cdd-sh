@@ -18,7 +18,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y jq curl awk socat netcat-traditional  make shellcheck
+          sudo apt-get install -y jq curl socat netcat-traditional make shellcheck
 
       - name: Run Test Suite
         run: make test
