@@ -219,7 +219,7 @@ CI
         if [ -n "$IN" ]; then
           . "${LIBSCRIPT_ROOT_DIR:-.}/src/openapi/parse.sh"
           handle_parse_openapi "$IN"
-          . "${LIBSCRIPT_ROOT_DIR:-.}/src/routes/emit.sh"
+          
           handle_emit_routes "$OUT/src/routes.sh" "sdk"
           . "${LIBSCRIPT_ROOT_DIR:-.}/src/classes/emit.sh"
           handle_emit_classes "$OUT/src/classes.sh"
@@ -231,10 +231,10 @@ CI
         if [ -n "$IN" ]; then
           . "${LIBSCRIPT_ROOT_DIR:-.}/src/openapi/parse.sh"
           handle_parse_openapi "$IN"
-          . "${LIBSCRIPT_ROOT_DIR:-.}/src/routes/emit.sh"
-          handle_emit_routes "$OUT/src/routes.sh" "server"
-          . "${LIBSCRIPT_ROOT_DIR:-.}/src/routes/server.sh"
-          handle_emit_server "$OUT/src/server.sh"
+          
+          
+          . "${LIBSCRIPT_ROOT_DIR:-.}/src/server/emit.sh"
+          handle_emit_server "$OUT/src/server.sh" "server"
         fi
         echo "Generated Server in $OUT"
         ;;

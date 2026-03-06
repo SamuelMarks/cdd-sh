@@ -1,63 +1,25 @@
 #!/bin/sh
 set -feu
-# shellcheck disable=SC2296,SC3028,SC3040,SC3054,SC3043,SC2129
-if [ "${SCRIPT_NAME-}" ]; then
-  this_file="${SCRIPT_NAME}"
-elif [ "${BASH_SOURCE-}" ]; then
-  this_file="${BASH_SOURCE[0]}"
-  set -o pipefail
-else
-  this_file="${0}"
-fi
-case "${STACK+x}" in
-  *':'"${this_file}"':'*) if (return 0 2>/dev/null); then return; else exit 0; fi ;;
-esac
+if [ "${SCRIPT_NAME-}" ]; then this_file="${SCRIPT_NAME}"; elif [ "${BASH_SOURCE-}" ]; then this_file="${BASH_SOURCE[0]}"; set -o pipefail; else this_file="${0}"; fi
+case "${STACK+x}" in *':'"${this_file}"':'*) if (return 0 2>/dev/null); then return; else exit 0; fi ;; esac
 export STACK="${STACK:-}${this_file}"':'
 DIR=$(CDPATH='' cd -- "$(dirname -- "${this_file}")" && pwd)
 LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(d="${DIR}"; while [ ! -f "${d}"'/ROOT' ]; do d="$(dirname -- "${d}")"; done; printf '%s' "${d}")}"
 
 handle_emit_routes() {
   file_path="${1:-routes.sh}"
-  target_type="${2:-sdk}"
   ast="${LIBSCRIPT_ROOT_DIR}/ast.json"
-  if [ ! -f "${ast}" ]; then
-    printf "Error: AST file not found at %s\n" "${ast}" >&2
-    return 1
-  fi
+  if [ ! -f "${ast}" ]; then return 1; fi
 
-  if [ "${target_type}" = "server" ]; then
-    {
-      printf "#!/bin/sh\n# Auto-generated API Server Stub\nset -eu\n\n"
-      jq -r '
-        . as $root |
-        if .paths then
-          .paths | to_entries[] | .key as $path | .value | (.parameters // []) as $pathParams | to_entries[] | select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers") | .key as $method | .value |
-          (if .operationId then .operationId else "\($method | ascii_upcase)_\($path | gsub("/"); "_") | gsub("[{}]"; ""))" end) as $opId |
-          "serve_\($opId)() {\n  echo \"Handling \($opId)\"\n}\n"
-        else empty end
-      ' "${ast}"
-      printf "\necho 'Server started'\n"
-    } > "${file_path}.tmp"
-  else
   {
     printf "#!/bin/sh\n# Auto-generated API Client\nset -eu\n\n"
     BASE_URL=$(jq -r ".servers[0] | if .variables then reduce (.variables | to_entries[]) as \$var (.url; gsub(\"\\\\{\" + \$var.key + \"\\\\}\"; \$var.value.default)) else .url end // \"\"" "${ast}")
     printf "BASE_URL=\"\${BASE_URL:-%s}\"\nOAUTH_TOKEN=\"\${OAUTH_TOKEN:-}\"\nAPI_KEY=\"\${API_KEY:-}\"\n\n" "${BASE_URL}"
     printf "_urlencode() {\n  printf '%%s' \"\$1\" | jq -s -R -r '@uri'\n}\n\n"
     
-    printf "_serialize_matrix() {\n"
-    printf "  if [ \"\$3\" = \"true\" ]; then\n"
-    printf "    printf \"%%s\" \"\$2\" | awk -F, -v n=\"\$1\" '{for(i=1;i<=NF;i++) printf \";\"n\"=\"\$i}'\n"
-    printf "  else\n"
-    printf "    printf \";%%s=%%s\" \"\$1\" \"\$2\"\n"
-    printf "  fi\n}\n\n"
+    printf "_serialize_matrix() {\n  if [ \"\$3\" = \"true\" ]; then\n    printf \"%%s\" \"\$2\" | awk -F, -v n=\"\$1\" '{for(i=1;i<=NF;i++) printf \";\"n\"=\"\$i}'\n  else\n    printf \";%%s=%%s\" \"\$1\" \"\$2\"\n  fi\n}\n\n"
 
-    printf "_serialize_label() {\n"
-    printf "  if [ \"\$3\" = \"true\" ]; then\n"
-    printf "    printf \"%%s\" \"\$2\" | awk -F, '{for(i=1;i<=NF;i++) printf \".\"\$i}'\n"
-    printf "  else\n"
-    printf "    printf \".%%s\" \"\$2\"\n"
-    printf "  fi\n}\n\n"
+    printf "_serialize_label() {\n  if [ \"\$3\" = \"true\" ]; then\n    printf \"%%s\" \"\$2\" | awk -F, '{for(i=1;i<=NF;i++) printf \".\"\$i}'\n  else\n    printf \".%%s\" \"\$2\"\n  fi\n}\n\n"
 
     jq -r '
       if .webhooks then
@@ -94,7 +56,7 @@ handle_emit_routes() {
       if .paths then
         .paths | to_entries[] | .key as $path | .value | (.parameters // []) as $pathParams | to_entries[] | select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers") | .key as $method | .value |
         (if .summary == null then "Call \($method | ascii_upcase) \($path)" else .summary end) as $desc |
-        ((.parameters // []) + $pathParams | map(if ."$ref" then ($root.components.parameters[."$ref" | sub("^#/components/parameters/"; "")] // .) else . end)) as $params |
+        ((.parameters // []) + $pathParams | map(if ."\$ref" then ($root.components.parameters[."\$ref" | sub("^#/components/parameters/"; "")] // .) else . end)) as $params |
         (.security // $root.security // []) as $secReqs |
         (if .operationId then .operationId else "\($method | ascii_upcase)_\($path | gsub("/"; "_") | gsub("[{}]"; ""))" end) as $opId |
         
@@ -219,69 +181,13 @@ handle_emit_routes() {
       else empty end
     ' "${ast}"
 
-    if [ "${target_type}" = "sdk_cli" ]; then
-      printf "\nusage() {\n  echo \"Usage: \$0 <command> [args]\"\n  echo \"Commands:\"\n"
-      jq -r '
-        . as $root |
-        if .paths then
-          .paths | to_entries[] | .key as $path | .value | to_entries[] | select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers") | .key as $method | .value |
-          (if .operationId then .operationId else "\($method | ascii_upcase)_\($path | gsub("/"); "_") | gsub("[{}]"; ""))" end) as $opId |
-          (if .summary == null then "Call \($method | ascii_upcase) \($path)" else .summary end) as $desc |
-          "  echo \"  \($opId) - \($desc)\""
-        else empty end
-      ' "${ast}"
-      printf "}\n\n"
-      
-      printf "CMD=\"\${1:-}\"\n[ -z \"\$CMD\" ] && usage && exit 1\nshift\n\n"
-      printf "case \"\$CMD\" in\n"
-      printf "  help|-h|--help) usage; exit 0 ;;\n"
-      jq -r '
-        . as $root |
-        if .paths then
-          .paths | to_entries[] | .key as $path | .value | to_entries[] | select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers") | .key as $method | .value |
-          (if .operationId then .operationId else "\($method | ascii_upcase)_\($path | gsub("/"); "_") | gsub("[{}]"; ""))" end) as $opId |
-          "  \($opId)) \($opId) \"\$@\" ;;"
-        else empty end
-      ' "${ast}"
-      printf "  *) usage; exit 1 ;;\nesac\n"
-    fi
   } > "${file_path}.tmp"
-  fi
 
-  
-  if [ -f "${file_path}" ] && [ "${target_type}" != "sdk_cli" ] && [ "${target_type}" != "server" ]; then
+  if [ -f "${file_path}" ]; then
     awk -v new_file="${file_path}.tmp" -f "${LIBSCRIPT_ROOT_DIR}/lib/_common/merge.awk" "${file_path}" > "${file_path}.merged"
     mv "${file_path}.merged" "${file_path}"
     rm -f "${file_path}.tmp"
   else
     mv "${file_path}.tmp" "${file_path}"
-  fi
-}
-
-handle_emit_scaffold() {
-  OUT_DIR="$1"
-  no_gha="$2"
-  no_pkg="$3"
-  
-  if [ "$no_pkg" = "false" ]; then
-    cat << 'MAKE' > "$OUT_DIR/Makefile"
-install:
-	chmod +x sdk.sh cli.sh server.sh
-	cp sdk.sh /usr/local/bin/ || echo "Requires sudo"
-MAKE
-  fi
-  
-  if [ "$no_gha" = "false" ]; then
-    mkdir -p "$OUT_DIR/.github/workflows"
-    cat << 'GHA' > "$OUT_DIR/.github/workflows/ci.yml"
-name: CI
-on: [push]
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - run: echo "Tests..."
-GHA
   fi
 }
