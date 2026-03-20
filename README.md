@@ -106,3 +106,42 @@ dual licensed as above, without any additional terms or conditions.
 | WebAssembly | ❌ | ❌ |
 
 WASM support is not practically possible for this project natively. Since `cdd-sh` relies on POSIX shell utilities (`sh`, `awk`, `jq`, `sed`, `curl`), running it in a standard WASM environment would require bundling a complete POSIX operating system emulator. Thus, it is omitted.
+
+## CLI Help
+
+```
+$ ./cdd.sh --help
+Usage: cdd-sh <command> [args]
+
+Commands:
+  to_openapi -i <code_file_or_dir> -o <spec.json>
+  serve_json_rpc --port <port> --listen <ip>
+  to_docs_json [--no-imports] [--no-wrapping] -i <spec.json> -o <docs.json>
+  from_openapi [subcmd] -i <spec.json> -o <target_dir>
+  from_openapi [subcmd] --input-dir <specs_dir> -o <target_dir>
+  --help
+  --version
+
+Note: All options can be passed via environment variables (e.g., CDD_PORT=8082 cdd-sh serve_json_rpc)
+```
+
+### `from_openapi`
+
+```
+$ ./cdd.sh from_openapi --help
+Error: -i or --input-dir required
+```
+
+### `to_openapi`
+
+```
+$ ./cdd.sh to_openapi --help
+Unknown arg --help
+```
+
+### `to_docs_json`
+
+```
+$ ./cdd.sh to_docs_json --help
+Unknown arg --help
+```
