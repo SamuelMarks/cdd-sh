@@ -6,15 +6,11 @@ VERSION="0.0.1"
 usage() {
   printf "Usage: cdd-sh <command> [args]\n\n"
   printf "Commands:\n"
-  printf "  to_openapi -f <code_file> -o <spec.json>\n"
+  printf "  to_openapi -i <code_file_or_dir> -o <spec.json>\n"
   printf "  serve_json_rpc --port <port> --listen <ip>\n"
   printf "  to_docs_json [--no-imports] [--no-wrapping] -i <spec.json> -o <docs.json>\n"
-  printf "  from_openapi to_sdk_cli -i <spec.json> -o <target_dir>\n"
-  printf "  from_openapi to_sdk_cli --input-dir <specs_dir> -o <target_dir>\n"
-  printf "  from_openapi to_sdk -i <spec.json> -o <target_dir>\n"
-  printf "  from_openapi to_sdk --input-dir <specs_dir> -o <target_dir>\n"
-  printf "  from_openapi to_server -i <spec.json> -o <target_dir>\n"
-  printf "  from_openapi to_server --input-dir <specs_dir> -o <target_dir>\n"
+  printf "  from_openapi [subcmd] -i <spec.json> -o <target_dir>\n"
+  printf "  from_openapi [subcmd] --input-dir <specs_dir> -o <target_dir>\n"
   printf "  --help\n"
   printf "  --version\n\n"
   printf "Note: All options can be passed via environment variables (e.g., CDD_PORT=8082 cdd-sh serve_json_rpc)\n"
@@ -104,7 +100,7 @@ case "${CMD}" in
             to_openapi)
               f_val=$(echo "$json_params" | jq -r '.file // ""')
               o_val=$(echo "$json_params" | jq -r '.out // ""')
-              out=$(./bin/cdd-sh to_openapi -f "$f_val" -o "$o_val" 2>&1 || true)
+              out=$(./bin/cdd-sh to_openapi -i "$f_val" -o "$o_val" 2>&1 || true)
               ;;
             from_openapi)
               subcmd_val=$(echo "$json_params" | jq -r '.subcmd // "to_sdk"')
@@ -144,9 +140,13 @@ case "${CMD}" in
     ;;
   to_openapi)
     parse_global_args "$@"
-    FILE="${CDD_FILE:-}"
+    FILE="${CDD_IN:-${CDD_FILE:-}}"
     OUT="${CDD_OUT:-spec.json}"
-    if [ -z "$FILE" ]; then echo "Error: -f <file> required" >&2; exit 1; fi
+    if [ -z "$FILE" ]; then echo "Error: -i <file> required" >&2; exit 1; fi
+    # if it's a directory, assume the file is routes.sh for now
+    if [ -d "$FILE" ]; then
+      FILE="$FILE/src/routes.sh"
+    fi
     . "${LIBSCRIPT_ROOT_DIR:-.}/src/routes/parse.sh"
     handle_parse_routes "$FILE"
     . "${LIBSCRIPT_ROOT_DIR:-.}/src/openapi/emit.sh"
@@ -160,14 +160,11 @@ case "${CMD}" in
     ;;
   from_openapi)
     if [ "$#" -eq 0 ]; then usage; fi
-    SUBCMD="$1"
-    if [ "$SUBCMD" = "-i" ]; then
+    SUBCMD="to_sdk"
+    if [ "$1" != "-i" ] && [ "$1" != "--input-dir" ] && [ "$1" != "-o" ] && [ "$1" != "--no-github-actions" ] && [ "$1" != "--no-installable-package" ]; then
+      SUBCMD="$1"
       shift
-      . "${LIBSCRIPT_ROOT_DIR:-.}/src/openapi/parse.sh"
-      handle_parse_openapi "$1"
-      exit 0
     fi
-    shift
     parse_global_args "$@"
     ensure_output_dir
     IN="${CDD_IN:-}"
@@ -219,7 +216,8 @@ CI
         if [ -n "$IN" ]; then
           . "${LIBSCRIPT_ROOT_DIR:-.}/src/openapi/parse.sh"
           handle_parse_openapi "$IN"
-          
+
+          . "${LIBSCRIPT_ROOT_DIR:-.}/src/routes/emit.sh"
           handle_emit_routes "$OUT/src/routes.sh" "sdk"
           . "${LIBSCRIPT_ROOT_DIR:-.}/src/classes/emit.sh"
           handle_emit_classes "$OUT/src/classes.sh"
