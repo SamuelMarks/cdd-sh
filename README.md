@@ -103,9 +103,7 @@ dual licensed as above, without any additional terms or conditions.
 
 | Concept | Supported | Implemented |
 |---------|-----------|-------------|
-| WebAssembly | ❌ | ❌ |
-
-WASM support is not practically possible for this project natively. Since `cdd-sh` relies on POSIX shell utilities (`sh`, `awk`, `jq`, `sed`, `curl`), running it in a standard WASM environment would require bundling a complete POSIX operating system emulator. Thus, it is omitted.
+| WebAssembly | ✅ | ✅ |
 
 ## CLI Help
 

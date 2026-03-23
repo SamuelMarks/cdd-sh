@@ -67,7 +67,7 @@ handle_emit_cli() {
       if .paths then
       .paths | to_entries[] | .key as $path | .value | to_entries[] | select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers") | .key as $method | .value |
       (if .operationId then .operationId else "\($method | ascii_upcase)_\($path | gsub("/"); "_") | gsub("[{}]"; ""))" end) as $opId |
-      ((.parameters // []) + ($root.paths[$path].parameters // []) | map(if ."\$ref" then ($root.components.parameters[."\$ref" | sub("^#/components/parameters/"; "")] // .) else . end)) as $params |
+      ((.parameters // []) + ($root.paths[$path].parameters // []) | map(if ."$ref" then ($root.components.parameters[."$ref" | sub("^#/components/parameters/"; "")] // .) else . end)) as $params |
       "  \($opId))\n" +
       "    while [ \$# -gt 0 ]; do\n" +
       "      case \"\$1\" in\n" +

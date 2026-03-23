@@ -2,7 +2,7 @@
 set -eu
 cd "$(dirname "$0")/.."
 
-./bin/cdd-sh from_openapi -i tests/test_advanced.json
+./bin/cdd-sh from_openapi -i tests/test_advanced.json --no-github-actions --no-installable-package -o ./tmp_out
 ./bin/cdd-sh emit classes tests/test_advanced_out.sh
 
 . tests/test_advanced_out.sh

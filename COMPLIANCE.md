@@ -1,7 +1,7 @@
 # OpenAPI Compliance Report
 
 `cdd-sh` targets the OpenAPI 3.2.0 specification.
-Because 3.2.0 is still in development, we currently achieve maximum compliance up to 3.1.0/3.0.0 features, with stubs for new 3.2.0 components.
+Because 3.2.0 is still in development, we currently achieve maximum compliance up to 3.1.0/3.0.0 features, but we do not support new 3.2.0 components yet.
 
 ## Current Compliance Level: 90% (estimated relative to 3.1.0)
 - ✅ Components

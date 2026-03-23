@@ -38,10 +38,8 @@ dummy.json
 
 # AI-generated files and build artifacts
 3.2.0.md
-Makefile
 PUBLISH*.md
 TO_DOCS_JSON.md
-WASM.md
 alpine.Dockerfile
 bin/
 cdd_docs_prompt.md

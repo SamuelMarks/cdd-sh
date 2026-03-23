@@ -56,7 +56,7 @@ handle_emit_routes() {
       if .paths then
         .paths | to_entries[] | .key as $path | .value | (.parameters // []) as $pathParams | to_entries[] | select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers") | .key as $method | .value |
         (if .summary == null then "Call \($method | ascii_upcase) \($path)" else .summary end) as $desc |
-        ((.parameters // []) + $pathParams | map(if ."\$ref" then ($root.components.parameters[."\$ref" | sub("^#/components/parameters/"; "")] // .) else . end)) as $params |
+        ((.parameters // []) + $pathParams | map(if ."$ref" then ($root.components.parameters[."$ref" | sub("^#/components/parameters/"; "")] // .) else . end)) as $params |
         (.security // $root.security // []) as $secReqs |
         (if .operationId then .operationId else "\($method | ascii_upcase)_\($path | gsub("/"; "_") | gsub("[{}]"; ""))" end) as $opId |
         
