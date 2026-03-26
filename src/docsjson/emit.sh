@@ -42,33 +42,35 @@ handle_to_docs_json() {
   jq -n --slurpfile spec "$input_file" \
         --arg no_imports "$no_imports" \
         --arg no_wrapping "$no_wrapping" '
-    [
-      {
-        "language": "sh",
-        "operations": (
-          if $spec[0].paths then
-            [
-              $spec[0].paths | to_entries[] | .key as $path | .value | to_entries[] | 
-              select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers") | 
-              .key as $method | .value |
-              (if .operationId then .operationId else "\($method | ascii_upcase)_\($path | gsub("/"; "_") | gsub("[{}]"; ""))" end) as $opId |
+    {
+      "endpoints": (
+        if $spec[0].paths then
+          $spec[0].paths | to_entries | map(
+            .key as $path |
+            .value | to_entries | map(
+              select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers") |
+              .key as $method |
+              .value |
+              (if .operationId then .operationId else "\($method)_\($path | gsub("/"; "_") | gsub("[{}]"; "") | sub("^_"; ""))" end) as $opId |
+              
+              (
+                (if $no_imports == "false" then ". ./routes.sh\n\n" else "" end) +
+                (if $no_wrapping == "false" then "main() {\n" else "" end) +
+                "  " + $opId + (if .parameters then (.parameters | map(" \"dummy\"") | join("")) else "" end) + "\n" +
+                (if $no_wrapping == "false" then "}\n\nmain \"$@\"\n" else "" end)
+              ) as $finalCode |
               
               {
-                "method": ($method | ascii_upcase),
-                "path": $path,
-                "operationId": $opId,
-                "code": (
-                  {
-                    "snippet": "\($opId) \(if .parameters then (.parameters | map("\"dummy\"") | join(" ")) else "" end | sub("^\\s+"; ""))" | sub("\\s+$"; "")
-                  } |
-                  (if $no_imports == "false" then . + {"imports": ". ./routes.sh"} else . end) |
-                  (if $no_wrapping == "false" then . + {"wrapper_start": "", "wrapper_end": ""} else . end)
-                )
+                "key": ($method | ascii_downcase),
+                "value": $finalCode
               }
-            ]
-          else [] end
-        )
-      }
-    ]
+            ) | from_entries |
+            { "key": $path, "value": . }
+          ) | from_entries
+        else
+          {}
+        end
+      )
+    }
   '
 }
