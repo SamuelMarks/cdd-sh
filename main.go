@@ -37,6 +37,20 @@ func jqMiddleware(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 	}
 }
 
+func cdCallHandler(ctx context.Context, args []string) ([]string, error) {
+	if len(args) > 0 && args[0] == "cd" {
+		var newArgs []string
+		for _, arg := range args {
+			if arg == "--" {
+				continue
+			}
+			newArgs = append(newArgs, arg)
+		}
+		return newArgs, nil
+	}
+	return args, nil
+}
+
 func main() {
 	r := strings.NewReader(script)
 	f, err := syntax.NewParser().Parse(r, "")
@@ -53,6 +67,7 @@ func main() {
 	runner, err := interp.New(
 		interp.StdIO(os.Stdin, os.Stdout, os.Stderr),
 		interp.Params(args...),
+		interp.CallHandler(cdCallHandler),
 		interp.ExecHandlers(jqMiddleware),
 	)
 	if err != nil {
