@@ -3,7 +3,7 @@ set -eu
 # shellcheck disable=SC1090
 
 # We need absolute paths or relative from ROOT
-DIR=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
+DIR=$(CDPATH='' cd "$(dirname -- "$0")" && pwd)
 export LIBSCRIPT_ROOT_DIR="$(dirname "${DIR}")"
 
 # 1. Start clean

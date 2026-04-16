@@ -25,7 +25,7 @@ case "${STACK+x}" in
 esac
 export STACK="${STACK:-}${this_file}:"
 
-DIR=$(CDPATH="" cd -- "$(dirname -- "${this_file}")" && pwd)
+DIR=$(CDPATH="" cd "$(dirname -- "${this_file}")" && pwd)
 LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(d="${DIR}"; while [ ! -f "${d}/ROOT" ]; do d="$(dirname -- "${d}")"; done; printf "%s" "${d}")}"
 
 for lib in "lib/env.sh" "lib/_common/pkg_mgr.sh"; do

@@ -6,6 +6,8 @@ import (
 	"os"
 	"strings"
 
+	"cdd-sh/internal/gojqcli"
+
 	"mvdan.cc/sh/v3/interp"
 	"mvdan.cc/sh/v3/syntax"
 )
@@ -20,6 +22,20 @@ else
     exit 1
 fi
 `
+
+func jqMiddleware(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
+	return func(ctx context.Context, args []string) error {
+		if len(args) > 0 && args[0] == "jq" {
+			hc := interp.HandlerCtx(ctx)
+			exitCode := gojqcli.RunJq(args[1:], hc.Stdin, hc.Stdout, hc.Stderr)
+			if exitCode == 0 {
+				return nil
+			}
+			return interp.NewExitStatus(uint8(exitCode))
+		}
+		return next(ctx, args)
+	}
+}
 
 func main() {
 	r := strings.NewReader(script)
@@ -37,6 +53,7 @@ func main() {
 	runner, err := interp.New(
 		interp.StdIO(os.Stdin, os.Stdout, os.Stderr),
 		interp.Params(args...),
+		interp.ExecHandlers(jqMiddleware),
 	)
 	if err != nil {
 		fmt.Println(err)
