@@ -50,3 +50,4 @@ generate_files.py
 make.bat
 spec.json
 trace.sh
+wasm_build/
