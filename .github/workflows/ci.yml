@@ -5,8 +5,12 @@ on:
     branches: [ main, master ]
     tags:
       - 'v*'
+      - 'latest'
   pull_request:
     branches: [ main, master ]
+
+permissions:
+  contents: write
 
 jobs:
   test:
@@ -30,6 +34,11 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
 
       - name: Build WASM and Binary
         run: |
