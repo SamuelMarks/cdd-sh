@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"cdd-sh/internal/gojqcli"
@@ -37,8 +38,118 @@ func jqMiddleware(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 	}
 }
 
-func cdCallHandler(ctx context.Context, args []string) ([]string, error) {
-	if len(args) > 0 && args[0] == "cd" {
+func resolvePath(base, p string) string {
+	if filepath.IsAbs(p) {
+		return p
+	}
+	return filepath.Join(base, p)
+}
+
+func fsCallHandler(ctx context.Context, args []string) ([]string, error) {
+	if len(args) == 0 {
+		return args, nil
+	}
+	hc := interp.HandlerCtx(ctx)
+	dir := hc.Dir
+	if dir == "" {
+		dir, _ = os.Getwd()
+	}
+
+	if args[0] == "mkdir" {
+		makeParents := false
+		var dirs []string
+		for _, arg := range args[1:] {
+			if strings.HasPrefix(arg, "-") {
+				if strings.Contains(arg, "p") {
+					makeParents = true
+				}
+			} else {
+				dirs = append(dirs, arg)
+			}
+		}
+		for _, d := range dirs {
+			target := resolvePath(dir, d)
+			if makeParents {
+				if err := os.MkdirAll(target, 0755); err != nil {
+					return nil, err
+				}
+			} else {
+				if err := os.Mkdir(target, 0755); err != nil {
+					return nil, err
+				}
+			}
+		}
+		return []string{":"}, nil
+	}
+
+	if args[0] == "rm" {
+		force := false
+		recursive := false
+		var targets []string
+		for _, arg := range args[1:] {
+			if strings.HasPrefix(arg, "-") {
+				if strings.Contains(arg, "r") || strings.Contains(arg, "R") {
+					recursive = true
+				}
+				if strings.Contains(arg, "f") {
+					force = true
+				}
+			} else {
+				targets = append(targets, arg)
+			}
+		}
+		for _, t := range targets {
+			target := resolvePath(dir, t)
+			var err error
+			if recursive {
+				err = os.RemoveAll(target)
+			} else {
+				err = os.Remove(target)
+			}
+			if err != nil && !force && !os.IsNotExist(err) {
+				return nil, err
+			}
+		}
+		return []string{":"}, nil
+	}
+
+	if args[0] == "cp" {
+		var targets []string
+		for _, arg := range args[1:] {
+			if !strings.HasPrefix(arg, "-") {
+				targets = append(targets, arg)
+			}
+		}
+		if len(targets) >= 2 {
+			dst := resolvePath(dir, targets[len(targets)-1])
+			srcs := targets[:len(targets)-1]
+			for _, s := range srcs {
+				src := resolvePath(dir, s)
+				input, err := os.ReadFile(src)
+				if err != nil {
+					return nil, err
+				}
+				info, err := os.Stat(src)
+				perm := os.FileMode(0644)
+				if err == nil {
+					perm = info.Mode().Perm()
+				}
+
+				dstPath := dst
+				dstInfo, err := os.Stat(dst)
+				if err == nil && dstInfo.IsDir() {
+					dstPath = filepath.Join(dst, filepath.Base(src))
+				}
+
+				if err := os.WriteFile(dstPath, input, perm); err != nil {
+					return nil, err
+				}
+			}
+		}
+		return []string{":"}, nil
+	}
+
+	if args[0] == "cd" {
 		var newArgs []string
 		for _, arg := range args {
 			if arg == "--" {
@@ -48,6 +159,7 @@ func cdCallHandler(ctx context.Context, args []string) ([]string, error) {
 		}
 		return newArgs, nil
 	}
+
 	return args, nil
 }
 
@@ -67,7 +179,7 @@ func main() {
 	runner, err := interp.New(
 		interp.StdIO(os.Stdin, os.Stdout, os.Stderr),
 		interp.Params(args...),
-		interp.CallHandler(cdCallHandler),
+		interp.CallHandler(fsCallHandler),
 		interp.ExecHandlers(jqMiddleware),
 	)
 	if err != nil {
