@@ -21,7 +21,7 @@ import (
 // script contains the entry point for the shell execution.
 // It checks for the existence of cdd.sh and sources it.
 
-//go:embed cdd.sh src lib ROOT ast.json
+//go:embed cdd.sh src lib ROOT
 var embeddedFiles embed.FS
 
 func init() {

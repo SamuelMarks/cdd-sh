@@ -1,6 +1,7 @@
 .PHONY: test build build_wasm clean
 
 test: build
+	go test -coverprofile=coverage.out ./...
 	./test.sh
 	./tests/test.sh
 

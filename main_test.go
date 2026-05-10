@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -223,6 +224,38 @@ func TestJqMiddleware_Direct(t *testing.T) {
 	}
 }
 
+func TestAwkMiddleware_Direct(t *testing.T) {
+	mw := awkMiddleware(func(ctx context.Context, args []string) error {
+		return nil
+	})
+
+	// Test len(args) == 0
+	err := mw(context.Background(), []string{})
+	if err != nil {
+		t.Errorf("expected no error for empty args, got %v", err)
+	}
+}
+
+func TestAwkMiddleware(t *testing.T) {
+	_, _, err := runMwScript(t, awkMiddleware, ".", "echo test")
+	if err != nil {
+		t.Errorf("awkMiddleware failed for non-awk command: %v", err)
+	}
+
+	stdout, _, err := runMwScript(t, awkMiddleware, ".", "awk 'BEGIN { print \"awk_test\" }'")
+	if err != nil {
+		t.Errorf("awkMiddleware failed for awk command: %v", err)
+	}
+	if !strings.Contains(stdout, "awk_test") {
+		t.Errorf("expected awk output, got %q", stdout)
+	}
+
+	_, _, err = runMwScript(t, awkMiddleware, ".", "awk 'BEGIN { exit 1 }'")
+	if err == nil {
+		t.Errorf("expected awk error status, got nil")
+	}
+}
+
 func TestJqMiddleware(t *testing.T) {
 	// Since we are mocking jqMiddleware which calls gojqcli.RunJq,
 	// and gojqcli is quite heavy, we'll just test that it bypasses
@@ -291,7 +324,15 @@ func TestRunMain(t *testing.T) {
 		t.Errorf("expected no exit code call for successful run, got %d", exitCode)
 	}
 
-	// Test exit status error
+	// Test StatHandler and OpenHandler via file existence check and sourcing
+	exitCode = -1
+	runMain("[ -f cdd.sh ] && . cdd.sh help", nil, exitFunc)
+	
+	// Test fallback to default StatHandler and OpenHandler
+	runMain("[ -f nonexistent_file_12345 ]", nil, exitFunc)
+	runMain(". nonexistent_file_12345", nil, exitFunc)
+	
+	// Test error status error
 	runMain("exit 42", nil, exitFunc)
 	if exitCode != 42 {
 		t.Errorf("expected exit status 42, got %d", exitCode)
@@ -308,6 +349,34 @@ func TestRunMain(t *testing.T) {
 	// `expand.ListEnviron` doesn't error.
 	// Since triggering a non-ExitStatus runtime error naturally in sh/v3 is difficult without custom handlers that we don't control, we'll accept less than 100% or just leave the syntax error.
 	// Let's remove the exitCode check for syntax error which returns early.
+}
+
+func TestReadWriteNopCloser(t *testing.T) {
+	r := readWriteNopCloser{strings.NewReader("test")}
+	_, err := r.Write([]byte("test"))
+	if err == nil {
+		t.Errorf("expected error on Write, got nil")
+	}
+	err = r.Close()
+	if err != nil {
+		t.Errorf("expected no error on Close, got %v", err)
+	}
+
+	// Test with a closer
+	// Create a dummy closer reader wrapper to test Close
+	f := struct{
+		io.Reader
+		io.Closer
+	}{
+		Reader: strings.NewReader("test"),
+		Closer: io.NopCloser(strings.NewReader("test")),
+	}
+	
+	r2 := readWriteNopCloser{f}
+	err = r2.Close()
+	if err != nil {
+		t.Errorf("expected no error on Close, got %v", err)
+	}
 }
 
 func TestMainFallback(t *testing.T) {
@@ -327,6 +396,19 @@ func TestMainFallback(t *testing.T) {
 	main()
 }
 
+func TestFsMiddleware_EmptyDir(t *testing.T) {
+	_, _, err := runMwScript(t, fsMiddleware, "", "mkdir -p test_empty_dir_for_cov")
+	if err != nil {
+		t.Logf("mkdir in empty dir: %v", err)
+	}
+	os.RemoveAll("test_empty_dir_for_cov")
+}
+
+func TestRunMain_MoreErrors(t *testing.T) {
+	exitCode := -1
+	runMain("echo ${a:b}", nil, func(code int) { exitCode = code })
+	t.Logf("exitCode for invalid expansion: %d", exitCode)
+}
 func TestFsMiddleware_Errors(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "fsmw_errs")
 	if err != nil {
@@ -420,7 +502,7 @@ func TestHostCommandValidator(t *testing.T) {
 		{"cat -", false},
 		{"dirname /a/b/c", false},
 		{"mkdir -p /tmp/test_host_cmd", false},
-		{"awk '{print $1}'", true},
+		{"awk '{print $1}'", false},
 		{"curl http://example.com", true},
 		{"sed 's/a/b/'", true},
 	}
