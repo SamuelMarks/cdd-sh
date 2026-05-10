@@ -178,17 +178,14 @@ func builtinCallHandler(ctx context.Context, args []string) ([]string, error) {
 	return args, nil
 }
 
-func main() {
-	r := strings.NewReader(script)
+var osExit = os.Exit
+
+func runMain(scriptOverride string, args []string, exitFunc func(int)) {
+	r := strings.NewReader(scriptOverride)
 	f, err := syntax.NewParser().Parse(r, "")
 	if err != nil {
 		fmt.Println(err)
 		return
-	}
-
-	args := []string{}
-	if len(os.Args) > 1 {
-		args = os.Args[1:]
 	}
 
 	runner, err := interp.New(
@@ -205,9 +202,18 @@ func main() {
 	err = runner.Run(context.Background(), f)
 	if err != nil {
 		if status, ok := interp.IsExitStatus(err); ok {
-			os.Exit(int(status))
+			exitFunc(int(status))
+			return
 		}
 		fmt.Println(err)
-		os.Exit(1)
+		exitFunc(1)
 	}
+}
+
+func main() {
+	var args []string
+	if len(os.Args) > 1 {
+		args = os.Args[1:]
+	}
+	runMain(script, args, osExit)
 }
