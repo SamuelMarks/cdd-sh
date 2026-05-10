@@ -175,8 +175,9 @@ case "${CMD}" in
     
     mkdir -p "$OUT"
     
-    if [ "${CDD_NO_INSTALLABLE:-0}" != "1" ]; then
-      cat << 'PACKAGE' > "$OUT/package.json"
+    if [ "$SUBCMD" != "to_docs_json" ] && [ "$SUBCMD" != "to_openapi" ]; then
+      if [ "${CDD_NO_INSTALLABLE:-0}" != "1" ]; then
+        cat << 'PACKAGE' > "$OUT/package.json"
 {
   "name": "generated-sdk",
   "version": "0.0.1",
@@ -184,11 +185,11 @@ case "${CMD}" in
   "main": "index.js"
 }
 PACKAGE
-    fi
-    
-    if [ "${CDD_NO_GITHUB_ACTIONS:-0}" != "1" ]; then
-      mkdir -p "$OUT/.github/workflows"
-      cat << 'CI' > "$OUT/.github/workflows/ci.yml"
+      fi
+      
+      if [ "${CDD_NO_GITHUB_ACTIONS:-0}" != "1" ]; then
+        mkdir -p "$OUT/.github/workflows"
+        cat << 'CI' > "$OUT/.github/workflows/ci.yml"
 name: CI
 on: [push, pull_request]
 jobs:
@@ -198,6 +199,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: echo "Tests..."
 CI
+      fi
     fi
     
     case "$SUBCMD" in
@@ -235,6 +237,21 @@ CI
           handle_emit_server "$OUT/src/server.sh" "server"
         fi
         echo "Generated Server in $OUT"
+        ;;
+      to_docs_json)
+        . "${LIBSCRIPT_ROOT_DIR:-.}/src/docsjson/emit.sh"
+        # The WASM SDK will read from OUT. If it prints to stdout, we need to capture it to a file if OUT is provided.
+        # But wait, CddWasmSdk expects the files to be in `/out`.
+        handle_to_docs_json "$@" > "$OUT/docs.json"
+        ;;
+      to_openapi)
+        if [ -d "$IN" ]; then
+          IN="$IN/src/routes.sh"
+        fi
+        . "${LIBSCRIPT_ROOT_DIR:-.}/src/routes/parse.sh"
+        handle_parse_routes "${IN:-}"
+        . "${LIBSCRIPT_ROOT_DIR:-.}/src/openapi/emit.sh"
+        handle_emit_openapi "$OUT/spec.json"
         ;;
       *)
         echo "Unknown from_openapi subcmd: $SUBCMD" >&2

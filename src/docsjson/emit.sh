@@ -24,6 +24,7 @@ handle_to_docs_json() {
   while [ "$#" -gt 0 ]; do
     case "$1" in
       -i|--input) input_file="$2"; shift 2 ;;
+      -o|--output) shift 2 ;;
       --no-imports) no_imports="true"; shift 1 ;;
       --no-wrapping) no_wrapping="true"; shift 1 ;;
       *) printf "Unknown option %s\n" "$1" >&2; exit 1 ;;
