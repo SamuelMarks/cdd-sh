@@ -177,28 +177,12 @@ case "${CMD}" in
     
     if [ "$SUBCMD" != "to_docs_json" ] && [ "$SUBCMD" != "to_openapi" ]; then
       if [ "${CDD_NO_INSTALLABLE:-0}" != "1" ]; then
-        cat << 'PACKAGE' > "$OUT/package.json"
-{
-  "name": "generated-sdk",
-  "version": "0.0.1",
-  "description": "Auto-generated SDK",
-  "main": "index.js"
-}
-PACKAGE
+        printf "{\\n  \"name\": \"generated-sdk\",\\n  \"version\": \"0.0.1\",\\n  \"description\": \"Auto-generated SDK\",\\n  \"main\": \"index.js\"\\n}\\n" > "$OUT/package.json"
       fi
       
       if [ "${CDD_NO_GITHUB_ACTIONS:-0}" != "1" ]; then
         mkdir -p "$OUT/.github/workflows"
-        cat << 'CI' > "$OUT/.github/workflows/ci.yml"
-name: CI
-on: [push, pull_request]
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - run: echo "Tests..."
-CI
+        printf "name: CI\\non: [push, pull_request]\\njobs:\\n  test:\\n    runs-on: ubuntu-latest\\n    steps:\\n      - uses: actions/checkout@v4\\n      - run: echo \"Tests...\"\\n" > "$OUT/.github/workflows/ci.yml"
       fi
     fi
     

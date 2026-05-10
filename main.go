@@ -102,7 +102,7 @@ func hostCommandValidator(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 		}
 		
 		switch args[0] {
-		case "awk", "jq", "mkdir", "rm", "cp", "cat", "dirname":
+		case "awk", "jq", "mkdir", "rm", "cp", "cat", "dirname", "mv":
 			return next(ctx, args)
 		default:
 			hc := interp.HandlerCtx(ctx)
@@ -125,6 +125,17 @@ func fsMiddleware(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 			dir, _ = os.Getwd()
 		}
 
+				if args[0] == "mv" {
+			if len(args) != 3 {
+				return interp.NewExitStatus(1)
+			}
+			src := resolvePath(dir, args[1])
+			dst := resolvePath(dir, args[2])
+			if err := os.Rename(src, dst); err != nil {
+				return interp.NewExitStatus(1)
+			}
+			return nil
+		}
 		if args[0] == "cat" {
 			if len(args) == 1 {
 				io.Copy(hc.Stdout, hc.Stdin)
