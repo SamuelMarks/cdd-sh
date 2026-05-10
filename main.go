@@ -9,6 +9,9 @@ import (
 	"strings"
 
 	"cdd-sh/internal/gojqcli"
+	"cdd-sh/internal/goawkcli"
+	"embed"
+	"io/fs"
 
 	"mvdan.cc/sh/v3/expand"
 	"mvdan.cc/sh/v3/interp"
@@ -17,6 +20,28 @@ import (
 
 // script contains the entry point for the shell execution.
 // It checks for the existence of cdd.sh and sources it.
+
+//go:embed cdd.sh src lib ROOT ast.json
+var embeddedFiles embed.FS
+
+func init() {
+	goawkcli.EmbeddedFS = embeddedFiles
+	gojqcli.EmbeddedFS = embeddedFiles
+}
+
+type readWriteNopCloser struct {
+	io.Reader
+}
+func (readWriteNopCloser) Write(p []byte) (n int, err error) {
+	return 0, fmt.Errorf("read-only embedded file")
+}
+func (r readWriteNopCloser) Close() error {
+	if c, ok := r.Reader.(io.Closer); ok {
+		return c.Close()
+	}
+	return nil
+}
+
 var script = `#!/bin/sh
 set -x
 if [ -f "./cdd.sh" ]; then
@@ -30,6 +55,21 @@ fi
 `
 
 // jqMiddleware intercepts the 'jq' command and runs the internal gojqcli implementation.
+
+func awkMiddleware(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
+	return func(ctx context.Context, args []string) error {
+		if len(args) > 0 && args[0] == "awk" {
+			hc := interp.HandlerCtx(ctx)
+			exitCode := goawkcli.RunAwk(args[1:], hc.Stdin, hc.Stdout, hc.Stderr)
+			if exitCode == 0 {
+				return nil
+			}
+			return interp.NewExitStatus(uint8(exitCode))
+		}
+		return next(ctx, args)
+	}
+}
+
 func jqMiddleware(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 	return func(ctx context.Context, args []string) error {
 		if len(args) > 0 && args[0] == "jq" {
@@ -62,7 +102,7 @@ func hostCommandValidator(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 		}
 		
 		switch args[0] {
-		case "jq", "mkdir", "rm", "cp", "cat", "dirname":
+		case "awk", "jq", "mkdir", "rm", "cp", "cat", "dirname":
 			return next(ctx, args)
 		default:
 			hc := interp.HandlerCtx(ctx)
@@ -262,9 +302,30 @@ func runMain(scriptOverride string, args []string, exitFunc func(int)) {
 	runner, err := interp.New(
 		interp.StdIO(os.Stdin, os.Stdout, os.Stderr),
 		interp.Env(expand.ListEnviron(os.Environ()...)),
-		interp.Params(args...),
+		interp.Params(append([]string{"--"}, args...)...),
+
 		interp.CallHandler(builtinCallHandler),
-		interp.ExecHandlers(jqMiddleware, fsMiddleware, hostCommandValidator),
+		interp.ExecHandlers(awkMiddleware, jqMiddleware, fsMiddleware, hostCommandValidator),
+		interp.StatHandler(func(ctx context.Context, name string, followSymlinks bool) (fs.FileInfo, error) {
+			cleanName := filepath.Clean(name)
+			cleanName = strings.TrimPrefix(cleanName, "/")
+			info, err := fs.Stat(embeddedFiles, cleanName)
+			if err == nil {
+				return info, nil
+			}
+			return interp.DefaultStatHandler()(ctx, name, followSymlinks)
+		}),
+		interp.OpenHandler(func(ctx context.Context, path string, flag int, perm os.FileMode) (io.ReadWriteCloser, error) {
+			if flag == os.O_RDONLY {
+				cleanName := filepath.Clean(path)
+				cleanName = strings.TrimPrefix(cleanName, "/")
+				file, err := embeddedFiles.Open(cleanName)
+				if err == nil {
+					return readWriteNopCloser{file}, nil
+				}
+			}
+			return interp.DefaultOpenHandler()(ctx, path, flag, perm)
+		}),
 	)
 	if err != nil {
 		fmt.Println(err)

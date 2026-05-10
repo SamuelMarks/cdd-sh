@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"io/fs"
 	"runtime"
 	"strings"
 
@@ -175,7 +176,16 @@ Usage:
 		cli.argvalues = append(cli.argvalues, val)
 	}
 	for k, v := range opts.RawFile {
-		val, err := os.ReadFile(v)
+		var val []byte
+		var err error
+		if EmbeddedFS != nil {
+			cleanName := v
+			for len(cleanName) > 0 && cleanName[0] == '/' { cleanName = cleanName[1:] }
+			val, err = fs.ReadFile(EmbeddedFS, cleanName)
+		}
+		if err != nil || EmbeddedFS == nil {
+			val, err = os.ReadFile(v)
+		}
 		if err != nil {
 			return err
 		}
@@ -210,7 +220,16 @@ Usage:
 		if len(args) == 0 {
 			return errors.New("expected a query file for flag `-f'")
 		}
-		src, err := os.ReadFile(args[0])
+		var src []byte
+		var err error
+		if EmbeddedFS != nil {
+			cleanName := args[0]
+			for len(cleanName) > 0 && cleanName[0] == '/' { cleanName = cleanName[1:] }
+			src, err = fs.ReadFile(EmbeddedFS, cleanName)
+		}
+		if err != nil || EmbeddedFS == nil {
+			src, err = os.ReadFile(args[0])
+		}
 		if err != nil {
 			return err
 		}

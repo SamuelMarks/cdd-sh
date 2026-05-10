@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+	
 	"strings"
 
 	"github.com/itchyny/go-yaml"
@@ -188,7 +189,20 @@ func (i *filesInputIter) Next() (any, bool) {
 			if fname == "-" && i.stdin != nil {
 				i.file, fname = i.stdin, "<stdin>"
 			} else {
-				file, err := os.Open(fname)
+				var file io.ReadCloser
+				var err error
+				if EmbeddedFS != nil {
+					cleanName := fname
+					for len(cleanName) > 0 && cleanName[0] == '/' { cleanName = cleanName[1:] }
+					f, errFs := EmbeddedFS.Open(cleanName)
+					if errFs == nil {
+						file = f
+						err = nil
+					}
+				}
+				if file == nil {
+					file, err = os.Open(fname)
+				}
 				if err != nil {
 					return err, true
 				}
