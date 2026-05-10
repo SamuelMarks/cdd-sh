@@ -11,6 +11,7 @@ require (
 )
 
 require (
+	github.com/benhoyt/goawk v1.31.0 // indirect
 	github.com/clipperhouse/stringish v0.1.1 // indirect
 	github.com/clipperhouse/uax29/v2 v2.3.0 // indirect
 	github.com/itchyny/timefmt-go v0.1.8 // indirect

@@ -3,27 +3,33 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"cdd-sh/internal/gojqcli"
 
+	"mvdan.cc/sh/v3/expand"
 	"mvdan.cc/sh/v3/interp"
 	"mvdan.cc/sh/v3/syntax"
 )
 
+// script contains the entry point for the shell execution.
+// It checks for the existence of cdd.sh and sources it.
 var script = `#!/bin/sh
+set -x
 if [ -f "./cdd.sh" ]; then
     . ./cdd.sh "$@"
 elif [ -f "/cdd.sh" ]; then
     . /cdd.sh "$@"
 else
-    echo "Error: cdd.sh not found in current directory or root"
+    echo "Error: cdd.sh not found in current directory or root" >&2
     exit 1
 fi
 `
 
+// jqMiddleware intercepts the 'jq' command and runs the internal gojqcli implementation.
 func jqMiddleware(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 	return func(ctx context.Context, args []string) error {
 		if len(args) > 0 && args[0] == "jq" {
@@ -38,6 +44,8 @@ func jqMiddleware(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 	}
 }
 
+// resolvePath returns the absolute path based on a given base directory and a relative path p.
+// If p is already absolute, it returns p directly.
 func resolvePath(base, p string) string {
 	if filepath.IsAbs(p) {
 		return p
@@ -45,6 +53,27 @@ func resolvePath(base, p string) string {
 	return filepath.Join(base, p)
 }
 
+// hostCommandValidator ensures that only a specific set of bundled commands are permitted to run.
+// If an unbundled command is requested, it logs an error to Stderr and returns an exit status.
+func hostCommandValidator(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
+	return func(ctx context.Context, args []string) error {
+		if len(args) == 0 {
+			return next(ctx, args)
+		}
+		
+		switch args[0] {
+		case "jq", "mkdir", "rm", "cp", "cat", "dirname":
+			return next(ctx, args)
+		default:
+			hc := interp.HandlerCtx(ctx)
+			fmt.Fprintf(hc.Stderr, "Error: host OS command '%s' is not bundled into the WASM environment\n", args[0])
+			return interp.NewExitStatus(127)
+		}
+	}
+}
+
+// fsMiddleware provides basic implementations for standard file system commands like mkdir, rm, cp, cat, and dirname
+// so that the script can execute them natively within the WASM environment without external binaries.
 func fsMiddleware(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 	return func(ctx context.Context, args []string) error {
 		if len(args) == 0 {
@@ -54,6 +83,43 @@ func fsMiddleware(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 		dir := hc.Dir
 		if dir == "" {
 			dir, _ = os.Getwd()
+		}
+
+		if args[0] == "cat" {
+			if len(args) == 1 {
+				io.Copy(hc.Stdout, hc.Stdin)
+				return nil
+			}
+			for _, arg := range args[1:] {
+				if arg == "-" {
+					io.Copy(hc.Stdout, hc.Stdin)
+					continue
+				}
+				target := resolvePath(dir, arg)
+				f, err := os.Open(target)
+				if err != nil {
+					fmt.Fprintln(hc.Stderr, "cat:", err)
+					return interp.NewExitStatus(1)
+				}
+				io.Copy(hc.Stdout, f)
+				f.Close()
+			}
+			return nil
+		}
+
+		if args[0] == "dirname" {
+			if len(args) < 2 {
+				fmt.Fprintln(hc.Stderr, "dirname: missing operand")
+				return interp.NewExitStatus(1)
+			}
+			pathArg := args[len(args)-1]
+			if pathArg == "" {
+				fmt.Fprintln(hc.Stdout, ".")
+				return nil
+			}
+			dir := filepath.Dir(pathArg)
+			fmt.Fprintln(hc.Stdout, dir)
+			return nil
 		}
 
 		if args[0] == "mkdir" {
@@ -159,6 +225,8 @@ func fsMiddleware(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 	}
 }
 
+// builtinCallHandler allows simple overrides for builtin shell commands.
+// Currently, it removes the "--" argument from 'cd'.
 func builtinCallHandler(ctx context.Context, args []string) ([]string, error) {
 	if len(args) == 0 {
 		return args, nil
@@ -178,8 +246,11 @@ func builtinCallHandler(ctx context.Context, args []string) ([]string, error) {
 	return args, nil
 }
 
+// osExit is a variable pointing to os.Exit to allow mocking in tests.
 var osExit = os.Exit
 
+// runMain parses the given shell script override and executes it using the mvdan.cc/sh/v3/interp runner.
+// It initializes all necessary middleware handlers and captures exit statuses appropriately.
 func runMain(scriptOverride string, args []string, exitFunc func(int)) {
 	r := strings.NewReader(scriptOverride)
 	f, err := syntax.NewParser().Parse(r, "")
@@ -190,9 +261,10 @@ func runMain(scriptOverride string, args []string, exitFunc func(int)) {
 
 	runner, err := interp.New(
 		interp.StdIO(os.Stdin, os.Stdout, os.Stderr),
+		interp.Env(expand.ListEnviron(os.Environ()...)),
 		interp.Params(args...),
 		interp.CallHandler(builtinCallHandler),
-		interp.ExecHandlers(jqMiddleware, fsMiddleware),
+		interp.ExecHandlers(jqMiddleware, fsMiddleware, hostCommandValidator),
 	)
 	if err != nil {
 		fmt.Println(err)
@@ -210,6 +282,7 @@ func runMain(scriptOverride string, args []string, exitFunc func(int)) {
 	}
 }
 
+// main reads the runtime arguments and delegates execution to runMain with the default script.
 func main() {
 	var args []string
 	if len(os.Args) > 1 {
