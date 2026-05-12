@@ -33,6 +33,7 @@ dummy.json
 *~
 *.swp
 *.swo
+
 # Test Outputs
 *_out.sh
 
@@ -41,7 +42,6 @@ dummy.json
 PUBLISH*.md
 TO_DOCS_JSON.md
 alpine.Dockerfile
-bin/
 cdd_docs_prompt.md
 commit_msg*.txt
 debian.Dockerfile
@@ -50,4 +50,43 @@ generate_files.py
 make.bat
 spec.json
 trace.sh
+
+# Coverage reports
+coverage.out
+coverage.html
+*_cov.out
+
+# Go test binaries
+*.test
+*.prof
+
+# General build & out folders
+out/
+tmp_out/
+dist/
+build/
+bin/
 wasm_build/
+
+# Node/npm files
+node_modules/
+package-lock.json
+package.json
+
+# Temporary / Scratch files
+out.txt
+hello.sh
+missing_*.txt
+
+# Ignore specific root level test files and patches
+/test_*.js
+/test_*.sh
+/test_*.out
+/test_*.wasm
+/patch_*.go
+/patch_*.js
+/patch_*.sh
+
+# Explicitly track tests directory and root test files to prevent accidental ignores
+!/tests/test_*.sh
+!/test_*.go

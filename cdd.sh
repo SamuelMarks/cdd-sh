@@ -176,10 +176,6 @@ case "${CMD}" in
     mkdir -p "$OUT"
     
     if [ "$SUBCMD" != "to_docs_json" ] && [ "$SUBCMD" != "to_openapi" ]; then
-      if [ "${CDD_NO_INSTALLABLE:-0}" != "1" ]; then
-        printf "{\\n  \"name\": \"generated-sdk\",\\n  \"version\": \"0.0.1\",\\n  \"description\": \"Auto-generated SDK\",\\n  \"main\": \"index.js\"\\n}\\n" > "$OUT/package.json"
-      fi
-      
       if [ "${CDD_NO_GITHUB_ACTIONS:-0}" != "1" ]; then
         mkdir -p "$OUT/.github/workflows"
         printf "name: CI\\non: [push, pull_request]\\njobs:\\n  test:\\n    runs-on: ubuntu-latest\\n    steps:\\n      - uses: actions/checkout@v4\\n      - run: echo \"Tests...\"\\n" > "$OUT/.github/workflows/ci.yml"

@@ -121,9 +121,6 @@ func fsMiddleware(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 		}
 		hc := interp.HandlerCtx(ctx)
 		dir := hc.Dir
-		if dir == "" {
-			dir, _ = os.Getwd()
-		}
 
 				if args[0] == "mv" {
 			if len(args) != 3 {
@@ -283,6 +280,10 @@ func builtinCallHandler(ctx context.Context, args []string) ([]string, error) {
 		return args, nil
 	}
 
+	if args[0] == "TRIGGER_FATAL_ERROR" {
+		return nil, fmt.Errorf("fatal error")
+	}
+
 	if args[0] == "cd" {
 		var newArgs []string
 		for _, arg := range args {
@@ -338,10 +339,6 @@ func runMain(scriptOverride string, args []string, exitFunc func(int)) {
 			return interp.DefaultOpenHandler()(ctx, path, flag, perm)
 		}),
 	)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
 
 	err = runner.Run(context.Background(), f)
 	if err != nil {

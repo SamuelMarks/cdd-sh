@@ -646,3 +646,73 @@ func TestRunMain_Errors(t *testing.T) {
 	})
 	_ = called // Might be called if run fails
 }
+
+func TestMvCoverage(t *testing.T) {
+	tempDir, _ := os.MkdirTemp("", "mv_test")
+	defer os.RemoveAll(tempDir)
+	src := tempDir + "/src.txt"
+	os.WriteFile(src, []byte("test"), 0644)
+	
+	// mv success
+	_, _, err := runMwScript(t, fsMiddleware, tempDir, "mv " + src + " " + tempDir + "/dst.txt")
+	if err != nil {
+		t.Error("expected nil")
+	}
+
+	// mv fail count
+	_, _, err = runMwScript(t, fsMiddleware, tempDir, "mv a")
+	if err == nil {
+		t.Error("expected err")
+	}
+
+	// mv fail rename
+	_, _, err = runMwScript(t, fsMiddleware, tempDir, "mv non_existent_src dst")
+	if err == nil {
+		t.Error("expected err")
+	}
+}
+
+
+func TestRunMain_Embedded(t *testing.T) {
+	called := false
+	runMain("[ -f cdd.sh ] && exit 42", nil, func(c int) {
+		if c == 42 {
+			called = true
+		}
+	})
+	if !called {
+		t.Error("expected embedded cdd.sh to be found and stat to succeed")
+	}
+}
+
+func TestRunMain_EmbeddedStat(t *testing.T) {
+	called := false
+	runMain("if [ -f /cdd.sh ]; then exit 42; fi", nil, func(c int) {
+		if c == 42 {
+			called = true
+		}
+	})
+	if !called {
+		t.Error("expected /cdd.sh to be found in embedded files")
+	}
+}
+
+func TestRunMain_BadRedirect(t *testing.T) {
+	called := false
+	runMain("echo hello > /dev/full", nil, func(c int) { called = true })
+	if !called {
+		t.Error("expected exitFunc to be called for bad redirect")
+	}
+}
+
+func TestRunMain_FatalError(t *testing.T) {
+	called := false
+	runMain("TRIGGER_FATAL_ERROR", nil, func(c int) {
+		if c == 1 {
+			called = true
+		}
+	})
+	if !called {
+		t.Error("expected exitFunc(1) to be called for fatal error")
+	}
+}
