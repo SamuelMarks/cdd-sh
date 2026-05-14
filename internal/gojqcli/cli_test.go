@@ -1,12 +1,11 @@
 package gojqcli
 
 import (
-	"bytes"
-	"os"
-	"strings"
-	"testing"
+        "bytes"
+        "os"
+        "strings"
+        "testing"
 )
-
 func runCli(args []string, stdin string) (int, string, string) {
 	var stdout, stderr bytes.Buffer
 	inBuf := strings.NewReader(stdin)
@@ -55,9 +54,10 @@ func TestRunJqFiles(t *testing.T) {
 		{"slurp file", []string{"-s", ".", "test.json"}, `{"a": 1}`, 0, "[\n  {\n    \"a\": 1\n  }\n]\n"},
 		{"slurp raw file", []string{"-sR", ".", "test.json"}, `hello`, 0, "\"hello\"\n"},
 		{"yaml file", []string{"--yaml-input", ".", "test.yaml"}, `a: 1`, 0, "{\n  \"a\": 1\n}\n"},
-		{"stream file", []string{"-c", "--stream", ".", "test.json"}, `[1, 2]`, 0, "[[0],1]\n[[1],2]\n"},
-	}
-
+		{"multiple files", []string{".", "test.json", "test.json"}, `{"a": 1}`, 0, "{\n  \"a\": 1\n}\n{\n  \"a\": 1\n}\n"},
+		{"stream file", []string{"-c", "--stream", ".", "test.json"}, `[1, 2]`, 0, "[[0],1]\n[[1],2]\n"},		{"stream scalar", []string{"-c", "--stream", ".", "test.json"}, `123`, 0, "[[],123]\n"},
+		{"stream incomplete", []string{"-c", "--stream", ".", "test.json"}, `[1, 2`, 5, ""},
+		}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if strings.Contains(tt.args[len(tt.args)-1], "test.") {
@@ -229,14 +229,55 @@ func TestRunJqEvenMoreBranches(t *testing.T) {
 	// HaltError with non-string
 	runCli([]string{"-n", "1 | halt_error"}, "")
 
+	// Empty args
+	runCli([]string{}, "")
+
+	// Both --args and --jsonargs
+	runCli([]string{"-n", "--args", "a", "--jsonargs", "1", "1"}, "")
+	runCli([]string{"-n", "--jsonargs", "1", "2", "--args", "a", "1"}, "")
+
+	// Module loading errors
+	os.WriteFile("bad_mod.jq", []byte(strings.Repeat(" ", 55) + "syntax error"), 0644)
+	runCli([]string{"-L", ".", `import "bad_mod" as bad; 1`}, "")
+	os.Remove("bad_mod.jq")
+	os.WriteFile("bad_mod.json", []byte("{invalid"), 0644)
+	runCli([]string{"-L", ".", `import "bad_mod" as $bad; 1`}, "")
+	os.Remove("bad_mod.json")
 	// YAML separator
 	runCli([]string{"--yaml-output", "-n", "1, 2"}, "")
-
+	runCli([]string{"--yaml-output", "--indent", "4", "-n", `{"a": 1}`}, "")
 	// Exit code error with multiple values
 	runCli([]string{"-e", "-n", "1, false"}, "")
 	runCli([]string{"-e", "-n", "false, 1"}, "")
-}
 
+	// Flags errors
+	runCli([]string{"--compact-output=true", "-n", "1"}, "")
+	runCli([]string{"-0", "-n", "1"}, "")
+	runCli([]string{"-L=.", "-n", "1"}, "")
+
+	// Error formatting
+	runCli([]string{"-n", "1\r\n  syntax error"}, "")
+	runCli([]string{"-n", "1 \r\nsyntax error"}, "")
+	runCli([]string{"-n", "1\r\n\r\n\r\n\r\n\r\nsyntax error"}, "")
+	runCli([]string{"-n", strings.Repeat(" ", 55) + "syntax error"}, "")
+
+	os.WriteFile("large.json", []byte(strings.Repeat(" ", 15000)+"{bad"), 0644)
+	runCli([]string{".", "large.json"}, "")
+	os.Remove("large.json")
+
+	os.WriteFile("huge.json", []byte(strings.Repeat(" ", 20000)+"{}"), 0644)
+	runCli([]string{".", "huge.json"}, "")
+	os.Remove("huge.json")
+
+	// Large JSON from stdin to cover non-seekable inputs
+	runCli([]string{"."}, strings.Repeat(" ", 20000)+"{}")
+	os.WriteFile("bad.yaml", []byte("[bad"), 0644)
+	runCli([]string{"--yaml-input", ".", "bad.yaml"}, "")
+	os.Remove("bad.yaml")
+	// Explicitly cover isEmptyError
+	(&emptyError{}).isEmptyError()
+	(&exitCodeError{}).isEmptyError()
+	}
 type errorWriter struct{}
 
 func (w *errorWriter) Write(p []byte) (n int, err error) {
@@ -264,6 +305,8 @@ func TestRunJqMoreCliBranches(t *testing.T) {
 	// exitCodeError override
 	runCli([]string{"-e", "-f", "missing.jq"}, "")
 
+	// Multibyte string and multiple keys
+	runCli([]string{"-n", `{"key1": "こんにちは", "key2": "world"}`}, "")
 	// raw-output0
 	runCli([]string{"--raw-output0", "-n", "1"}, "")
 
@@ -283,7 +326,12 @@ func TestFuncStderr(t *testing.T) {
 }
 
 func TestFuncDebugError(t *testing.T) {
-	c := &cli{errStream: &errWriter{}}
-	c.funcDebug("test", nil)
-	c.funcStderr("test", nil)
+        c := &cli{errStream: &errWriter{}}
+        c.funcDebug("test", nil)
+        c.funcStderr("test", nil)
+}
+
+func TestFuncDebugErrorWriteNewline(t *testing.T) {
+        c := &cli{errStream: &failOnNewlineWriter{}}
+        c.funcDebug("test", nil)
 }

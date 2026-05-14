@@ -255,10 +255,14 @@ Usage:
 	if len(modulePaths) == 0 && addDefaultModulePaths {
 		modulePaths = []string{"~/.jq", "$ORIGIN/../lib/gojq", "$ORIGIN/../lib"}
 	}
-	iter := cli.createInputIter(args)
+	var iter inputIter
+	if opts.InputNull {
+	        iter = newNullInputIter()
+	} else {
+	        iter = cli.createInputIter(args)
+	}
 	defer iter.Close()
-	code, err := gojq.Compile(query,
-		gojq.WithModuleLoader(gojq.NewModuleLoader(modulePaths)),
+	code, err := gojq.Compile(query,		gojq.WithModuleLoader(gojq.NewModuleLoader(modulePaths)),
 		gojq.WithEnvironLoader(os.Environ),
 		gojq.WithVariables(cli.argnames),
 		gojq.WithFunction("debug", 0, 0, cli.funcDebug),
@@ -276,26 +280,22 @@ Usage:
 		gojq.WithInputIter(iter),
 	)
 	if err != nil {
-		if err, ok := err.(interface {
-			QueryParseError() (string, string, error)
-		}); ok {
-			name, query, err := err.QueryParseError()
-			return &queryParseError{name, query, err}
-		}
-		if err, ok := err.(interface {
-			JSONParseError() (string, string, error)
-		}); ok {
-			fname, contents, err := err.JSONParseError()
-			return &compileError{&jsonParseError{fname, contents, 0, err}}
-		}
-		return &compileError{err}
-	}
-	if opts.InputNull {
-		iter = newNullInputIter()
+	        if err, ok := err.(interface {
+	                QueryParseError() (string, string, error)
+	        }); ok {
+	                name, query, err := err.QueryParseError()
+	                return &queryParseError{name, query, err}
+	        }
+	        if err, ok := err.(interface {
+	                JSONParseError() (string, string, error)
+	        }); ok {
+	                fname, contents, err := err.JSONParseError()
+	                return &compileError{&jsonParseError{fname, contents, 0, err}}
+	        }
+	        return &compileError{err}
 	}
 	return cli.process(iter, code)
-}
-
+	}
 func slurpFile(name string) (any, error) {
 	iter := newSlurpInputIter(
 		newFilesInputIter(newJSONInputIter, []string{name}, nil),

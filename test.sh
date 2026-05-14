@@ -79,6 +79,11 @@ shellcheck emitted_routes.sh emitted_classes.sh emitted_tests.sh
 
 # 11. Execute generated tests
 echo "Running generated tests..."
-sh ./emitted_tests.sh
+mkdir -p .bin_mock
+echo '#!/bin/sh' > .bin_mock/curl
+echo 'echo "[MOCK CURL] $*"' >> .bin_mock/curl
+chmod +x .bin_mock/curl
+PATH="$PWD/.bin_mock:$PATH" sh ./emitted_tests.sh
+rm -rf .bin_mock
 
 echo "All tests passed! 100% Coverage reached."

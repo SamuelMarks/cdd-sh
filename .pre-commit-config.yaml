@@ -6,3 +6,12 @@ repos:
         entry: ./update_shields.sh
         language: script
         pass_filenames: false
+
+  - repo: local
+    hooks:
+      - id: update-badges
+        name: Update Badges
+        entry: python3 scripts/update_badges.py
+        language: system
+        files: ^README\.md$
+        pass_filenames: false

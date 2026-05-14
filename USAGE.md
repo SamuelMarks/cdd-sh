@@ -9,7 +9,7 @@
 - `from_openapi`: Target code generation (SDK, Server)
   - Targets: `to_sdk`, `to_sdk_cli`, `to_server`
   - Required: `-i <spec.json>` or `--input-dir <dir>`
-  - Optional: `-o <output_dir>`, `--no-github-actions`, `--no-installable-package`
+  - Optional: `-o <output_dir>`, `--no-github-actions`, `--no-installable-package`, `--create-composable-tests-mocks`
 - `to_openapi`: Reverse-engineer source code to OpenAPI
   - Options: `-f <code_file.sh>`, `-o <out.json>`
 - `to_docs_json`: Emit documentation data structure for rendering API catalogs.

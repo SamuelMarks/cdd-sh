@@ -27,7 +27,7 @@ handle_emit_mocks() {
   jq '
     if .components and .components.examples then .components.examples
     elif .paths then
-      [ .paths | to_entries[] | .value | to_entries[] | select(.key != "parameters") | .value.responses // {} | to_entries[] | select(.key == "200") | .value.content | to_entries[0].value.example // {} ]
+      [ .paths | to_entries[] | .value | to_entries[] | select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers") | .value.responses // {} | to_entries[] | select(.key == "200") | (if .value.content then .value.content | to_entries[0].value.example // {} else {} end) ]
     else {} end
   ' "${ast}" > "${file_path}"
 }

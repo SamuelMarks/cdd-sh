@@ -9,8 +9,8 @@ usage() {
   printf "  to_openapi -i <code_file_or_dir> -o <spec.json>\n"
   printf "  serve_json_rpc --port <port> --listen <ip>\n"
   printf "  to_docs_json [--no-imports] [--no-wrapping] -i <spec.json> -o <docs.json>\n"
-  printf "  from_openapi [subcmd] -i <spec.json> -o <target_dir>\n"
-  printf "  from_openapi [subcmd] --input-dir <specs_dir> -o <target_dir>\n"
+  printf "  from_openapi [subcmd] -i <spec.json> -o <target_dir> [--no-github-actions] [--no-installable-package] [--tests]\n"
+  printf "  from_openapi [subcmd] --input-dir <specs_dir> -o <target_dir> [--no-github-actions] [--no-installable-package] [--tests]\n"
   printf "  --help\n"
   printf "  --version\n\n"
   printf "Note: All options can be passed via environment variables (e.g., CDD_PORT=8082 cdd-sh serve_json_rpc)\n"
@@ -46,6 +46,7 @@ parse_global_args() {
       --no-wrapping) export CDD_NO_WRAPPING="1"; shift 1 ;;
       --no-github-actions) export CDD_NO_GITHUB_ACTIONS="1"; shift 1 ;;
       --no-installable-package) export CDD_NO_INSTALLABLE="1"; shift 1 ;;
+      --tests) export CDD_TESTS="1"; shift 1 ;;
       *) echo "Unknown arg $1"; exit 1 ;;
     esac
   done
@@ -106,7 +107,19 @@ case "${CMD}" in
               subcmd_val=$(echo "$json_params" | jq -r '.subcmd // "to_sdk"')
               i_val=$(echo "$json_params" | jq -r '.spec // ""')
               o_val=$(echo "$json_params" | jq -r '.out // ""')
-              out=$(./bin/cdd-sh from_openapi "$subcmd_val" -i "$i_val" -o "$o_val" 2>&1 || true)
+              
+              opts=""
+              if [ "$(echo "$json_params" | jq -r '.no_github_actions // false')" = "true" ]; then
+                opts="$opts --no-github-actions"
+              fi
+              if [ "$(echo "$json_params" | jq -r '.no_installable_package // false')" = "true" ]; then
+                opts="$opts --no-installable-package"
+              fi
+              if [ "$(echo "$json_params" | jq -r '.tests // false')" = "true" ]; then
+                opts="$opts --tests"
+              fi
+              
+              out=$(./bin/cdd-sh from_openapi "$subcmd_val" -i "$i_val" -o "$o_val" $opts 2>&1 || true)
               ;;
             to_docs_json)
               i_val=$(echo "$json_params" | jq -r '.spec // ""')
@@ -161,7 +174,7 @@ case "${CMD}" in
   from_openapi)
     if [ "$#" -eq 0 ]; then usage; fi
     SUBCMD="to_sdk"
-    if [ "$1" != "-i" ] && [ "$1" != "--input-dir" ] && [ "$1" != "-o" ] && [ "$1" != "--no-github-actions" ] && [ "$1" != "--no-installable-package" ]; then
+    if [ "$1" != "-i" ] && [ "$1" != "--input-dir" ] && [ "$1" != "-o" ] && [ "$1" != "--no-github-actions" ] && [ "$1" != "--no-installable-package" ] && [ "$1" != "--tests" ]; then
       SUBCMD="$1"
       shift
     fi
@@ -203,6 +216,14 @@ case "${CMD}" in
           handle_emit_routes "$OUT/src/routes.sh" "sdk"
           . "${LIBSCRIPT_ROOT_DIR:-.}/src/classes/emit.sh"
           handle_emit_classes "$OUT/src/classes.sh"
+          
+          if [ "${CDD_TESTS:-0}" = "1" ]; then
+            mkdir -p "$OUT/tests" "$OUT/mocks"
+            . "${LIBSCRIPT_ROOT_DIR:-.}/src/tests/emit.sh"
+            handle_emit_tests "$OUT/tests/test_routes.sh" "../src/routes.sh"
+            . "${LIBSCRIPT_ROOT_DIR:-.}/src/mocks/emit.sh"
+            handle_emit_mocks "$OUT/mocks/mocks.json"
+          fi
         fi
         echo "Generated SDK in $OUT"
         ;;

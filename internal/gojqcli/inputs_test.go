@@ -137,16 +137,31 @@ func TestInputNextErrors(t *testing.T) {
 	iter := newReadAllIter(errReader{}, "test.txt")
 	v, ok := iter.Next()
 	if !ok || v != io.ErrUnexpectedEOF {
-		t.Errorf("expected error from readAllIter, got %v, %v", v, ok)
+	        t.Errorf("expected error from readAllIter, got %v, %v", v, ok)
 	}
+	iter.Next() // To cover if i.err != nil
 
 	// rawInputIter with error reader
 	iter2 := newRawInputIter(errReader{}, "test.txt")
 	v, ok = iter2.Next()
 	if !ok || v != io.ErrUnexpectedEOF {
-		t.Errorf("expected error from rawInputIter, got %v, %v", v, ok)
+	        t.Errorf("expected error from rawInputIter, got %v, %v", v, ok)
 	}
-}
+	iter2.Next() // To cover if i.err != nil
+
+	iter2Empty := newRawInputIter(strings.NewReader(""), "empty.txt")
+	iter2Empty.Next()
+	// slurpRawInputIter
+	iter3 := newSlurpRawInputIter(newReadAllIter(errReader{}, "test.txt"))
+	v, ok = iter3.Next()
+	if !ok || v != io.ErrUnexpectedEOF {
+	        t.Errorf("expected error from slurpRawInputIter, got %v, %v", v, ok)
+	}
+	iter3.Next()
+	// filesInputIter
+	iter4 := newFilesInputIter(newJSONInputIter, []string{"test.json"}, strings.NewReader(""))
+	iter4.(*filesInputIter).err = io.EOF
+	iter4.Next()}
 
 type nonSeekReader struct{ io.Reader }
 
@@ -159,4 +174,27 @@ func TestInputReaderGetContentsNonSeeker(t *testing.T) {
 	if contents != "test" {
 		t.Errorf("expected test, got %s", contents)
 	}
+}
+
+type errSeekReader struct{}
+
+func (errSeekReader) Read(p []byte) (n int, err error) {
+        return 0, io.EOF
+}
+
+func (errSeekReader) Seek(offset int64, whence int) (int64, error) {
+        return 0, nil
+}
+
+func TestJsonInputIterBufLimit(t *testing.T) {
+        ir := newInputReader(nonSeekReader{strings.NewReader(strings.Repeat(" ", 20000) + "{}")})
+        iter := newJSONInputIter(ir, "test.json")
+        iter.Next()
+}
+
+func TestGetContentsReadError(t *testing.T) {
+        ir := newInputReader(errSeekReader{})
+        var offset int64 = 30000
+        var line int = 1
+        ir.getContents(&offset, &line)
 }

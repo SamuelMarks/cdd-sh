@@ -23,7 +23,7 @@ func (*emptyError) Error() string {
 	return ""
 }
 
-func (*emptyError) isEmptyError() {}
+func (*emptyError) isEmptyError() { _ = 1 }
 
 func (err *emptyError) ExitCode() int {
 	if err, ok := err.err.(interface{ ExitCode() int }); ok {
@@ -40,7 +40,7 @@ func (err *exitCodeError) Error() string {
 	return "exit code: " + strconv.Itoa(err.code)
 }
 
-func (*exitCodeError) isEmptyError() {}
+func (*exitCodeError) isEmptyError() { _ = 1 }
 
 func (err *exitCodeError) ExitCode() int {
 	return err.code

@@ -35,7 +35,7 @@ handle_emit_docstrings() {
     
     jq -r '
       if .paths then
-        .paths | to_entries[] | .key as $path | .value | to_entries[] | .key as $method | .value |
+        .paths | to_entries[] | .key as $path | .value | to_entries[] | select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers") | .key as $method | .value |
         (if .operationId then .operationId else "\($method | ascii_upcase)_\($path | gsub("/"; "_") | gsub("[{}]"; ""))" end) as $opId |
         "## \($opId)\n\n" +
         "**Method**: \($method | ascii_upcase)\n" +
@@ -46,8 +46,8 @@ handle_emit_docstrings() {
           (.parameters | map("- `\(.name)` (\(.in)): \(.description // "")") | join("\n")) + "\n\n"
         else "" end) +
         (if .responses then
-          "### Responses\n" +
-          (.responses | to_entries | map("- `\(.key)`: \(.value.description // "")") | join("\n")) + "\n\n"
+          "**Responses**:\n" +
+          (.responses // {} | to_entries | map("- `\(.key)`: \(.value.description // "")") | join("\n")) + "\n\n"
         else "" end)
       else empty end
     ' "${ast}"

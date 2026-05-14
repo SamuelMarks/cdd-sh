@@ -2,7 +2,7 @@ package gojqcli
 
 import "os"
 
-// Run gojq.
+// Run executes the gojq command-line interface using os.Args and standard streams.
 func Run() int {
 	return (&cli{
 		inStream:  os.Stdin,

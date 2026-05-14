@@ -11,7 +11,7 @@ import (
 	"github.com/benhoyt/goawk/parser"
 )
 
-// RunAwk runs goawk.
+// RunAwk executes goawk with the given arguments and standard streams.
 func RunAwk(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	var prog string
 	var progFiles []string

@@ -18,6 +18,7 @@ LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(d="${DIR}"; while [ ! -f "${d}"'/ROO
 
 handle_emit_tests() {
   file_path="${1:-test_routes.sh}"
+  routes_source_path="${2:-emitted_routes.sh}"
   ast="${LIBSCRIPT_ROOT_DIR}/ast.json"
   if [ ! -f "${ast}" ]; then
     printf "Error: AST file not found at %s\n" "${ast}" >&2
@@ -25,24 +26,51 @@ handle_emit_tests() {
   fi
 
   {
-    printf "#!/bin/sh\nset -feu\n"
+    printf "#!/bin/sh\nset -eu\n\n"
+    printf "# shellcheck disable=SC3028\n"
+    printf "DIR=\"\$(cd \"\$(dirname \"\${BASH_SOURCE:-\$0}\")\" && pwd)\"\n"
     printf "# shellcheck disable=SC1090,SC1091,SC2034\n"
-    printf ". \"\${LIBSCRIPT_ROOT_DIR}/emitted_routes.sh\"\n\n"
-    printf "# Mock curl to avoid actual network requests during testing\n"
-    printf "curl() { echo \"[MOCK CURL] \$*\"; }\n\n"
+    printf ". \"\${DIR}/%s\"\n\n" "${routes_source_path}"
+    
+    printf "BASE_URL=\"\${BASE_URL:-http://localhost:8080/api/v3}\"\n"
+    printf "export BASE_URL\n\n"
 
     jq -r '
       . as $root |
-      if .paths then
-        .paths | to_entries[] | .key as $path | .value | to_entries[] | .key as $method | .value |
-        (if .operationId then .operationId else "\($method | ascii_upcase)_\($path | gsub("/"; "_") | gsub("[{}]"; ""))" end) as $opId |
+      def get_dummy(obj):
+        (if obj.schema then obj.schema else obj end) as $schema |
+        if $schema == null then "\"test_string\""
+        elif $schema.type == "integer" or $schema.type == "number" then "1"
+        elif $schema.type == "boolean" then "true"
+        elif $schema.type == "array" then "\"[]\""
+        elif $schema.type == "object" or $schema.properties or $schema."$ref" then "\"{}\""
+        else "\"test_string\"" end;
         
-        "test_\($opId)() {\n" +
-        "  echo \"Testing \($opId)\"\n" +
-        "  # Add dummy values for required params based on schema if needed\n" +
-        "  \($opId) \"dummy\"\n" +
-        "}\n\n" +
-        "test_\($opId)\n"
+      if .paths then
+        [ .paths | to_entries[] | .key as $path | .value | (.parameters // []) as $pathParams | to_entries[] | select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers") | .key as $method | .value |
+          (if .operationId then .operationId else "\($method | ascii_upcase)_\($path | gsub("/"; "_") | gsub("[{}]"; ""))" end) as $opId |
+          ((.parameters // []) + $pathParams | map(if ."$ref" then ($root.components.parameters[."$ref" | sub("^#/components/parameters/"; "")] // .) else . end)) as $params |
+          
+          ([
+            $params[] | (get_dummy(.))
+          ] + 
+          (if .requestBody then 
+             [get_dummy(.requestBody.content | to_entries | if length > 0 then .[0].value else null end)] 
+           else [] end)) as $args |
+          
+          { id: $opId, args: $args }
+        ] as $ops |
+        
+        ([ $ops[] | 
+          "test_\(.id)() {\n" +
+          "  echo \"Testing \(.id)\"\n" +
+          "  \(.id) \(.args | join(" ")) >/dev/null\n" +
+          "}\n"
+        ] | join("\n")) +
+        "\nrun_all_tests() {\n" +
+        ([ $ops[] | "  test_\(.id)" ] | join("\n")) +
+        "\n}\n\n" +
+        "if ! (return 0 2>/dev/null); then\n  run_all_tests \"$@\"\nfi\n"
       else empty end
     ' "${ast}"
   } > "${file_path}.tmp"

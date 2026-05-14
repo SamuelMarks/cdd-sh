@@ -2,7 +2,7 @@ package gojqcli
 
 import "io"
 
-// RunJq ...
+// RunJq executes gojq with the given arguments and standard streams.
 func RunJq(args []string, inStream io.Reader, outStream, errStream io.Writer) int {
 	return (&cli{
 		inStream:  inStream,
