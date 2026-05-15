@@ -77,6 +77,17 @@ if [ ! -f tests/emitted_mocks.json ]; then echo "FAIL: tests/emitted_mocks.json 
 echo "Shellchecking generated scripts..."
 shellcheck tests/emitted_routes.sh tests/emitted_classes.sh tests/emitted_tests.sh
 
+# 10.5 Test Swagger 2.0 conversion
+echo "Testing Swagger 2.0 Parse..."
+./bin/cdd-sh parse openapi tests/test_swagger.json
+if ! jq -e '.openapi' ast.json > /dev/null; then echo "FAIL: Swagger 2.0 not converted to OpenAPI 3.2.0"; exit 1; fi
+if ! jq -e '.servers[0].url == "https://api.example.com/v1"' ast.json > /dev/null; then echo "FAIL: Swagger 2.0 host/basePath not mapped"; exit 1; fi
+
+echo "Testing Swagger 2.0 Emit..."
+CDD_EMIT_SWAGGER2=1 ./bin/cdd-sh emit openapi tests/emitted_swagger.json
+if ! jq -e '.swagger == "2.0"' tests/emitted_swagger.json > /dev/null; then echo "FAIL: OpenAPI 3.2.0 not converted to Swagger 2.0"; exit 1; fi
+if ! jq -e '.host == "api.example.com"' tests/emitted_swagger.json > /dev/null; then echo "FAIL: OpenAPI 3.2.0 host not mapped back"; exit 1; fi
+
 # 11. Execute generated tests
 echo "Running generated tests..."
 python3 -c "
