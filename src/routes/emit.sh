@@ -177,7 +177,7 @@ handle_emit_routes() {
         (if $cookieBuild != "" then $cookieBuild + "\n" else "" end) +
         (if $bodyBuild != "" then $bodyBuild + "\n" else "" end) +
         "  # shellcheck disable=SC2086\n" +
-        "  curl -s -X \($method | ascii_upcase) ${curl_args} \"${url}\"\n}\n\n"
+        "  eval curl -s -X \($method | ascii_upcase) ${curl_args} \\\"${url}\\\"\n}\n\n"
       else empty end
     ' "${ast}"
 

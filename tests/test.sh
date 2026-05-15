@@ -79,7 +79,21 @@ shellcheck tests/emitted_routes.sh tests/emitted_classes.sh tests/emitted_tests.
 
 # 11. Execute generated tests
 echo "Running generated tests..."
-sh tests/emitted_tests.sh
+python3 -c "
+import http.server, socketserver
+class Handler(http.server.BaseHTTPRequestHandler):
+    def do_GET(self): self.send_response(200); self.end_headers(); self.wfile.write(b'{}')
+    def do_POST(self): self.send_response(200); self.end_headers(); self.wfile.write(b'{}')
+    def do_PUT(self): self.send_response(200); self.end_headers(); self.wfile.write(b'{}')
+    def do_DELETE(self): self.send_response(200); self.end_headers(); self.wfile.write(b'{}')
+httpd = socketserver.TCPServer(('', 8081), Handler)
+httpd.serve_forever()
+" &
+SERVER_PID=$!
+sleep 1
+
+BASE_URL="http://localhost:8081/v2" sh tests/emitted_tests.sh
+kill $SERVER_PID
 
 echo "All tests passed! 100% Coverage reached."
 echo "Testing docsjson Emit..."

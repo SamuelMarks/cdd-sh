@@ -27,13 +27,27 @@ handle_emit_tests() {
 
   {
     printf "#!/bin/sh\nset -eu\n\n"
-    printf "# shellcheck disable=SC3028\n"
-    printf "DIR=\"\$(cd \"\$(dirname \"\${BASH_SOURCE:-\$0}\")\" && pwd)\"\n"
+    printf "# shellcheck disable=SC3028,SC2034\n"
+    printf 'DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")" && pwd)"\n'
+
+    cat << 'EOF'
+BASE_URL="${BASE_URL:-http://localhost:8080/v2}"
+export BASE_URL
+
+curl() {
+  out=$(command curl -s -w "\n%{http_code}" "$@" || true)
+  status=$(printf "%s\n" "$out" | tail -n1)
+  body=$(printf "%s\n" "$out" | sed '$d')
+  printf "%s\n" "$body"
+  if [ "$status" -lt 200 ] || [ "$status" -ge 400 ]; then
+    echo "HTTP error: $status" >&2
+    exit 1
+  fi
+}
+EOF
+
     printf "# shellcheck disable=SC1090,SC1091,SC2034\n"
     printf ". \"\${DIR}/%s\"\n\n" "${routes_source_path}"
-    
-    printf "BASE_URL=\"\${BASE_URL:-http://localhost:8080/api/v3}\"\n"
-    printf "export BASE_URL\n\n"
 
     jq -r '
       . as $root |
@@ -64,7 +78,10 @@ handle_emit_tests() {
         ([ $ops[] | 
           "test_\(.id)() {\n" +
           "  echo \"Testing \(.id)\"\n" +
-          "  \(.id) \(.args | join(" ")) >/dev/null\n" +
+          "  out=$(\(.id) \(.args | join(" ")))\n" +
+          "  if [ -n \"$out\" ]; then\n" +
+          "    echo \"$out\" | jq empty >/dev/null || { echo \"Failed to deserialize\"; exit 1; }\n" +
+          "  fi\n" +
           "}\n"
         ] | join("\n")) +
         "\nrun_all_tests() {\n" +
