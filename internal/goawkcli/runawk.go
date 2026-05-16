@@ -4,8 +4,8 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"os"
 	"io/fs"
+	"os"
 
 	"github.com/benhoyt/goawk/interp"
 	"github.com/benhoyt/goawk/parser"
@@ -68,7 +68,7 @@ func RunAwk(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 
 	var progBuf bytes.Buffer
 	for _, f := range progFiles {
-		
+
 		var b []byte
 		var err error
 		if EmbeddedFS != nil {

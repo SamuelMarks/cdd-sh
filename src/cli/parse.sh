@@ -1,18 +1,25 @@
 #!/bin/sh
 set -feu
-if [ "${SCRIPT_NAME-}" ]; then this_file="${SCRIPT_NAME}"; elif [ "${BASH_SOURCE-}" ]; then this_file="${BASH_SOURCE[0]}"; set -o pipefail; else this_file="${0}"; fi
+if [ "${SCRIPT_NAME-}" ]; then this_file="${SCRIPT_NAME}"; elif [ "${BASH_SOURCE-}" ]; then
+	this_file="${BASH_SOURCE[0]}"
+	set -o pipefail
+else this_file="${0}"; fi
 case "${STACK+x}" in *':'"${this_file}"':'*) if (return 0 2>/dev/null); then return; else exit 0; fi ;; esac
 export STACK="${STACK:-}${this_file}"':'
 DIR=$(CDPATH='' cd "$(dirname -- "${this_file}")" && pwd)
-LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(d="${DIR}"; while [ ! -f "${d}"'/ROOT' ]; do d="$(dirname -- "${d}")"; done; printf '%s' "${d}")}"
+LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(
+	d="${DIR}"
+	while [ ! -f "${d}"'/ROOT' ]; do d="$(dirname -- "${d}")"; done
+	printf '%s' "${d}"
+)}"
 
 handle_parse_cli() {
-  file_path="${1}"
-  ast="${LIBSCRIPT_ROOT_DIR}/ast.json"
-  if [ ! -f "${ast}" ]; then echo '{"openapi":"3.2.0"}' > "${ast}"; fi
-  if [ ! -f "${file_path}" ]; then return 0; fi
-  
-  awk '
+	file_path="${1}"
+	ast="${LIBSCRIPT_ROOT_DIR}/ast.json"
+	if [ ! -f "${ast}" ]; then echo '{"openapi":"3.2.0"}' >"${ast}"; fi
+	if [ ! -f "${file_path}" ]; then return 0; fi
+
+	awk '
     /^VERSION=/ { split($0, a, "\""); version=a[2] }
     /^TITLE=/ { split($0, a, "\""); title=a[2] }
     /^SUMMARY=/ { split($0, a, "\""); summary=a[2] }
@@ -61,15 +68,15 @@ handle_parse_cli() {
       printf "} }\n" > "cli_paths.json"
     }
   ' "$file_path"
-  
-  if [ -f "cli_info.json" ]; then
-    touch cli_openapi.json
-    jq --slurpfile info cli_info.json --slurpfile paths cli_paths.json --slurpfile d cli_dialect.json --slurpfile o cli_openapi.json '
+
+	if [ -f "cli_info.json" ]; then
+		touch cli_openapi.json
+		jq --slurpfile info cli_info.json --slurpfile paths cli_paths.json --slurpfile d cli_dialect.json --slurpfile o cli_openapi.json '
       .info = ((.info // {}) * $info[0]) |
       .paths = ((.paths // {}) * $paths[0].paths) |
       if $d[0].jsonSchemaDialect != "" then .jsonSchemaDialect = $d[0].jsonSchemaDialect else . end |
       (. + ($o[0] // {}))
-    ' "${ast}" > "${ast}.tmp" && mv "${ast}.tmp" "${ast}"
-    rm -f cli_info.json cli_paths.json cli_dialect.json cli_openapi.json
-  fi
+    ' "${ast}" >"${ast}.tmp" && mv "${ast}.tmp" "${ast}"
+		rm -f cli_info.json cli_paths.json cli_dialect.json cli_openapi.json
+	fi
 }

@@ -36,21 +36,21 @@ for lib in "lib/env.sh" "lib/_common/pkg_mgr.sh"; do
 done'
 
 for type in classes docstrings functions mocks openapi routes tests; do
-  for cmd in parse emit; do
-    f="src/${type}/${cmd}.sh"
-    echo "$PRELUDE" > "$f"
-    echo "" >> "$f"
-    if [ "$cmd" = "parse" ]; then
-      echo "handle_${cmd}_${type}() {" >> "$f"
-      echo "  file_path=\"\${1}\"" >> "$f"
-      echo "  # Implement parse for ${type}" >> "$f"
-      echo "}" >> "$f"
-    else
-      echo "handle_${cmd}_${type}() {" >> "$f"
-      echo "  file_path=\"\${1}\"" >> "$f"
-      echo "  # Implement emit for ${type}" >> "$f"
-      echo "}" >> "$f"
-    fi
-    chmod +x "$f"
-  done
+	for cmd in parse emit; do
+		f="src/${type}/${cmd}.sh"
+		echo "$PRELUDE" >"$f"
+		echo "" >>"$f"
+		if [ "$cmd" = "parse" ]; then
+			echo "handle_${cmd}_${type}() {" >>"$f"
+			echo '  file_path="${1}"' >>"$f"
+			echo "  # Implement parse for ${type}" >>"$f"
+			echo "}" >>"$f"
+		else
+			echo "handle_${cmd}_${type}() {" >>"$f"
+			echo '  file_path="${1}"' >>"$f"
+			echo "  # Implement emit for ${type}" >>"$f"
+			echo "}" >>"$f"
+		fi
+		chmod +x "$f"
+	done
 done

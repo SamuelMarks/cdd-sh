@@ -1,11 +1,12 @@
 package gojqcli
 
 import (
-        "bytes"
-        "os"
-        "strings"
-        "testing"
+	"bytes"
+	"os"
+	"strings"
+	"testing"
 )
+
 func runCli(args []string, stdin string) (int, string, string) {
 	var stdout, stderr bytes.Buffer
 	inBuf := strings.NewReader(stdin)
@@ -55,9 +56,9 @@ func TestRunJqFiles(t *testing.T) {
 		{"slurp raw file", []string{"-sR", ".", "test.json"}, `hello`, 0, "\"hello\"\n"},
 		{"yaml file", []string{"--yaml-input", ".", "test.yaml"}, `a: 1`, 0, "{\n  \"a\": 1\n}\n"},
 		{"multiple files", []string{".", "test.json", "test.json"}, `{"a": 1}`, 0, "{\n  \"a\": 1\n}\n{\n  \"a\": 1\n}\n"},
-		{"stream file", []string{"-c", "--stream", ".", "test.json"}, `[1, 2]`, 0, "[[0],1]\n[[1],2]\n"},		{"stream scalar", []string{"-c", "--stream", ".", "test.json"}, `123`, 0, "[[],123]\n"},
+		{"stream file", []string{"-c", "--stream", ".", "test.json"}, `[1, 2]`, 0, "[[0],1]\n[[1],2]\n"}, {"stream scalar", []string{"-c", "--stream", ".", "test.json"}, `123`, 0, "[[],123]\n"},
 		{"stream incomplete", []string{"-c", "--stream", ".", "test.json"}, `[1, 2`, 5, ""},
-		}
+	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if strings.Contains(tt.args[len(tt.args)-1], "test.") {
@@ -237,7 +238,7 @@ func TestRunJqEvenMoreBranches(t *testing.T) {
 	runCli([]string{"-n", "--jsonargs", "1", "2", "--args", "a", "1"}, "")
 
 	// Module loading errors
-	os.WriteFile("bad_mod.jq", []byte(strings.Repeat(" ", 55) + "syntax error"), 0644)
+	os.WriteFile("bad_mod.jq", []byte(strings.Repeat(" ", 55)+"syntax error"), 0644)
 	runCli([]string{"-L", ".", `import "bad_mod" as bad; 1`}, "")
 	os.Remove("bad_mod.jq")
 	os.WriteFile("bad_mod.json", []byte("{invalid"), 0644)
@@ -277,7 +278,8 @@ func TestRunJqEvenMoreBranches(t *testing.T) {
 	// Explicitly cover isEmptyError
 	(&emptyError{}).isEmptyError()
 	(&exitCodeError{}).isEmptyError()
-	}
+}
+
 type errorWriter struct{}
 
 func (w *errorWriter) Write(p []byte) (n int, err error) {
@@ -326,12 +328,21 @@ func TestFuncStderr(t *testing.T) {
 }
 
 func TestFuncDebugError(t *testing.T) {
-        c := &cli{errStream: &errWriter{}}
-        c.funcDebug("test", nil)
-        c.funcStderr("test", nil)
+	c := &cli{errStream: &errWriter{}}
+	c.funcDebug("test", nil)
+	c.funcStderr("test", nil)
 }
 
 func TestFuncDebugErrorWriteNewline(t *testing.T) {
-        c := &cli{errStream: &failOnNewlineWriter{}}
-        c.funcDebug("test", nil)
+	c := &cli{errStream: &failOnNewlineWriter{}}
+	c.funcDebug("test", nil)
+}
+
+type failOnNewlineWriter struct{}
+
+func (w *failOnNewlineWriter) Write(p []byte) (n int, err error) {
+	if bytes.Contains(p, []byte("\n")) {
+		return 0, os.ErrInvalid
+	}
+	return len(p), nil
 }

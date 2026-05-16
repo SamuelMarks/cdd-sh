@@ -39,7 +39,7 @@ func TestEmbeddedFS(t *testing.T) {
 	cli.errStream = new(bytes.Buffer)
 	exitCode = cli.run([]string{"--rawfile", "val", "/test.json", "-f", "/test.jq", "test.json"})
 	if exitCode != exitCodeOK {
-	        t.Errorf("expected OK, got %v\nstderr: %s", exitCode, cli.errStream.(*bytes.Buffer).String())
+		t.Errorf("expected OK, got %v\nstderr: %s", exitCode, cli.errStream.(*bytes.Buffer).String())
 	}
 
 	cli.outStream = new(bytes.Buffer)
@@ -47,4 +47,4 @@ func TestEmbeddedFS(t *testing.T) {
 	cli.run([]string{"-f", "bad.jq", "test.json"})
 	cli.run([]string{"--slurpfile", "val", "bad.json", "."})
 	cli.run([]string{".", "/test.json"})
-	}
+}

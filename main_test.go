@@ -136,7 +136,7 @@ func TestFsMiddleware_Rm(t *testing.T) {
 	if err != nil {
 		t.Errorf("rm -r non-existent should not fail if IsNotExist: %v", err)
 	}
-	
+
 	// Test rm with -R (capital R)
 	dir2 := filepath.Join(tempDir, "dir2")
 	os.Mkdir(dir2, 0755)
@@ -327,11 +327,11 @@ func TestRunMain(t *testing.T) {
 	// Test StatHandler and OpenHandler via file existence check and sourcing
 	exitCode = -1
 	runMain("[ -f cdd.sh ] && . cdd.sh help", nil, exitFunc)
-	
+
 	// Test fallback to default StatHandler and OpenHandler
 	runMain("[ -f nonexistent_file_12345 ]", nil, exitFunc)
 	runMain(". nonexistent_file_12345", nil, exitFunc)
-	
+
 	// Test error status error
 	runMain("exit 42", nil, exitFunc)
 	if exitCode != 42 {
@@ -341,9 +341,9 @@ func TestRunMain(t *testing.T) {
 	// Test general error
 	exitCode = -1
 	runMain("echo test", []string{"--invalid-flag-that-causes-interp-to-fail"}, exitFunc)
-	// Actually we already have TestRunMain_Errors to test that `called` is true when we pass this. 
+	// Actually we already have TestRunMain_Errors to test that `called` is true when we pass this.
 	// Wait, runMain does not pass the flags directly to interp parsing options, it passes to interp.Params(args).
-	// To cause an interp error that isn't ExitStatus, we need a call to a command that returns a standard error, 
+	// To cause an interp error that isn't ExitStatus, we need a call to a command that returns a standard error,
 	// e.g. a command not found returns ExitStatus(127).
 	// A handler like `builtinCallHandler` returning a standard error will do it. But it always returns nil.
 	// `expand.ListEnviron` doesn't error.
@@ -364,14 +364,14 @@ func TestReadWriteNopCloser(t *testing.T) {
 
 	// Test with a closer
 	// Create a dummy closer reader wrapper to test Close
-	f := struct{
+	f := struct {
 		io.Reader
 		io.Closer
 	}{
 		Reader: strings.NewReader("test"),
 		Closer: io.NopCloser(strings.NewReader("test")),
 	}
-	
+
 	r2 := readWriteNopCloser{f}
 	err = r2.Close()
 	if err != nil {
@@ -479,7 +479,7 @@ func TestHostCommandValidator_Direct(t *testing.T) {
 	mw := hostCommandValidator(func(ctx context.Context, args []string) error {
 		return nil
 	})
-	
+
 	// Test len(args) == 0
 	err := mw(context.Background(), []string{})
 	if err != nil {
@@ -527,7 +527,7 @@ func TestFsMiddleware_Direct(t *testing.T) {
 	mw := fsMiddleware(func(ctx context.Context, args []string) error {
 		return nil
 	})
-	
+
 	// Test len(args) == 0
 	err := mw(context.Background(), []string{})
 	if err != nil {
@@ -652,9 +652,9 @@ func TestMvCoverage(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 	src := tempDir + "/src.txt"
 	os.WriteFile(src, []byte("test"), 0644)
-	
+
 	// mv success
-	_, _, err := runMwScript(t, fsMiddleware, tempDir, "mv " + src + " " + tempDir + "/dst.txt")
+	_, _, err := runMwScript(t, fsMiddleware, tempDir, "mv "+src+" "+tempDir+"/dst.txt")
 	if err != nil {
 		t.Error("expected nil")
 	}
@@ -671,7 +671,6 @@ func TestMvCoverage(t *testing.T) {
 		t.Error("expected err")
 	}
 }
-
 
 func TestRunMain_Embedded(t *testing.T) {
 	called := false

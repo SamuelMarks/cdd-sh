@@ -2,35 +2,39 @@
 set -feu
 # shellcheck disable=SC2296,SC3028,SC3040,SC3054,SC3043,SC2129
 if [ "${SCRIPT_NAME-}" ]; then
-  this_file="${SCRIPT_NAME}"
+	this_file="${SCRIPT_NAME}"
 elif [ "${BASH_SOURCE-}" ]; then
-  this_file="${BASH_SOURCE[0]}"
-  set -o pipefail
+	this_file="${BASH_SOURCE[0]}"
+	set -o pipefail
 else
-  this_file="${0}"
+	this_file="${0}"
 fi
 case "${STACK+x}" in
-  *':'"${this_file}"':'*) if (return 0 2>/dev/null); then return; else exit 0; fi ;;
+*':'"${this_file}"':'*) if (return 0 2>/dev/null); then return; else exit 0; fi ;;
 esac
 export STACK="${STACK:-}${this_file}"':'
 DIR=$(CDPATH='' cd "$(dirname -- "${this_file}")" && pwd)
-LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(d="${DIR}"; while [ ! -f "${d}"'/ROOT' ]; do d="$(dirname -- "${d}")"; done; printf '%s' "${d}")}"
+LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(
+	d="${DIR}"
+	while [ ! -f "${d}"'/ROOT' ]; do d="$(dirname -- "${d}")"; done
+	printf '%s' "${d}"
+)}"
 
 handle_emit_tests() {
-  file_path="${1:-test_routes.sh}"
-  routes_source_path="${2:-emitted_routes.sh}"
-  ast="${LIBSCRIPT_ROOT_DIR}/ast.json"
-  if [ ! -f "${ast}" ]; then
-    printf "Error: AST file not found at %s\n" "${ast}" >&2
-    return 1
-  fi
+	file_path="${1:-test_routes.sh}"
+	routes_source_path="${2:-emitted_routes.sh}"
+	ast="${LIBSCRIPT_ROOT_DIR}/ast.json"
+	if [ ! -f "${ast}" ]; then
+		printf "Error: AST file not found at %s\n" "${ast}" >&2
+		return 1
+	fi
 
-  {
-    printf "#!/bin/sh\nset -eu\n\n"
-    printf "# shellcheck disable=SC3028,SC2034\n"
-    printf 'DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")" && pwd)"\n'
+	{
+		printf "#!/bin/sh\nset -eu\n\n"
+		printf "# shellcheck disable=SC3028,SC2034\n"
+		printf 'DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")" && pwd)"\n'
 
-    cat << 'EOF'
+		cat <<'EOF'
 BASE_URL="${BASE_URL:-http://localhost:8080/v2}"
 export BASE_URL
 
@@ -46,10 +50,10 @@ curl() {
 }
 EOF
 
-    printf "# shellcheck disable=SC1090,SC1091,SC2034\n"
-    printf ". \"\${DIR}/%s\"\n\n" "${routes_source_path}"
+		printf "# shellcheck disable=SC1090,SC1091,SC2034\n"
+		printf ". \"\${DIR}/%s\"\n\n" "${routes_source_path}"
 
-    jq -r '
+		jq -r '
       . as $root |
       def get_dummy(obj):
         (if obj.schema then obj.schema else obj end) as $schema |
@@ -90,13 +94,13 @@ EOF
         "if ! (return 0 2>/dev/null); then\n  run_all_tests \"$@\"\nfi\n"
       else empty end
     ' "${ast}"
-  } > "${file_path}.tmp"
+	} >"${file_path}.tmp"
 
-  if [ -f "${file_path}" ]; then
-    awk -v new_file="${file_path}.tmp" -f "${LIBSCRIPT_ROOT_DIR}/lib/_common/merge.awk" "${file_path}" > "${file_path}.merged"
-    mv "${file_path}.merged" "${file_path}"
-    rm -f "${file_path}.tmp"
-  else
-    mv "${file_path}.tmp" "${file_path}"
-  fi
+	if [ -f "${file_path}" ]; then
+		awk -v new_file="${file_path}.tmp" -f "${LIBSCRIPT_ROOT_DIR}/lib/_common/merge.awk" "${file_path}" >"${file_path}.merged"
+		mv "${file_path}.merged" "${file_path}"
+		rm -f "${file_path}.tmp"
+	else
+		mv "${file_path}.tmp" "${file_path}"
+	fi
 }

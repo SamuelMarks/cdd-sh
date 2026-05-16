@@ -86,15 +86,15 @@ func TestRunAwk(t *testing.T) {
 			errContain: "cannot open",
 		},
 		{
-			name:       "input files",
-			args:       []string{"-F", ",", "{print $2}"},
-			stdinStr:   "", // stdin ignored when file is given
-			expected:   0,
+			name:     "input files",
+			args:     []string{"-F", ",", "{print $2}"},
+			stdinStr: "", // stdin ignored when file is given
+			expected: 0,
 		},
 		{
-			name:       "execution error",
-			args:       []string{"BEGIN { exit 42 }"},
-			expected:   42,
+			name:     "execution error",
+			args:     []string{"BEGIN { exit 42 }"},
+			expected: 42,
 		},
 		{
 			name:       "internal error via execution",
@@ -108,19 +108,19 @@ func TestRunAwk(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var stdout, stderr bytes.Buffer
 			stdin := bytes.NewBufferString(tt.stdinStr)
-			
+
 			// For the "input files" test we dynamically add the input file
 			args := tt.args
 			if tt.name == "input files" {
 				args = append(args, inputFile)
 			}
-			
+
 			exitCode := RunAwk(args, stdin, &stdout, &stderr)
-			
+
 			if exitCode != tt.expected {
 				t.Errorf("expected exit code %d, got %d. stderr: %s", tt.expected, exitCode, stderr.String())
 			}
-			
+
 			if tt.outContain != "" && !bytes.Contains(stdout.Bytes(), []byte(tt.outContain)) {
 				t.Errorf("expected stdout to contain %q, got %q", tt.outContain, stdout.String())
 			}
@@ -137,7 +137,7 @@ func TestRunAwk(t *testing.T) {
 		EmbeddedFS = fstest.MapFS{
 			"lib/merge.awk": &fstest.MapFile{Data: []byte("BEGIN { print \"embedded\" }")},
 		}
-		
+
 		var stdout, stderr bytes.Buffer
 		stdin := bytes.NewBufferString("")
 		exitCode := RunAwk([]string{"-f", "/lib/merge.awk"}, stdin, &stdout, &stderr)

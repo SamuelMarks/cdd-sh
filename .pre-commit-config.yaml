@@ -1,17 +1,44 @@
 repos:
-  - repo: local
+  - repo: https://github.com/dnephin/pre-commit-golang
+    rev: v0.5.1
     hooks:
-      - id: run-tests-and-update-shields
-        name: Run tests and update shields
-        entry: ./update_shields.sh
-        language: script
-        pass_filenames: false
+      - id: go-fmt
+      - id: go-vet
+
+  - repo: https://github.com/scop/pre-commit-shfmt
+    rev: v3.9.0-1
+    hooks:
+      - id: shfmt
+        args: ["-w", "-s", "-ln", "bash"]
+        exclude: '.*_out\.sh$|^emitted_.*\.sh$'
+
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.9.0.6
+    hooks:
+      - id: shellcheck
+        args: [
+          "-e",
+          "SC2106,SC2086,SC2000,SC2094,SC1091,SC2016,SC2129,SC3054,SC3040,SC2059,SC2148,SC2155,SC2181,SC3043,SC2296,SC3028"
+        ]
+        exclude: '.*_out\.sh$|^emitted_.*\.sh$'
 
   - repo: local
     hooks:
+      - id: make-build
+        name: Build
+        entry: make build
+        language: system
+        pass_filenames: false
+
+      - id: make-test
+        name: Test
+        entry: make test
+        language: system
+        pass_filenames: false
+
       - id: update-badges
-        name: Update Badges
+        name: Update Badges (Doc & Test Coverage)
         entry: python3 scripts/update_badges.py
         language: system
-        files: ^README\.md$
         pass_filenames: false
+        always_run: true

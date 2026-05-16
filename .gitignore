@@ -90,3 +90,4 @@ missing_*.txt
 # Explicitly track tests directory and root test files to prevent accidental ignores
 !/tests/test_*.sh
 !/test_*.go
+\n.bin_mock/\n

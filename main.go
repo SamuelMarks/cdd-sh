@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"cdd-sh/internal/gojqcli"
 	"cdd-sh/internal/goawkcli"
+	"cdd-sh/internal/gojqcli"
 	"embed"
 	"io/fs"
 
@@ -32,6 +32,7 @@ func init() {
 type readWriteNopCloser struct {
 	io.Reader
 }
+
 func (readWriteNopCloser) Write(p []byte) (n int, err error) {
 	return 0, fmt.Errorf("read-only embedded file")
 }
@@ -100,7 +101,7 @@ func hostCommandValidator(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 		if len(args) == 0 {
 			return next(ctx, args)
 		}
-		
+
 		switch args[0] {
 		case "awk", "jq", "mkdir", "rm", "cp", "cat", "dirname", "mv":
 			return next(ctx, args)
@@ -122,7 +123,7 @@ func fsMiddleware(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 		hc := interp.HandlerCtx(ctx)
 		dir := hc.Dir
 
-				if args[0] == "mv" {
+		if args[0] == "mv" {
 			if len(args) != 3 {
 				return interp.NewExitStatus(1)
 			}

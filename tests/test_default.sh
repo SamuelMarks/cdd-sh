@@ -7,9 +7,15 @@ rm -f ast.json
 . tests/test_default_out.sh
 
 payload='{}'
-if validate_Config "$payload"; then echo "Valid Config (used default)!"; else echo "FAIL Valid Config"; exit 1; fi
+if validate_Config "$payload"; then echo "Valid Config (used default)!"; else
+	echo "FAIL Valid Config"
+	exit 1
+fi
 
 payload2='{"retryCount": 6}'
-if validate_Config "$payload2"; then echo "FAIL invalid max!"; exit 1; else echo "Max validation works!"; fi
+if validate_Config "$payload2"; then
+	echo "FAIL invalid max!"
+	exit 1
+else echo "Max validation works!"; fi
 
 echo "All default constraints passed!"

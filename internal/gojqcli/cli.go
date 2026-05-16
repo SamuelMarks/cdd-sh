@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"io/fs"
+	"os"
 	"runtime"
 	"strings"
 
@@ -180,7 +180,9 @@ Usage:
 		var err error
 		if EmbeddedFS != nil {
 			cleanName := v
-			for len(cleanName) > 0 && cleanName[0] == '/' { cleanName = cleanName[1:] }
+			for len(cleanName) > 0 && cleanName[0] == '/' {
+				cleanName = cleanName[1:]
+			}
 			val, err = fs.ReadFile(EmbeddedFS, cleanName)
 		}
 		if err != nil || EmbeddedFS == nil {
@@ -224,7 +226,9 @@ Usage:
 		var err error
 		if EmbeddedFS != nil {
 			cleanName := args[0]
-			for len(cleanName) > 0 && cleanName[0] == '/' { cleanName = cleanName[1:] }
+			for len(cleanName) > 0 && cleanName[0] == '/' {
+				cleanName = cleanName[1:]
+			}
 			src, err = fs.ReadFile(EmbeddedFS, cleanName)
 		}
 		if err != nil || EmbeddedFS == nil {
@@ -257,12 +261,12 @@ Usage:
 	}
 	var iter inputIter
 	if opts.InputNull {
-	        iter = newNullInputIter()
+		iter = newNullInputIter()
 	} else {
-	        iter = cli.createInputIter(args)
+		iter = cli.createInputIter(args)
 	}
 	defer iter.Close()
-	code, err := gojq.Compile(query,		gojq.WithModuleLoader(gojq.NewModuleLoader(modulePaths)),
+	code, err := gojq.Compile(query, gojq.WithModuleLoader(gojq.NewModuleLoader(modulePaths)),
 		gojq.WithEnvironLoader(os.Environ),
 		gojq.WithVariables(cli.argnames),
 		gojq.WithFunction("debug", 0, 0, cli.funcDebug),
@@ -280,22 +284,22 @@ Usage:
 		gojq.WithInputIter(iter),
 	)
 	if err != nil {
-	        if err, ok := err.(interface {
-	                QueryParseError() (string, string, error)
-	        }); ok {
-	                name, query, err := err.QueryParseError()
-	                return &queryParseError{name, query, err}
-	        }
-	        if err, ok := err.(interface {
-	                JSONParseError() (string, string, error)
-	        }); ok {
-	                fname, contents, err := err.JSONParseError()
-	                return &compileError{&jsonParseError{fname, contents, 0, err}}
-	        }
-	        return &compileError{err}
+		if err, ok := err.(interface {
+			QueryParseError() (string, string, error)
+		}); ok {
+			name, query, err := err.QueryParseError()
+			return &queryParseError{name, query, err}
+		}
+		if err, ok := err.(interface {
+			JSONParseError() (string, string, error)
+		}); ok {
+			fname, contents, err := err.JSONParseError()
+			return &compileError{&jsonParseError{fname, contents, 0, err}}
+		}
+		return &compileError{err}
 	}
 	return cli.process(iter, code)
-	}
+}
 func slurpFile(name string) (any, error) {
 	iter := newSlurpInputIter(
 		newFilesInputIter(newJSONInputIter, []string{name}, nil),

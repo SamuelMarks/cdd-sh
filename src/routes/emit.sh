@@ -1,27 +1,34 @@
 #!/bin/sh
 set -feu
-if [ "${SCRIPT_NAME-}" ]; then this_file="${SCRIPT_NAME}"; elif [ "${BASH_SOURCE-}" ]; then this_file="${BASH_SOURCE[0]}"; set -o pipefail; else this_file="${0}"; fi
+if [ "${SCRIPT_NAME-}" ]; then this_file="${SCRIPT_NAME}"; elif [ "${BASH_SOURCE-}" ]; then
+	this_file="${BASH_SOURCE[0]}"
+	set -o pipefail
+else this_file="${0}"; fi
 case "${STACK+x}" in *':'"${this_file}"':'*) if (return 0 2>/dev/null); then return; else exit 0; fi ;; esac
 export STACK="${STACK:-}${this_file}"':'
 DIR=$(CDPATH='' cd "$(dirname -- "${this_file}")" && pwd)
-LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(d="${DIR}"; while [ ! -f "${d}"'/ROOT' ]; do d="$(dirname -- "${d}")"; done; printf '%s' "${d}")}"
+LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(
+	d="${DIR}"
+	while [ ! -f "${d}"'/ROOT' ]; do d="$(dirname -- "${d}")"; done
+	printf '%s' "${d}"
+)}"
 
 handle_emit_routes() {
-  file_path="${1:-routes.sh}"
-  ast="${LIBSCRIPT_ROOT_DIR}/ast.json"
-  if [ ! -f "${ast}" ]; then return 1; fi
+	file_path="${1:-routes.sh}"
+	ast="${LIBSCRIPT_ROOT_DIR}/ast.json"
+	if [ ! -f "${ast}" ]; then return 1; fi
 
-  {
-    printf "#!/bin/sh\n# Auto-generated API Client\nset -eu\n\n"
-    BASE_URL=$(jq -r ".servers[0] | if .variables then reduce (.variables | to_entries[]) as \$var (.url; gsub(\"\\\\{\" + \$var.key + \"\\\\}\"; \$var.value.default)) else .url end // \"\"" "${ast}")
-    printf "BASE_URL=\"\${BASE_URL:-%s}\"\nOAUTH_TOKEN=\"\${OAUTH_TOKEN:-}\"\nAPI_KEY=\"\${API_KEY:-}\"\n\n" "${BASE_URL}"
-    printf "_urlencode() {\n  printf '%%s' \"\$1\" | jq -s -R -r '@uri'\n}\n\n"
-    
-    printf "_serialize_matrix() {\n  if [ \"\$3\" = \"true\" ]; then\n    printf \"%%s\" \"\$2\" | awk -F, -v n=\"\$1\" '{for(i=1;i<=NF;i++) printf \";\"n\"=\"\$i}'\n  else\n    printf \";%%s=%%s\" \"\$1\" \"\$2\"\n  fi\n}\n\n"
+	{
+		printf "#!/bin/sh\n# Auto-generated API Client\nset -eu\n\n"
+		BASE_URL=$(jq -r '.servers[0] | if .variables then reduce (.variables | to_entries[]) as $var (.url; gsub("\\{" + $var.key + "\\}"; $var.value.default)) else .url end // ""' "${ast}")
+		printf "BASE_URL=\"\${BASE_URL:-%s}\"\nOAUTH_TOKEN=\"\${OAUTH_TOKEN:-}\"\nAPI_KEY=\"\${API_KEY:-}\"\n\n" "${BASE_URL}"
+		printf "_urlencode() {\n  printf '%%s' \"\$1\" | jq -s -R -r '@uri'\n}\n\n"
 
-    printf "_serialize_label() {\n  if [ \"\$3\" = \"true\" ]; then\n    printf \"%%s\" \"\$2\" | awk -F, '{for(i=1;i<=NF;i++) printf \".\"\$i}'\n  else\n    printf \".%%s\" \"\$2\"\n  fi\n}\n\n"
+		printf "_serialize_matrix() {\n  if [ \"\$3\" = \"true\" ]; then\n    printf \"%%s\" \"\$2\" | awk -F, -v n=\"\$1\" '{for(i=1;i<=NF;i++) printf \";\"n\"=\"\$i}'\n  else\n    printf \";%%s=%%s\" \"\$1\" \"\$2\"\n  fi\n}\n\n"
 
-    jq -r '
+		printf "_serialize_label() {\n  if [ \"\$3\" = \"true\" ]; then\n    printf \"%%s\" \"\$2\" | awk -F, '{for(i=1;i<=NF;i++) printf \".\"\$i}'\n  else\n    printf \".%%s\" \"\$2\"\n  fi\n}\n\n"
+
+		jq -r '
       if .webhooks then
         .webhooks | to_entries[] | .key as $name | .value | to_entries[] | .key as $method | .value |
         "# @webhook \($name)\n" +
@@ -33,7 +40,7 @@ handle_emit_routes() {
       else empty end
     ' "${ast}"
 
-    jq -r '
+		jq -r '
       if .components and .components.securitySchemes then
         .components.securitySchemes | to_entries[] |
         if .value.type == "oauth2" and .value.flows and .value.flows.clientCredentials then
@@ -51,7 +58,7 @@ handle_emit_routes() {
       else empty end
     ' "${ast}"
 
-    jq -r '
+		jq -r '
       . as $root |
       if .paths then
         .paths | to_entries[] | .key as $path | .value | (.parameters // []) as $pathParams | to_entries[] | select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers") | .key as $method | .value |
@@ -181,13 +188,13 @@ handle_emit_routes() {
       else empty end
     ' "${ast}"
 
-  } > "${file_path}.tmp"
+	} >"${file_path}.tmp"
 
-  if [ -f "${file_path}" ]; then
-    awk -v new_file="${file_path}.tmp" -f "${LIBSCRIPT_ROOT_DIR}/lib/_common/merge.awk" "${file_path}" > "${file_path}.merged"
-    mv "${file_path}.merged" "${file_path}"
-    rm -f "${file_path}.tmp"
-  else
-    mv "${file_path}.tmp" "${file_path}"
-  fi
+	if [ -f "${file_path}" ]; then
+		awk -v new_file="${file_path}.tmp" -f "${LIBSCRIPT_ROOT_DIR}/lib/_common/merge.awk" "${file_path}" >"${file_path}.merged"
+		mv "${file_path}.merged" "${file_path}"
+		rm -f "${file_path}.tmp"
+	else
+		mv "${file_path}.tmp" "${file_path}"
+	fi
 }

@@ -1,18 +1,25 @@
 #!/bin/sh
 set -feu
-if [ "${SCRIPT_NAME-}" ]; then this_file="${SCRIPT_NAME}"; elif [ "${BASH_SOURCE-}" ]; then this_file="${BASH_SOURCE[0]}"; set -o pipefail; else this_file="${0}"; fi
+if [ "${SCRIPT_NAME-}" ]; then this_file="${SCRIPT_NAME}"; elif [ "${BASH_SOURCE-}" ]; then
+	this_file="${BASH_SOURCE[0]}"
+	set -o pipefail
+else this_file="${0}"; fi
 case "${STACK+x}" in *':'"${this_file}"':'*) if (return 0 2>/dev/null); then return; else exit 0; fi ;; esac
 export STACK="${STACK:-}${this_file}"':'
 DIR=$(CDPATH='' cd "$(dirname -- "${this_file}")" && pwd)
-LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(d="${DIR}"; while [ ! -f "${d}"'/ROOT' ]; do d="$(dirname -- "${d}")"; done; printf '%s' "${d}")}"
+LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(
+	d="${DIR}"
+	while [ ! -f "${d}"'/ROOT' ]; do d="$(dirname -- "${d}")"; done
+	printf '%s' "${d}"
+)}"
 
 handle_parse_docstrings() {
-  file_path="${1:-docs.md}"
-  ast="${LIBSCRIPT_ROOT_DIR}/ast.json"
-  if [ ! -f "${ast}" ]; then echo '{"openapi":"3.2.0"}' > "${ast}"; fi
-  if [ ! -f "${file_path}" ]; then return 0; fi
-  
-  awk '
+	file_path="${1:-docs.md}"
+	ast="${LIBSCRIPT_ROOT_DIR}/ast.json"
+	if [ ! -f "${ast}" ]; then echo '{"openapi":"3.2.0"}' >"${ast}"; fi
+	if [ ! -f "${file_path}" ]; then return 0; fi
+
+	awk '
     BEGIN { op = ""; desc = ""; info_desc = ""; in_info = 0 }
     /^# / {
        title_ver = substr($0, 3)
@@ -49,9 +56,9 @@ handle_parse_docstrings() {
        printf "}\n" > "docs_ops.json"
     }
   ' "${file_path}"
-  
-  if [ -f "docs_info.json" ]; then
-    jq --slurpfile info docs_info.json --slurpfile ops docs_ops.json '
+
+	if [ -f "docs_info.json" ]; then
+		jq --slurpfile info docs_info.json --slurpfile ops docs_ops.json '
       .info = ((.info // {}) * $info[0]) |
       (
         if .paths then
@@ -62,7 +69,7 @@ handle_parse_docstrings() {
           ))
         else . end
       )
-    ' "${ast}" > "${ast}.tmp" && mv "${ast}.tmp" "${ast}"
-    rm -f docs_info.json docs_ops.json
-  fi
+    ' "${ast}" >"${ast}.tmp" && mv "${ast}.tmp" "${ast}"
+		rm -f docs_info.json docs_ops.json
+	fi
 }

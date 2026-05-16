@@ -1,20 +1,27 @@
 #!/bin/sh
 set -feu
-if [ "${SCRIPT_NAME-}" ]; then this_file="${SCRIPT_NAME}"; elif [ "${BASH_SOURCE-}" ]; then this_file="${BASH_SOURCE[0]}"; set -o pipefail; else this_file="${0}"; fi
+if [ "${SCRIPT_NAME-}" ]; then this_file="${SCRIPT_NAME}"; elif [ "${BASH_SOURCE-}" ]; then
+	this_file="${BASH_SOURCE[0]}"
+	set -o pipefail
+else this_file="${0}"; fi
 case "${STACK+x}" in *':'"${this_file}"':'*) if (return 0 2>/dev/null); then return; else exit 0; fi ;; esac
 export STACK="${STACK:-}${this_file}"':'
 DIR=$(CDPATH='' cd "$(dirname -- "${this_file}")" && pwd)
-LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(d="${DIR}"; while [ ! -f "${d}"'/ROOT' ]; do d="$(dirname -- "${d}")"; done; printf '%s' "${d}")}"
+LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(
+	d="${DIR}"
+	while [ ! -f "${d}"'/ROOT' ]; do d="$(dirname -- "${d}")"; done
+	printf '%s' "${d}"
+)}"
 
 handle_emit_cli() {
-  output_file="$1"
-  ast="${LIBSCRIPT_ROOT_DIR}/ast.json"
-  if [ ! -f "${ast}" ]; then return 1; fi
-  
-  {
-    printf "#!/bin/sh\n"
-    printf "# @openapi_cli_start\n"
-    jq -r '
+	output_file="$1"
+	ast="${LIBSCRIPT_ROOT_DIR}/ast.json"
+	if [ ! -f "${ast}" ]; then return 1; fi
+
+	{
+		printf "#!/bin/sh\n"
+		printf "# @openapi_cli_start\n"
+		jq -r '
       .info as $info |
       "VERSION=\"\($info.version // "0.0.0")\"\n" +
       "TITLE=\"\($info.title // "CLI")\"\n" +
@@ -30,17 +37,17 @@ handle_emit_cli() {
       "DIALECT=\"\(.jsonSchemaDialect // "")\"\n" +
       "OPENAPI_JSON=\"" + (del(.openapi, .info, .paths, .jsonSchemaDialect, .servers) | @json) + "\"\n"
     ' "${ast}"
-    
-    printf "usage() {\n"
-    printf "  echo \"\$TITLE - \$VERSION\"\n"
-    printf "  echo \"\$SUMMARY\"\n"
-    printf "  echo \"\$DESCRIPTION\"\n"
-    printf "  echo \"Usage: \$0 [global-options] <command> [args]\"\n"
-    printf "  echo \"Global Options:\"\n"
-    printf "  echo \"  --server <url|name>   Set base server URL\"\n"
-    printf "  echo \"Commands:\"\n"
-    
-    jq -r '
+
+		printf "usage() {\n"
+		printf "  echo \"\$TITLE - \$VERSION\"\n"
+		printf "  echo \"\$SUMMARY\"\n"
+		printf "  echo \"\$DESCRIPTION\"\n"
+		printf "  echo \"Usage: \$0 [global-options] <command> [args]\"\n"
+		printf "  echo \"Global Options:\"\n"
+		printf "  echo \"  --server <url|name>   Set base server URL\"\n"
+		printf "  echo \"Commands:\"\n"
+
+		jq -r '
       . as $root |
       if .paths then
       .paths | to_entries[] | .key as $path | .value | to_entries[] | select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers") | .key as $method | .value |
@@ -49,20 +56,20 @@ handle_emit_cli() {
       "  echo \"  \($opId) - \($desc)\""
       else empty end
     ' "${ast}"
-    
-    printf "}\n"
-    
-    printf "if [ \"${1:-}\" = \"--help\" ] || [ \"${1:-}\" = \"-h\" ]; then usage; exit 0; fi\n"
-    printf "if [ \"${1:-}\" = \"--version\" ] || [ \"${1:-}\" = \"-v\" ]; then echo \"\$VERSION\"; exit 0; fi\n"
-    
-    printf "SERVER_URL=\"\"\n"
-    printf "if [ \"${1:-}\" = \"--server\" ]; then SERVER_URL=\"\$2\"; shift 2; fi\n"
-    
-    printf "CMD=\"\${1:-}\"\n"
-    printf "[ -z \"\$CMD\" ] && usage && exit 1\n"
-    printf "shift\n"
-    printf "case \"\$CMD\" in\n"
-    jq -r '
+
+		printf "}\n"
+
+		printf "if [ \"${1:-}\" = \"--help\" ] || [ \"${1:-}\" = \"-h\" ]; then usage; exit 0; fi\n"
+		printf "if [ \"${1:-}\" = \"--version\" ] || [ \"${1:-}\" = \"-v\" ]; then echo \"\$VERSION\"; exit 0; fi\n"
+
+		printf "SERVER_URL=\"\"\n"
+		printf "if [ \"${1:-}\" = \"--server\" ]; then SERVER_URL=\"\$2\"; shift 2; fi\n"
+
+		printf "CMD=\"\${1:-}\"\n"
+		printf "[ -z \"\$CMD\" ] && usage && exit 1\n"
+		printf "shift\n"
+		printf "case \"\$CMD\" in\n"
+		jq -r '
       . as $root |
       if .paths then
       .paths | to_entries[] | .key as $path | .value | to_entries[] | select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers") | .key as $method | .value |
@@ -83,16 +90,16 @@ handle_emit_cli() {
       "    ;;"
       else empty end
     ' "${ast}"
-    printf "  *) usage; exit 1;;\nesac\n"
-    printf "# @openapi_cli_end\n"
-  } > "${output_file}.tmp"
-  
-  if [ -f "${output_file}" ]; then
-    awk -v new_file="${output_file}.tmp" -f "${LIBSCRIPT_ROOT_DIR}/lib/_common/merge.awk" "${output_file}" > "${output_file}.merged"
-    mv "${output_file}.merged" "${output_file}"
-    rm -f "${output_file}.tmp"
-  else
-    mv "${output_file}.tmp" "${output_file}"
-  fi
-  chmod +x "${output_file}"
+		printf "  *) usage; exit 1;;\nesac\n"
+		printf "# @openapi_cli_end\n"
+	} >"${output_file}.tmp"
+
+	if [ -f "${output_file}" ]; then
+		awk -v new_file="${output_file}.tmp" -f "${LIBSCRIPT_ROOT_DIR}/lib/_common/merge.awk" "${output_file}" >"${output_file}.merged"
+		mv "${output_file}.merged" "${output_file}"
+		rm -f "${output_file}.tmp"
+	else
+		mv "${output_file}.tmp" "${output_file}"
+	fi
+	chmod +x "${output_file}"
 }

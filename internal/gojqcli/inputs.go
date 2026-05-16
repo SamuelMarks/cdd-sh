@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"os"
-	
+
 	"strings"
 
 	"github.com/itchyny/go-yaml"
@@ -193,7 +193,9 @@ func (i *filesInputIter) Next() (any, bool) {
 				var err error
 				if EmbeddedFS != nil {
 					cleanName := fname
-					for len(cleanName) > 0 && cleanName[0] == '/' { cleanName = cleanName[1:] }
+					for len(cleanName) > 0 && cleanName[0] == '/' {
+						cleanName = cleanName[1:]
+					}
 					f, errFs := EmbeddedFS.Open(cleanName)
 					if errFs == nil {
 						file = f
