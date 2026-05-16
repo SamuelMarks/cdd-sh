@@ -35,8 +35,11 @@ handle_emit_tests() {
 		printf 'DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")" && pwd)"\n'
 
 		cat <<'EOF'
-BASE_URL="${BASE_URL:-http://localhost:8080/v2}"
-export BASE_URL
+		BASE_URL="${BASE_URL:-http://localhost:8080/v2}"
+		export BASE_URL
+		export API_KEY="special-key"
+		export OAUTH_TOKEN="special-key"
+		export BASIC_AUTH="user:pass"
 
 curl() {
   out=$(command curl -s -w "\n%{http_code}" "$@" || true)
@@ -55,13 +58,50 @@ EOF
 
 		jq -r '
       . as $root |
-      def get_dummy(obj):
+      def generate_json(schema; root):
+        if schema."$ref" then
+          generate_json(root.components.schemas[schema."$ref" | sub("^#/components/schemas/"; "")] // {}; root)
+        elif schema.type == "object" or schema.properties then
+          "{" + ((schema.properties // {}) | to_entries | map("\"\(.key)\": \(generate_json(.value; root))") | join(", ")) + "}"
+        elif schema.type == "array" then
+          "[" + generate_json(schema.items // {}; root) + "]"
+        elif schema.type == "integer" or schema.type == "number" then
+          "1"
+        elif schema.type == "boolean" then
+          "true"
+        elif schema.format == "date-time" then
+          "\"2024-01-01T00:00:00Z\""
+        elif schema.format == "byte" then
+          "\"VGVzdA==\""
+        elif schema.format == "uuid" then
+          "\"00000000-0000-0000-0000-000000000000\""
+        elif schema.enum and (schema.enum | length > 0) then
+          "\"\(schema.enum[0])\""
+        else
+          "\"test_string\""
+        end;
+
+      def get_dummy(obj; content_type; root):
         (if obj.schema then obj.schema else obj end) as $schema |
-        if $schema == null then "\"test_string\""
+        if obj.name == "api_key" or obj.name == "apiKey" then "\"special-key\""
+        elif $schema == null then "\"test_string\""
+        elif content_type == "application/x-www-form-urlencoded" then
+          (if $schema."$ref" then root.components.schemas[$schema."$ref" | sub("^#/components/schemas/"; "")] else $schema end) as $s |
+          (($s.properties // {}) | to_entries | map("\(.key)=test_string") | join("&")) | @json
         elif $schema.type == "integer" or $schema.type == "number" then "1"
         elif $schema.type == "boolean" then "true"
-        elif $schema.type == "array" then "\"[]\""
-        elif $schema.type == "object" or $schema.properties or $schema."$ref" then "\"{}\""
+        elif $schema.format == "date-time" then "\"2024-01-01T00:00:00Z\""
+        elif $schema.format == "byte" then "\"VGVzdA==\""
+        elif $schema.format == "uuid" then "\"00000000-0000-0000-0000-000000000000\""
+        elif $schema.type == "array" then
+          if content_type == "application/json" then
+            generate_json($schema; root) | @json
+          else
+            "\"test_string\""
+          end
+        elif $schema.enum and ($schema.enum | length > 0) then "\"\($schema.enum[0])\""
+        elif $schema.type == "object" or $schema.properties or $schema."$ref" then 
+          generate_json($schema; root) | @json
         else "\"test_string\"" end;
         
       if .paths then
@@ -70,14 +110,15 @@ EOF
           ((.parameters // []) + $pathParams | map(if ."$ref" then ($root.components.parameters[."$ref" | sub("^#/components/parameters/"; "")] // .) else . end)) as $params |
           
           ([
-            $params[] | (get_dummy(.))
+            $params[] | (get_dummy(.; ""; $root))
           ] + 
           (if .requestBody then 
-             [get_dummy(.requestBody.content | to_entries | if length > 0 then .[0].value else null end)] 
+             (.requestBody.content | to_entries | if length > 0 then .[0] else null end) as $ct |
+             if $ct then [get_dummy($ct.value; $ct.key; $root)] else [] end
            else [] end)) as $args |
           
-          { id: $opId, args: $args }
-        ] as $ops |
+          { id: $opId, args: $args, method: $method }
+        ] | sort_by(if .method == "post" then 1 elif .method == "put" then 2 elif .method == "get" then 3 else 4 end) as $ops |
         
         ([ $ops[] | 
           "test_\(.id)() {\n" +
@@ -88,7 +129,7 @@ EOF
           "  fi\n" +
           "}\n"
         ] | join("\n")) +
-        "\nrun_all_tests() {\n" +
+        "\nrun_all_tests() {\n  touch test_string\n" +
         ([ $ops[] | "  test_\(.id)" ] | join("\n")) +
         "\n}\n\n" +
         "if ! (return 0 2>/dev/null); then\n  run_all_tests \"$@\"\nfi\n"

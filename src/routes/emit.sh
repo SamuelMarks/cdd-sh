@@ -74,10 +74,16 @@ handle_emit_routes() {
         ] | join("\n")) as $paramDocs |
         
         (if .requestBody then
-          (if .requestBody.content and .requestBody.content["multipart/form-data"] then
+          (if .requestBody.content and .requestBody.content["application/json"] then
+            "# @param $\(($params | length) + 1): requestBody (application/json)"
+          elif .requestBody.content and .requestBody.content["multipart/form-data"] then
             "# @param $\(($params | length) + 1): requestBody (multipart/form-data)"
+          elif .requestBody.content and .requestBody.content["application/octet-stream"] then
+            "# @param $\(($params | length) + 1): requestBody (application/octet-stream)"
           elif .requestBody.content and .requestBody.content["application/x-www-form-urlencoded"] then
             "# @param $\(($params | length) + 1): requestBody (application/x-www-form-urlencoded)"
+          elif .requestBody.content and .requestBody.content["application/json"] then
+            "# @param $\(($params | length) + 1): requestBody (application/json)"
           else
             "# @param $\(($params | length) + 1): requestBody (application/json)"
           end)
@@ -158,12 +164,16 @@ handle_emit_routes() {
         else "" end) as $securityBuild |
         
         (if .requestBody then 
-          (if .requestBody.content and .requestBody.content["application/x-www-form-urlencoded"] then
+          (if .requestBody.content and .requestBody.content["application/json"] then
+            "  [ -n \"${requestBody}\" ] && curl_args=\"${curl_args} -H \\\"Content-Type: application/json\\\" -d \u0027${requestBody}\u0027\""
+          elif .requestBody.content and .requestBody.content["application/x-www-form-urlencoded"] then
             "  if [ -n \"${requestBody}\" ]; then\n    curl_args=\"${curl_args} -H \\\"Content-Type: application/x-www-form-urlencoded\\\" -d \\\"${requestBody}\\\"\"\n  fi"
           elif .requestBody.content and .requestBody.content["multipart/form-data"] then
             "  if [ -n \"${requestBody}\" ]; then\n    curl_args=\"${curl_args} -F \\\"file=@${requestBody}\\\"\"\n  fi"
+          elif .requestBody.content and .requestBody.content["application/octet-stream"] then
+            "  if [ -n \"${requestBody}\" ]; then\n    curl_args=\"${curl_args} -H \\\"Content-Type: application/octet-stream\\\" --data-binary \\\"@${requestBody}\\\"\"\n  fi"
           else
-            "  [ -n \"${requestBody}\" ] && curl_args=\"${curl_args} -H \\\"Content-Type: application/json\\\" -d \\\"${requestBody}\\\"\""
+            "  [ -n \"${requestBody}\" ] && curl_args=\"${curl_args} -H \\\"Content-Type: application/json\\\" -d \u0027${requestBody}\u0027\""
           end)
         else "" end) as $bodyBuild |
         

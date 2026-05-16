@@ -91,3 +91,13 @@ missing_*.txt
 !/tests/test_*.sh
 !/test_*.go
 \n.bin_mock/\n
+
+# Throwaway patches and temporary files
+patch*.py
+fix*.py
+*.sed
+*.jq
+dummy.txt
+prompt*.md
+temp*
+test_string
