@@ -23,7 +23,7 @@ LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(
 # handle_emit_functions generates functions from the AST.
 handle_emit_functions() {
 	file_path="${1:-functions.sh}"
-	ast="${LIBSCRIPT_ROOT_DIR}/ast.json"
+	ast="${CDD_AST_PATH:-${LIBSCRIPT_ROOT_DIR}/ast.json}"
 	if [ ! -f "${ast}" ]; then return 1; fi
 	# Dump standalone shell helpers (like validators) if any.
 	echo "#!/bin/sh" >"${file_path}"

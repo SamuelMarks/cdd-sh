@@ -28,5 +28,5 @@ handle_parse_openapi() {
 		return 1
 	fi
 	# Convert openapi to ast.json (direct copy, maybe minified/formatted)
-	jq -f "${LIBSCRIPT_ROOT_DIR}/src/openapi/swagger2openapi.jq" "${file_path}" >"${LIBSCRIPT_ROOT_DIR}/ast.json"
+	jq -f "${LIBSCRIPT_ROOT_DIR}/src/openapi/swagger2openapi.jq" "${file_path}" >"${CDD_AST_PATH:-${LIBSCRIPT_ROOT_DIR}/ast.json}"
 }

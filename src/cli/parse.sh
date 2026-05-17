@@ -16,7 +16,7 @@ LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(
 # handle_parse_cli parses the CLI application into the AST.
 handle_parse_cli() {
 	file_path="${1}"
-	ast="${LIBSCRIPT_ROOT_DIR}/ast.json"
+	ast="${CDD_AST_PATH:-${LIBSCRIPT_ROOT_DIR}/ast.json}"
 	if [ ! -f "${ast}" ]; then echo '{"openapi":"3.2.0"}' >"${ast}"; fi
 	if [ ! -f "${file_path}" ]; then return 0; fi
 

@@ -23,7 +23,7 @@ LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(
 # handle_emit_classes generates data classes and models from the AST.
 handle_emit_classes() {
 	file_path="${1:-classes.sh}"
-	ast="${LIBSCRIPT_ROOT_DIR}/ast.json"
+	ast="${CDD_AST_PATH:-${LIBSCRIPT_ROOT_DIR}/ast.json}"
 	if [ ! -f "${ast}" ]; then return 1; fi
 
 	{

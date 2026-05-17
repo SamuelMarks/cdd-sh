@@ -23,7 +23,7 @@ LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(
 # handle_emit_mocks generates mock responses from the AST.
 handle_emit_mocks() {
 	file_path="${1:-mocks.json}"
-	ast="${LIBSCRIPT_ROOT_DIR}/ast.json"
+	ast="${CDD_AST_PATH:-${LIBSCRIPT_ROOT_DIR}/ast.json}"
 	if [ ! -f "${ast}" ]; then
 		printf "Error: AST file not found at %s\n" "${ast}" >&2
 		return 1

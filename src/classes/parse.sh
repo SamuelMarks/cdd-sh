@@ -23,7 +23,7 @@ LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(
 # handle_parse_classes parses data classes and models into the AST.
 handle_parse_classes() {
 	file_path="${1:-classes.sh}"
-	ast="${LIBSCRIPT_ROOT_DIR}/ast.json"
+	ast="${CDD_AST_PATH:-${LIBSCRIPT_ROOT_DIR}/ast.json}"
 	if [ ! -f "${file_path}" ]; then return 1; fi
 	if [ ! -f "${ast}" ]; then echo "{}" >"${ast}"; fi
 

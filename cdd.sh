@@ -34,6 +34,8 @@ if [ "${CMD}" = "-version" ] || [ "${CMD}" = "--version" ]; then
 	exit 0
 fi
 
+export CDD_AST_PATH="${CDD_AST_PATH:-ast.json}"
+
 # parse_global_args parses the global arguments passed to the CLI.
 parse_global_args() {
 	while [ $# -gt 0 ]; do

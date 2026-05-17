@@ -27,7 +27,7 @@ handle_parse_mocks() {
 		printf "Error: file not found at %s\n" "${file_path}" >&2
 		return 1
 	fi
-	ast="${LIBSCRIPT_ROOT_DIR}/ast.json"
+	ast="${CDD_AST_PATH:-${LIBSCRIPT_ROOT_DIR}/ast.json}"
 	if [ ! -f "${ast}" ]; then echo "{}" >"${ast}"; fi
 	# Update AST components with edited mocks
 	jq --slurpfile mocks "${file_path}" 'if .components == null then .components = {} else . end | .components.examples = $mocks[0]' "${ast}" >"${ast}.tmp" && mv "${ast}.tmp" "${ast}"
