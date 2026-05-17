@@ -24,7 +24,56 @@ def main():
     except Exception as e:
         print(f'Coverage calculation failed: {e}')
         test_cov = 0
-    doc_cov = 100
+    try:
+        total_functions = 0
+        documented_functions = 0
+
+        base_dir = os.path.join(os.path.dirname(__file__), '..')
+        
+        # Shell doc coverage
+        for root, _, files in os.walk(base_dir):
+            if '/tests' in root or '/tmp_out' in root or '/temp_sdk' in root or '/.git' in root or '/.' in root:
+                continue
+            for file in files:
+                if file.endswith('.sh') or file == 'cdd.sh':
+                    path = os.path.join(root, file)
+                    with open(path, 'r') as f:
+                        content = f.read()
+                        functions = re.finditer(r'^[ \t]*([a-zA-Z_0-9]+)\(\)[ \t]*\{', content, re.MULTILINE)
+                        for m in functions:
+                            total_functions += 1
+                            start = m.start()
+                            before = content[:start].strip().split('\n')
+                            if before and before[-1].strip().startswith('#'):
+                                documented_functions += 1
+
+        # Go doc coverage
+        for root, _, files in os.walk(base_dir):
+            for file in files:
+                if file.endswith('.go') and not file.endswith('_test.go'):
+                    path = os.path.join(root, file)
+                    with open(path, 'r') as f:
+                        content = f.read()
+                        functions = re.finditer(r'^[ \t]*func\s+([A-Z][a-zA-Z0-9_]*)\s*\(', content, re.MULTILINE)
+                        for m in functions:
+                            total_functions += 1
+                            start = m.start()
+                            before = content[:start].strip().split('\n')
+                            if before and before[-1].strip().startswith('//'):
+                                documented_functions += 1
+                        
+                        types = re.finditer(r'^[ \t]*type\s+([A-Z][a-zA-Z0-9_]*)\s+', content, re.MULTILINE)
+                        for m in types:
+                            total_functions += 1
+                            start = m.start()
+                            before = content[:start].strip().split('\n')
+                            if before and before[-1].strip().startswith('//'):
+                                documented_functions += 1
+
+        doc_cov = 100 if total_functions == 0 else int((documented_functions / total_functions) * 100)
+    except Exception as e:
+        print(f'Doc coverage calculation failed: {e}')
+        doc_cov = 100
 
     test_color = get_color(test_cov)
     doc_color = get_color(doc_cov)

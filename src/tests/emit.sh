@@ -20,6 +20,7 @@ LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(
 	printf '%s' "${d}"
 )}"
 
+# handle_emit_tests generates test scripts from the AST.
 handle_emit_tests() {
 	file_path="${1:-test_routes.sh}"
 	routes_source_path="${2:-emitted_routes.sh}"
@@ -41,6 +42,7 @@ handle_emit_tests() {
 		export OAUTH_TOKEN="special-key"
 		export BASIC_AUTH="user:pass"
 
+# curl is a wrapper around the system curl command.
 curl() {
   out=$(command curl -s -w "\n%{http_code}" "$@" || true)
   status=$(printf "%s\n" "$out" | tail -n1)

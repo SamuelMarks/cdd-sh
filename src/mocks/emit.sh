@@ -20,6 +20,7 @@ LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(
 	printf '%s' "${d}"
 )}"
 
+# handle_emit_mocks generates mock responses from the AST.
 handle_emit_mocks() {
 	file_path="${1:-mocks.json}"
 	ast="${LIBSCRIPT_ROOT_DIR}/ast.json"

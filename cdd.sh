@@ -3,6 +3,7 @@ set -feu
 
 VERSION="0.0.1"
 
+# usage prints the CLI help message.
 usage() {
 	printf "Usage: cdd-sh <command> [args]\n\n"
 	printf "Commands:\n"
@@ -33,6 +34,7 @@ if [ "${CMD}" = "-version" ] || [ "${CMD}" = "--version" ]; then
 	exit 0
 fi
 
+# parse_global_args parses the global arguments passed to the CLI.
 parse_global_args() {
 	while [ $# -gt 0 ]; do
 		case "$1" in
@@ -88,6 +90,7 @@ parse_global_args() {
 	done
 }
 
+# ensure_output_dir creates the output directory if it does not exist.
 ensure_output_dir() {
 	if [ -z "${CDD_OUT:-}" ]; then
 		CDD_OUT="$(pwd)"

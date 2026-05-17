@@ -13,6 +13,7 @@ LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(
 	printf '%s' "${d}"
 )}"
 
+# handle_parse_routes parses network routes into the AST.
 handle_parse_routes() {
 	file_path="${1:-routes.sh}"
 	if [ ! -f "${file_path}" ]; then return 1; fi

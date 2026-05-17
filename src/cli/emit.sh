@@ -13,6 +13,7 @@ LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(
 	printf '%s' "${d}"
 )}"
 
+# handle_emit_cli generates the CLI application from the AST.
 handle_emit_cli() {
 	output_file="$1"
 	ast="${LIBSCRIPT_ROOT_DIR}/ast.json"

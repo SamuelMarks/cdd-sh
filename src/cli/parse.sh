@@ -13,6 +13,7 @@ LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(
 	printf '%s' "${d}"
 )}"
 
+# handle_parse_cli parses the CLI application into the AST.
 handle_parse_cli() {
 	file_path="${1}"
 	ast="${LIBSCRIPT_ROOT_DIR}/ast.json"

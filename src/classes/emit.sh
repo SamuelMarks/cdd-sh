@@ -20,6 +20,7 @@ LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(
 	printf '%s' "${d}"
 )}"
 
+# handle_emit_classes generates data classes and models from the AST.
 handle_emit_classes() {
 	file_path="${1:-classes.sh}"
 	ast="${LIBSCRIPT_ROOT_DIR}/ast.json"

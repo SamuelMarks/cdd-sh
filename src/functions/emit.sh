@@ -20,6 +20,7 @@ LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(
 	printf '%s' "${d}"
 )}"
 
+# handle_emit_functions generates functions from the AST.
 handle_emit_functions() {
 	file_path="${1:-functions.sh}"
 	ast="${LIBSCRIPT_ROOT_DIR}/ast.json"

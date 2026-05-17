@@ -20,6 +20,7 @@ LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(
 	printf '%s' "${d}"
 )}"
 
+# handle_parse_openapi parses an OpenAPI spec into the AST.
 handle_parse_openapi() {
 	file_path="${1}"
 	if [ ! -f "${file_path}" ]; then

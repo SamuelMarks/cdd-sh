@@ -20,6 +20,7 @@ LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(
 	printf '%s' "${d}"
 )}"
 
+# handle_emit_openapi outputs the AST as an OpenAPI spec.
 handle_emit_openapi() {
 	file_path="${1:-openapi.json}"
 	if [ ! -f "${LIBSCRIPT_ROOT_DIR}/ast.json" ]; then

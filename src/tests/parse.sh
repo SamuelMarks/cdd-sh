@@ -20,6 +20,7 @@ LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(
 	printf '%s' "${d}"
 )}"
 
+# handle_parse_tests parses test scripts into the AST.
 handle_parse_tests() {
 	file_path="${1:-test_routes.sh}"
 	if [ ! -f "${file_path}" ]; then

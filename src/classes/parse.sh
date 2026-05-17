@@ -20,6 +20,7 @@ LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(
 	printf '%s' "${d}"
 )}"
 
+# handle_parse_classes parses data classes and models into the AST.
 handle_parse_classes() {
 	file_path="${1:-classes.sh}"
 	ast="${LIBSCRIPT_ROOT_DIR}/ast.json"

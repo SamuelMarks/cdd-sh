@@ -20,6 +20,7 @@ LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(
 	printf '%s' "${d}"
 )}"
 
+# handle_emit_docstrings generates docstrings from the AST.
 handle_emit_docstrings() {
 	file_path="${1:-docs.md}"
 	ast="${LIBSCRIPT_ROOT_DIR}/ast.json"

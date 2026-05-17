@@ -20,6 +20,7 @@ LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(
 	printf '%s' "${d}"
 )}"
 
+# handle_parse_mocks parses mocks into the AST.
 handle_parse_mocks() {
 	file_path="${1:-mocks.json}"
 	if [ ! -f "${file_path}" ]; then

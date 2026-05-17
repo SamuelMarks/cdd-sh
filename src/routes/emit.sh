@@ -13,6 +13,7 @@ LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(
 	printf '%s' "${d}"
 )}"
 
+# handle_emit_routes generates network routes from the AST.
 handle_emit_routes() {
 	file_path="${1:-routes.sh}"
 	ast="${LIBSCRIPT_ROOT_DIR}/ast.json"

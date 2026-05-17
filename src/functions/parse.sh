@@ -20,6 +20,7 @@ LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(
 	printf '%s' "${d}"
 )}"
 
+# handle_parse_functions parses functions into the AST.
 handle_parse_functions() {
 	file_path="${1:-functions.sh}"
 	if [ ! -f "${file_path}" ]; then return 1; fi

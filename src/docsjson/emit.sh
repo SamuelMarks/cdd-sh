@@ -20,6 +20,7 @@ LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(
 	printf '%s' "${d}"
 )}"
 
+# handle_to_docs_json outputs the AST as a documentation JSON format.
 handle_to_docs_json() {
 	input_file=""
 	no_imports="false"
