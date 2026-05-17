@@ -28,13 +28,14 @@ def main():
         total_functions = 0
         documented_functions = 0
 
-        base_dir = os.path.join(os.path.dirname(__file__), '..')
+        base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
         
         # Shell doc coverage
         for root, _, files in os.walk(base_dir):
-            if '/tests' in root or '/tmp_out' in root or '/temp_sdk' in root or '/.git' in root or '/.' in root:
+            if any(x in root for x in ['/tests', '/tmp_out', '/temp_sdk', '/.git', '/emsdk', '/out', '/bin', '/temp-sh']):
                 continue
             for file in files:
+                if file.startswith('emitted_') or file.startswith('test_'): continue
                 if file.endswith('.sh') or file == 'cdd.sh':
                     path = os.path.join(root, file)
                     with open(path, 'r') as f:
