@@ -697,13 +697,12 @@ func TestRunMain_EmbeddedStat(t *testing.T) {
 }
 
 func TestRunMain_BadRedirect(t *testing.T) {
-	called := false
-	runMain("echo hello > /dev/full", nil, func(c int) { called = true })
-	if !called {
-		t.Error("expected exitFunc to be called for bad redirect")
-	}
+        called := false
+        runMain("echo hello > /", nil, func(c int) { called = true })
+        if !called {
+                t.Error("expected exitFunc to be called for bad redirect")
+        }
 }
-
 func TestRunMain_FatalError(t *testing.T) {
 	called := false
 	runMain("TRIGGER_FATAL_ERROR", nil, func(c int) {
