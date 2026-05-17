@@ -101,3 +101,7 @@ dummy.txt
 prompt*.md
 temp*
 test_string
+
+# WASM and test scripts added automatically
+test_script.sh
+fix_ast_path.sh
