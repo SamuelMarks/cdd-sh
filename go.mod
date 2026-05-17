@@ -3,6 +3,7 @@ module cdd-sh
 go 1.26.1
 
 require (
+	github.com/benhoyt/goawk v1.31.0
 	github.com/itchyny/go-yaml v0.0.0-20251001235044-fca9a0999f15
 	github.com/itchyny/gojq v0.12.19
 	github.com/mattn/go-isatty v0.0.21
@@ -11,7 +12,6 @@ require (
 )
 
 require (
-	github.com/benhoyt/goawk v1.31.0 // indirect
 	github.com/clipperhouse/stringish v0.1.1 // indirect
 	github.com/clipperhouse/uax29/v2 v2.3.0 // indirect
 	github.com/itchyny/timefmt-go v0.1.8 // indirect

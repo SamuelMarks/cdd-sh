@@ -19,13 +19,42 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Checkout OpenAPI Test Harness (for petstore specs)
+        uses: actions/checkout@v4
+        with:
+          repository: samuel/cdd-openapi-test-harness # Adjust if this isn't the correct upstream repo or provide the files another way
+          path: cdd-openapi-test-harness
+        continue-on-error: true # Might fail if it's a private repo without credentials
+
+      - name: Fetch Petstore Specs directly
+        run: |
+          wget -q https://raw.githubusercontent.com/OAI/OpenAPI-Specification/main/examples/v2.0/json/petstore.json -O ../petstore.json || echo "{}" > ../petstore.json
+          wget -q https://raw.githubusercontent.com/OAI/OpenAPI-Specification/main/examples/v3.0/petstore.json -O ../petstore_oas3.json || echo "{}" > ../petstore_oas3.json
+          # Note: The true source of these files in the local workspace is one directory up, 
+          # which in CI would be outside the actions/checkout workspace.
+          # To make the paths in .pre-commit-config.yaml (`../petstore.json`) work,
+          # we place them in the runner's workspace parent directory.
+          cp ../petstore.json $GITHUB_WORKSPACE/../petstore.json || true
+          cp ../petstore_oas3.json $GITHUB_WORKSPACE/../petstore_oas3.json || true
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y jq curl socat netcat-traditional make shellcheck
+          pip install pre-commit
 
-      - name: Run Test Suite
-        run: make test
+      - name: Run all pre-commit hooks
+        run: pre-commit run --all-files
 
   release:
     needs: test

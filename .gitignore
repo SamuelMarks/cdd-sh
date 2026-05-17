@@ -105,3 +105,11 @@ test_string
 # WASM and test scripts added automatically
 test_script.sh
 fix_ast_path.sh
+
+# Additional test and build artifacts
+.venv/
+emsdk/
+gradle.properties
+node-client/
+temp-sh-*
+temp-petstore.json
