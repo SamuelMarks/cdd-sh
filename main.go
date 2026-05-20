@@ -6,8 +6,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
-"runtime"
 
 	"cdd-sh/internal/goawkcli"
 	"cdd-sh/internal/gojqcli"
@@ -27,14 +27,20 @@ var embeddedFiles embed.FS
 
 var workaroundBase string
 
+var runtimeGOOS = runtime.GOOS
+
 func init() {
 	goawkcli.EmbeddedFS = embeddedFiles
 	gojqcli.EmbeddedFS = embeddedFiles
 
 	goawkcli.ResolvePath = func(p string) string { return resolvePath(".", p) }
 	gojqcli.ResolvePath = func(p string) string { return resolvePath(".", p) }
-	
-	if runtime.GOOS == "wasip1" {
+
+	initWasi()
+}
+
+func initWasi() {
+	if runtimeGOOS == "wasip1" {
 		statDot, err := os.Stat(".")
 		if err == nil {
 			entries, err := os.ReadDir("..")
@@ -54,13 +60,15 @@ func init() {
 	}
 }
 
-func getDir(ctx context.Context) string {
+func getDir(ctx context.Context) (dir string) {
+	dir = "."
 	defer func() { recover() }()
-	hc := interp.HandlerCtx(ctx)
-	if hc.Dir != "" {
-		return hc.Dir
+	if ctx != nil {
+		if hc := interp.HandlerCtx(ctx); hc.Dir != "" {
+			return hc.Dir
+		}
 	}
-	return "."
+	return dir
 }
 
 type readWriteNopCloser struct {

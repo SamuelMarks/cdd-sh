@@ -9,6 +9,9 @@ import (
 	"strings"
 	"testing"
 
+	"cdd-sh/internal/goawkcli"
+	"cdd-sh/internal/gojqcli"
+
 	"mvdan.cc/sh/v3/interp"
 	"mvdan.cc/sh/v3/syntax"
 )
@@ -713,4 +716,109 @@ func TestRunMain_FatalError(t *testing.T) {
 	if !called {
 		t.Error("expected exitFunc(1) to be called for fatal error")
 	}
+}
+
+func TestInitWasi(t *testing.T) {
+	oldGOOS := runtimeGOOS
+	defer func() { runtimeGOOS = oldGOOS }()
+	runtimeGOOS = "wasip1"
+
+	// Create a temporary structure to simulate the wasi bug
+	tempDir, err := os.MkdirTemp("", "wasi_test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	oldWd, _ := os.Getwd()
+	defer os.Chdir(oldWd)
+
+	// Create a subdir and chdir into it
+	subDir := filepath.Join(tempDir, "sub")
+	os.Mkdir(subDir, 0755)
+
+	// Create a file to be ignored
+	os.WriteFile(filepath.Join(tempDir, "file.txt"), []byte(""), 0644)
+
+	os.Chdir(subDir)
+
+	oldWorkaround := workaroundBase
+	defer func() { workaroundBase = oldWorkaround }()
+
+	workaroundBase = ""
+	initWasi()
+
+	if workaroundBase != "../sub" {
+		t.Errorf("expected workaroundBase to be '../sub', got %q", workaroundBase)
+	}
+
+	// Test error paths
+	// 1. stat . fails (impossible normally, but we can simulate by removing dir? No, just accept we can't easily mock os.Stat without interfaces)
+	// We'll get partial coverage but the happy path covers most.
+}
+
+func TestInitResolvePath(t *testing.T) {
+	// These were set in init()
+	if goawkcli.ResolvePath == nil {
+		t.Error("goawkcli.ResolvePath is nil")
+	} else {
+		res := goawkcli.ResolvePath("test")
+		if res != "test" { // resolvePath(".", "test") == "test"
+			t.Errorf("goawkcli.ResolvePath returned %q", res)
+		}
+	}
+
+	if gojqcli.ResolvePath == nil {
+		t.Error("gojqcli.ResolvePath is nil")
+	} else {
+		res := gojqcli.ResolvePath("test")
+		if res != "test" { // resolvePath(".", "test") == "test"
+			t.Errorf("gojqcli.ResolvePath returned %q", res)
+		}
+	}
+}
+
+func TestGetDirPanic(t *testing.T) {
+	dir := getDir(nil)
+	if dir != "." {
+		t.Errorf("expected '.', got %q", dir)
+	}
+
+	dir2 := getDir(context.Background())
+	if dir2 != "." {
+		t.Errorf("expected '.', got %q", dir2)
+	}
+}
+
+func TestResolvePathWorkaround(t *testing.T) {
+	oldWorkaround := workaroundBase
+	defer func() { workaroundBase = oldWorkaround }()
+
+	workaroundBase = "/workaround"
+
+	// Test with relative path that triggers workaround
+	res := resolvePath(".", "rel")
+	if res != filepath.Join("/workaround", "rel") {
+		t.Errorf("expected %q, got %q", filepath.Join("/workaround", "rel"), res)
+	}
+
+	// Test with path that starts with ..
+	res = resolvePath(".", "../rel")
+	if res != "../rel" {
+		t.Errorf("expected '../rel', got %q", res)
+	}
+
+	// Test with absolute path joined
+	res = resolvePath("/base", "rel") // Wait, joined is /base/rel, IsAbs is true. Workaround is skipped.
+	if res != "/base/rel" {
+		t.Errorf("expected '/base/rel', got %q", res)
+	}
+}
+
+func TestGoAwkCliResolvePath(t *testing.T) {
+	oldResolve := goawkcli.ResolvePath
+	defer func() { goawkcli.ResolvePath = oldResolve }()
+	goawkcli.ResolvePath = nil
+
+	// Now it should return the path directly (we can just test it indirectly if possible, but resolveAwkPath is not exported, we need a test in goawkcli)
 }

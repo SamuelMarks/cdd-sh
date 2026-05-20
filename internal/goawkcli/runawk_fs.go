@@ -6,6 +6,7 @@ import "io/fs"
 var EmbeddedFS fs.FS
 
 var ResolvePath func(string) string
+
 func resolveAwkPath(p string) string {
 	if ResolvePath != nil {
 		return ResolvePath(p)
