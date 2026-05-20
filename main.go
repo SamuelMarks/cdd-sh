@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+"runtime"
 
 	"cdd-sh/internal/goawkcli"
 	"cdd-sh/internal/gojqcli"
@@ -24,9 +25,42 @@ import (
 //go:embed cdd.sh src lib ROOT
 var embeddedFiles embed.FS
 
+var workaroundBase string
+
 func init() {
 	goawkcli.EmbeddedFS = embeddedFiles
 	gojqcli.EmbeddedFS = embeddedFiles
+
+	goawkcli.ResolvePath = func(p string) string { return resolvePath(".", p) }
+	gojqcli.ResolvePath = func(p string) string { return resolvePath(".", p) }
+	
+	if runtime.GOOS == "wasip1" {
+		statDot, err := os.Stat(".")
+		if err == nil {
+			entries, err := os.ReadDir("..")
+			if err == nil {
+				for _, e := range entries {
+					if !e.IsDir() {
+						continue
+					}
+					statParent, err := os.Stat("../" + e.Name())
+					if err == nil && os.SameFile(statDot, statParent) {
+						workaroundBase = "../" + e.Name()
+						break
+					}
+				}
+			}
+		}
+	}
+}
+
+func getDir(ctx context.Context) string {
+	defer func() { recover() }()
+	hc := interp.HandlerCtx(ctx)
+	if hc.Dir != "" {
+		return hc.Dir
+	}
+	return "."
 }
 
 type readWriteNopCloser struct {
@@ -91,7 +125,11 @@ func resolvePath(base, p string) string {
 	if filepath.IsAbs(p) {
 		return p
 	}
-	return filepath.Join(base, p)
+	joined := filepath.Join(base, p)
+	if workaroundBase != "" && !filepath.IsAbs(joined) && !strings.HasPrefix(joined, "..") {
+		return filepath.Join(workaroundBase, joined)
+	}
+	return joined
 }
 
 // hostCommandValidator ensures that only a specific set of bundled commands are permitted to run.
@@ -321,23 +359,25 @@ func runMain(scriptOverride string, args []string, exitFunc func(int)) {
 		interp.ExecHandlers(awkMiddleware, jqMiddleware, fsMiddleware, hostCommandValidator),
 		interp.StatHandler(func(ctx context.Context, name string, followSymlinks bool) (fs.FileInfo, error) {
 			cleanName := filepath.Clean(name)
-			cleanName = strings.TrimPrefix(cleanName, "/")
-			info, err := fs.Stat(embeddedFiles, cleanName)
+			cleanEmbedName := strings.TrimPrefix(cleanName, "/")
+			info, err := fs.Stat(embeddedFiles, cleanEmbedName)
 			if err == nil {
 				return info, nil
 			}
-			return interp.DefaultStatHandler()(ctx, name, followSymlinks)
+			resolvedName := resolvePath(getDir(ctx), name)
+			return interp.DefaultStatHandler()(ctx, resolvedName, followSymlinks)
 		}),
 		interp.OpenHandler(func(ctx context.Context, path string, flag int, perm os.FileMode) (io.ReadWriteCloser, error) {
+			cleanName := filepath.Clean(path)
 			if flag == os.O_RDONLY {
-				cleanName := filepath.Clean(path)
-				cleanName = strings.TrimPrefix(cleanName, "/")
-				file, err := embeddedFiles.Open(cleanName)
+				cleanEmbedName := strings.TrimPrefix(cleanName, "/")
+				file, err := embeddedFiles.Open(cleanEmbedName)
 				if err == nil {
 					return readWriteNopCloser{file}, nil
 				}
 			}
-			return interp.DefaultOpenHandler()(ctx, path, flag, perm)
+			resolvedPath := resolvePath(getDir(ctx), path)
+			return interp.DefaultOpenHandler()(ctx, resolvedPath, flag, perm)
 		}),
 	)
 

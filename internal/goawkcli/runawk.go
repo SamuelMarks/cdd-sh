@@ -79,7 +79,7 @@ func RunAwk(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 			b, err = fs.ReadFile(EmbeddedFS, cleanName)
 		}
 		if err != nil || EmbeddedFS == nil {
-			b, err = os.ReadFile(f)
+			b, err = os.ReadFile(resolveAwkPath(f))
 		}
 
 		if err != nil {

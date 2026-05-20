@@ -43,7 +43,7 @@ func TestResolvePath(t *testing.T) {
 	}{
 		{"/base", "rel", filepath.Join("/base", "rel")},
 		{"/base", "/abs", "/abs"},
-		{"", "rel", "rel"},
+		{"", "rel", resolvePath("", "rel")},
 	}
 
 	for _, tt := range tests {

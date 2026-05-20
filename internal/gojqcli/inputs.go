@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"os"
+"path/filepath"
 
 	"strings"
 
@@ -192,7 +193,7 @@ func (i *filesInputIter) Next() (any, bool) {
 				var file io.ReadCloser
 				var err error
 				if EmbeddedFS != nil {
-					cleanName := fname
+					cleanName := filepath.Clean(fname)
 					for len(cleanName) > 0 && cleanName[0] == '/' {
 						cleanName = cleanName[1:]
 					}
@@ -203,7 +204,7 @@ func (i *filesInputIter) Next() (any, bool) {
 					}
 				}
 				if file == nil {
-					file, err = os.Open(fname)
+					file, err = os.Open(resolveJqPath(fname))
 				}
 				if err != nil {
 					return err, true

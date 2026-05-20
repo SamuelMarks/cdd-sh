@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/fs"
 	"os"
+"path/filepath"
 	"runtime"
 	"strings"
 
@@ -179,14 +180,14 @@ Usage:
 		var val []byte
 		var err error
 		if EmbeddedFS != nil {
-			cleanName := v
+			cleanName := filepath.Clean(v)
 			for len(cleanName) > 0 && cleanName[0] == '/' {
 				cleanName = cleanName[1:]
 			}
 			val, err = fs.ReadFile(EmbeddedFS, cleanName)
 		}
 		if err != nil || EmbeddedFS == nil {
-			val, err = os.ReadFile(v)
+			val, err = os.ReadFile(resolveJqPath(v))
 		}
 		if err != nil {
 			return err
@@ -225,14 +226,14 @@ Usage:
 		var src []byte
 		var err error
 		if EmbeddedFS != nil {
-			cleanName := args[0]
+			cleanName := filepath.Clean(args[0])
 			for len(cleanName) > 0 && cleanName[0] == '/' {
 				cleanName = cleanName[1:]
 			}
 			src, err = fs.ReadFile(EmbeddedFS, cleanName)
 		}
 		if err != nil || EmbeddedFS == nil {
-			src, err = os.ReadFile(args[0])
+			src, err = os.ReadFile(resolveJqPath(args[0]))
 		}
 		if err != nil {
 			return err
