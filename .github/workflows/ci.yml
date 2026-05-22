@@ -4,8 +4,7 @@ on:
   push:
     branches: [ main, master ]
     tags:
-      - 'v*'
-      - 'latest'
+      - '*'
   pull_request:
     branches: [ main, master ]
 
@@ -68,7 +67,7 @@ jobs:
           make build_wasm
 
       - name: Upload Release Assets
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: |
             bin/cdd-sh
