@@ -238,7 +238,7 @@ from_openapi)
 	if [ "$SUBCMD" != "to_docs_json" ] && [ "$SUBCMD" != "to_openapi" ]; then
 		if [ "${CDD_NO_GITHUB_ACTIONS:-0}" != "1" ]; then
 			mkdir -p "$OUT/.github/workflows"
-			printf 'name: CI\non: [push, pull_request]\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v6\n      - run: echo "Tests..."\n' >"$OUT/.github/workflows/ci.yml"
+			printf 'name: CI\non: [push, pull_request]\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - run: echo "Tests..."\n' >"$OUT/.github/workflows/ci.yml"
 		fi
 	fi
 

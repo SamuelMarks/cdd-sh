@@ -79,9 +79,8 @@ hello.sh
 missing_*.txt
 
 # Ignore specific root level test files and patches
-/test*.js
-/test*.sh
-/test*.json
+/test_*.js
+/test_*.sh
 /test_*.out
 /test_*.wasm
 /patch_*.go
@@ -89,15 +88,15 @@ missing_*.txt
 /patch_*.sh
 
 # Explicitly track tests directory and root test files to prevent accidental ignores
+!/tests/test_*.sh
 !/test_*.go
-.bin_mock/
+\n.bin_mock/\n
 
 # Throwaway patches and temporary files
 patch*.py
 fix*.py
 *.sed
-/*.jq
-*.bak
+*.jq
 dummy.txt
 prompt*.md
 temp*
