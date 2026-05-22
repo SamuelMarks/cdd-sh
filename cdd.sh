@@ -80,7 +80,7 @@ parse_global_args() {
 			export CDD_NO_INSTALLABLE="1"
 			shift 1
 			;;
-		--tests)
+		--tests | --create-composable-tests-mocks)
 			export CDD_TESTS="1"
 			shift 1
 			;;
@@ -156,7 +156,7 @@ serve_json_rpc)
 					if [ "$(echo "$json_params" | jq -r '.no_installable_package // false')" = "true" ]; then
 						opts="$opts --no-installable-package"
 					fi
-					if [ "$(echo "$json_params" | jq -r '.tests // false')" = "true" ]; then
+					if [ "$(echo "$json_params" | jq -r '.tests // .create_composable_tests_mocks // false')" = "true" ]; then
 						opts="$opts --tests"
 					fi
 
@@ -218,7 +218,7 @@ to_docs_json)
 from_openapi)
 	if [ "$#" -eq 0 ]; then usage; fi
 	SUBCMD="to_sdk"
-	if [ "$1" != "-i" ] && [ "$1" != "--input-dir" ] && [ "$1" != "-o" ] && [ "$1" != "--no-github-actions" ] && [ "$1" != "--no-installable-package" ] && [ "$1" != "--tests" ]; then
+	if [ "$1" != "-i" ] && [ "$1" != "--input-dir" ] && [ "$1" != "-o" ] && [ "$1" != "--no-github-actions" ] && [ "$1" != "--no-installable-package" ] && [ "$1" != "--tests" ] && [ "$1" != "--create-composable-tests-mocks" ]; then
 		SUBCMD="$1"
 		shift
 	fi

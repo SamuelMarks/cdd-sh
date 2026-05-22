@@ -19,13 +19,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Checkout OpenAPI Test Harness (for petstore specs)
-        uses: actions/checkout@v4
-        with:
-          repository: samuel/cdd-openapi-test-harness # Adjust if this isn't the correct upstream repo or provide the files another way
-          path: cdd-openapi-test-harness
-        continue-on-error: true # Might fail if it's a private repo without credentials
-
       - name: Fetch Petstore Specs directly
         run: |
           wget -q https://raw.githubusercontent.com/OAI/OpenAPI-Specification/main/examples/v2.0/json/petstore.json -O ../petstore.json || echo "{}" > ../petstore.json

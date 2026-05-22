@@ -28,7 +28,12 @@ handle_emit_openapi() {
 		return 1
 	fi
 	# From AST to openapi is direct as well for now
-	if [ "${CDD_EMIT_SWAGGER2:-0}" = "1" ] || echo "${file_path}" | grep -q "swagger"; then
+	is_swagger=0
+	case "${file_path}" in
+	*swagger*) is_swagger=1 ;;
+	esac
+
+	if [ "${CDD_EMIT_SWAGGER2:-0}" = "1" ] || [ "${is_swagger}" = "1" ]; then
 		jq -f "${LIBSCRIPT_ROOT_DIR}/src/openapi/openapi2swagger.jq" "${CDD_AST_PATH:-${LIBSCRIPT_ROOT_DIR}/ast.json}" >"${file_path}"
 	else
 		jq '.' "${CDD_AST_PATH:-${LIBSCRIPT_ROOT_DIR}/ast.json}" >"${file_path}"

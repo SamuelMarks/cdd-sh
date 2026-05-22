@@ -40,26 +40,10 @@ func init() {
 }
 
 func initWasi() {
-	if runtimeGOOS == "wasip1" {
-		statDot, err := os.Stat(".")
-		if err == nil {
-			entries, err := os.ReadDir("..")
-			if err == nil {
-				for _, e := range entries {
-					if !e.IsDir() {
-						continue
-					}
-					statParent, err := os.Stat("../" + e.Name())
-					if err == nil && os.SameFile(statDot, statParent) {
-						workaroundBase = "../" + e.Name()
-						break
-					}
-				}
-			}
-		}
-	}
+	// The wasip1 '.' preopen workaround has been disabled.
+	// It incorrectly matches directories in shims (like browser_wasi_shim)
+	// that return inode 0 for all directories, causing path resolution failures.
 }
-
 func getDir(ctx context.Context) (dir string) {
 	dir = "."
 	defer func() { recover() }()
@@ -134,7 +118,10 @@ func resolvePath(base, p string) string {
 		return p
 	}
 	joined := filepath.Join(base, p)
-	if workaroundBase != "" && !filepath.IsAbs(joined) && !strings.HasPrefix(joined, "..") {
+	if workaroundBase != "" && !filepath.IsAbs(joined) {
+		if strings.HasPrefix(joined, "..") {
+			return workaroundBase + "/" + joined
+		}
 		return filepath.Join(workaroundBase, joined)
 	}
 	return joined

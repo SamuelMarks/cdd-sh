@@ -23,9 +23,9 @@ handle_parse_routes() {
     /^# @callback / { callbackName = $3; method = ""; summary = ""; in_callback = 1; in_func = 0 }
     /^# @method / { if (in_callback||in_webhook) method = tolower($3) }
     /^# @description / { if (in_callback||in_webhook||in_func) summary = substr($0, 16) }
-    /^handle_callback_/ { if (in_callback) { printf "{\"name\": \"%s\", \"method\": \"%s\", \"summary\": \"%s\"}\n", callbackName, method, summary > "callbacks_temp.jsonl"; in_callback = 0 } }
+    /^handle_callback_/ { if (in_callback) { printf "CALLBACK:{\"name\": \"%s\", \"method\": \"%s\", \"summary\": \"%s\"}\n", callbackName, method, summary; in_callback = 0 } }
     /^# @webhook / { webhookName = $3; method = ""; summary = ""; in_webhook = 1; in_func = 0 }
-    /^handle_webhook_/ { if (in_webhook) { printf "{\"name\": \"%s\", \"method\": \"%s\", \"summary\": \"%s\"}\n", webhookName, method, summary > "webhooks_temp.jsonl"; in_webhook = 0 } }
+    /^handle_webhook_/ { if (in_webhook) { printf "WEBHOOK:{\"name\": \"%s\", \"method\": \"%s\", \"summary\": \"%s\"}\n", webhookName, method, summary; in_webhook = 0 } }
     /^# @function / { operationId = $3; if (operationId ~ /^auth_login_/) { in_func = 0; next }; method = ""; path = ""; summary = ""; reqBody = "false"; reqBodyType = "application/json"; param_count = 0; delete params; openapi_json = ""; extUrl = ""; extDesc = ""; in_func = 1; in_webhook = 0 }
     /^# @externalDocs / { if (in_func) { extUrl = $3; extDesc = substr($0, length($1) + length($2) + length($3) + 4); } }
     /^# @openapi_json / { if (in_func) { openapi_json = substr($0, 16); } }
@@ -51,22 +51,27 @@ handle_parse_routes() {
     /curl -s -X/ {
       if (in_func) {
         for (i=1; i<=NF; i++) { if ($i == "-X") method = tolower($(i+1)) }
-        printf "{\"path\": \"%s\", \"method\": \"%s\", \"operationId\": \"%s\", \"summary\": \"%s\", \"extUrl\": \"%s\", \"extDesc\": \"%s\"", path, method, operationId, summary, extUrl, extDesc > "ops_temp.jsonl"
-        if (openapi_json != "") { printf ", \"openapi_json\": %s", openapi_json > "ops_temp.jsonl" }
+        printf "OP:{\"path\": \"%s\", \"method\": \"%s\", \"operationId\": \"%s\", \"summary\": \"%s\", \"extUrl\": \"%s\", \"extDesc\": \"%s\"", path, method, operationId, summary, extUrl, extDesc
+        if (openapi_json != "") { printf ", \"openapi_json\": %s", openapi_json }
         if (param_count > 0) {
-          printf ", \"parameters\": [" >> "ops_temp.jsonl"
+          printf ", \"parameters\": ["
           for (i=0; i<param_count; i++) {
-            printf "{\"name\": \"%s\", \"in\": \"%s\", \"description\": \"%s\"}", params[i, "name"], params[i, "in"], params[i, "desc"] >> "ops_temp.jsonl"
-            if (i < param_count - 1) printf ", " >> "ops_temp.jsonl"
+            printf "{\"name\": \"%s\", \"in\": \"%s\", \"description\": \"%s\"}", params[i, "name"], params[i, "in"], params[i, "desc"]
+            if (i < param_count - 1) printf ", "
           }
-          printf "]" >> "ops_temp.jsonl"
+          printf "]"
         }
-        if (reqBody == "true") printf ", \"requestBody\": {\"content\": {\"%s\": {}}}", reqBodyType >> "ops_temp.jsonl"
-        printf "}\n" >> "ops_temp.jsonl"
+        if (reqBody == "true") printf ", \"requestBody\": {\"content\": {\"%s\": {}}}", reqBodyType
+        printf "}\n"
         in_func = 0
       }
     }
-  ' "${file_path}"
+  ' <"${file_path}" >all_temp.txt
+
+	awk '/^CALLBACK:/ { print substr($0, 10) }' <all_temp.txt >callbacks_temp.jsonl || true
+	awk '/^WEBHOOK:/ { print substr($0, 9) }' <all_temp.txt >webhooks_temp.jsonl || true
+	awk '/^OP:/ { print substr($0, 4) }' <all_temp.txt >ops_temp.jsonl || true
+	rm -f all_temp.txt
 
 	ast="${CDD_AST_PATH:-${LIBSCRIPT_ROOT_DIR}/ast.json}"
 	if [ ! -f "${ast}" ]; then echo '{"openapi": "3.2.0", "info": {"title": "Parsed API", "version": "0.0.1"}}' >"${ast}"; fi

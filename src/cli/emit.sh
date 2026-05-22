@@ -96,7 +96,7 @@ handle_emit_cli() {
 	} >"${output_file}.tmp"
 
 	if [ -f "${output_file}" ]; then
-		awk -v new_file="${output_file}.tmp" -f "${LIBSCRIPT_ROOT_DIR}/lib/_common/merge.awk" "${output_file}" >"${output_file}.merged"
+		awk -v new_file="${output_file}.tmp" -f "${LIBSCRIPT_ROOT_DIR}/lib/_common/merge.awk" <"${output_file}" >"${output_file}.merged"
 		mv "${output_file}.merged" "${output_file}"
 		rm -f "${output_file}.tmp"
 	else

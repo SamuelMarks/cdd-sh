@@ -21,43 +21,46 @@ handle_parse_docstrings() {
 	if [ ! -f "${file_path}" ]; then return 0; fi
 
 	awk '
-    BEGIN { op = ""; desc = ""; info_desc = ""; in_info = 0 }
-    /^# / {
-       title_ver = substr($0, 3)
-       split(title_ver, a, "(")
-       title = a[1]; gsub(/ *$/, "", title)
-       if (length(a) > 1) { ver = a[2]; gsub(/\)$/, "", ver) }
-       in_info = 1
-       next
-    }
-    /^## / {
-       if (op != "") { ops[op] = desc; desc = "" }
-       if (in_info) { in_info = 0 }
-       op = substr($0, 4)
-       next
-    }
-    /^[\*#-]/ { next }
-    /^[A-Za-z0-9]/ {
-       if (in_info) { info_desc = info_desc $0 "\n" }
-       else if (op != "") { desc = desc $0 "\n" }
-    }
-    END {
-       if (op != "") { ops[op] = desc }
-       gsub(/\n$/, "", info_desc)
-       printf "{\"title\": \"%s\", \"version\": \"%s\", \"description\": \"%s\"}\n", title, ver, info_desc > "docs_info.json"
-       
-       printf "{" > "docs_ops.json"
-       first=1
-       for (o in ops) {
-          gsub(/\n$/, "", ops[o])
-          if (!first) printf ", " > "docs_ops.json"
-          first=0
-          printf "\"%s\": \"%s\"", o, ops[o] > "docs_ops.json"
-       }
-       printf "}\n" > "docs_ops.json"
-    }
-  ' "${file_path}"
+	BEGIN { op = ""; desc = ""; info_desc = ""; in_info = 0 }
+	/^# / {
+	title_ver = substr($0, 3)
+	split(title_ver, a, "(")
+	title = a[1]; gsub(/ *$/, "", title)
+	if (length(a) > 1) { ver = a[2]; gsub(/\)$/, "", ver) }
+	in_info = 1
+	next
+	}
+	/^## / {
+	if (op != "") { ops[op] = desc; desc = "" }
+	if (in_info) { in_info = 0 }
+	op = substr($0, 4)
+	next
+	}
+	/^[\*#-]/ { next }
+	/^[A-Za-z0-9]/ {
+	if (in_info) { info_desc = info_desc $0 "\n" }
+	else if (op != "") { desc = desc $0 "\n" }
+	}
+	END {
+	if (op != "") { ops[op] = desc }
+	gsub(/\n$/, "", info_desc)
+	printf "INFO:{\"title\": \"%s\", \"version\": \"%s\", \"description\": \"%s\"}\n", title, ver, info_desc
 
+	printf "OPS:{"
+	first=1
+	for (o in ops) {
+	  gsub(/\n$/, "", ops[o])
+	  if (!first) printf ", "
+	  first=0
+	  printf "\"%s\": \"%s\"", o, ops[o]
+	}
+	printf "}\n"
+	}
+	' <"${file_path}" >all_temp.txt
+
+	awk '/^INFO:/ { print substr($0, 6) }' <all_temp.txt >docs_info.json || true
+	awk '/^OPS:/ { print substr($0, 5) }' <all_temp.txt >docs_ops.json || true
+	rm -f all_temp.txt
 	if [ -f "docs_info.json" ]; then
 		jq --slurpfile info docs_info.json --slurpfile ops docs_ops.json '
       .info = ((.info // {}) * $info[0]) |

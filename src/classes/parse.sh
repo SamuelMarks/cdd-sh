@@ -28,51 +28,50 @@ handle_parse_classes() {
 	if [ ! -f "${ast}" ]; then echo "{}" >"${ast}"; fi
 
 	awk '
-    function finish_class() {
-      if (class_name == "") return
-      printf "{\"name\": \"%s\", \"description\": \"%s\", \"required\": \"%s\", \"properties\": {", class_name, desc, req > "classes_temp.jsonl"
-      for (i=0; i<prop_count; i++) {
-        printf "\"%s\": {\"type\": \"%s\"}", props[i, "name"], props[i, "type"] >> "classes_temp.jsonl"
-        if (i < prop_count - 1) printf ", " >> "classes_temp.jsonl"
-      }
-      printf "}}\n" >> "classes_temp.jsonl"
-    }
-    BEGIN { in_class = 0; class_name = ""; desc = ""; req = ""; prop_count = 0 }
-    /^# @class / {
-      if (in_class) {
-        finish_class()
-      }
-      class_name = $3
-      desc = ""
-      req = ""
-      delete props
-      prop_count = 0
-      in_class = 1
-    }
-    /^# @description / {
-      if (in_class) desc = substr($0, 16)
-    }
-    /^# @property / {
-      if (in_class) {
-        rest = substr($0, 13)
-        split(rest, p, ":")
-        gsub(/^[ \t]+|[ \t]+$/, "", p[1])
-        gsub(/^[ \t]+|[ \t]+$/, "", p[2])
-        props[prop_count, "name"] = p[1]
-        props[prop_count, "type"] = p[2]
-        prop_count++
-      }
-    }
-    /^# @required / {
-      if (in_class) req = substr($0, 13)
-    }
-    END {
-      if (in_class) {
-        finish_class()
-      }
-    }
-  ' "${file_path}"
-
+	function finish_class() {
+	if (class_name == "") return
+	printf "{\"name\": \"%s\", \"description\": \"%s\", \"required\": \"%s\", \"properties\": {", class_name, desc, req
+	for (i=0; i<prop_count; i++) {
+	printf "\"%s\": {\"type\": \"%s\"}", props[i, "name"], props[i, "type"]
+	if (i < prop_count - 1) printf ", "
+	}
+	printf "}}\n"
+	}
+	BEGIN { in_class = 0; class_name = ""; desc = ""; req = ""; prop_count = 0 }
+	/^# @class / {
+	if (in_class) {
+	finish_class()
+	}
+	class_name = $3
+	desc = ""
+	req = ""
+	delete props
+	prop_count = 0
+	in_class = 1
+	}
+	/^# @description / {
+	if (in_class) desc = substr($0, 16)
+	}
+	/^# @property / {
+	if (in_class) {
+	rest = substr($0, 13)
+	split(rest, p, ":")
+	gsub(/^[ \t]+|[ \t]+$/, "", p[1])
+	gsub(/^[ \t]+|[ \t]+$/, "", p[2])
+	props[prop_count, "name"] = p[1]
+	props[prop_count, "type"] = p[2]
+	prop_count++
+	}
+	}
+	/^# @required / {
+	if (in_class) req = substr($0, 13)
+	}
+	END {
+	if (in_class) {
+	finish_class()
+	}
+	}
+	' <"${file_path}" >classes_temp.jsonl
 	if [ -f "classes_temp.jsonl" ]; then
 		jq -s '
       reduce .[] as $item ({};

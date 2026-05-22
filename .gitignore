@@ -113,3 +113,10 @@ gradle.properties
 node-client/
 temp-sh-*
 temp-petstore.json
+
+cdd-sh-native
+mocks.sh
+out_dir/
+tmp_out*/
+tmp_sdk_test*/
+vendor/

@@ -35,26 +35,22 @@ handle_emit_tests() {
 		printf "# shellcheck disable=SC3028,SC2034\n"
 		printf 'DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")" && pwd)"\n'
 
-		cat <<'EOF'
-		BASE_URL="${BASE_URL:-http://localhost:8080/v2}"
-		export BASE_URL
-		export API_KEY="special-key"
-		export OAUTH_TOKEN="special-key"
-		export BASIC_AUTH="user:pass"
-
-# curl is a wrapper around the system curl command.
-curl() {
-  out=$(command curl -s -w "\n%{http_code}" "$@" || true)
-  status=$(printf "%s\n" "$out" | tail -n1)
-  body=$(printf "%s\n" "$out" | sed '$d')
-  printf "%s\n" "$body"
-  if [ "$status" -lt 200 ] || [ "$status" -ge 400 ]; then
-    echo "HTTP error: $status" >&2
-    exit 1
-  fi
-}
-EOF
-
+		printf 'BASE_URL="${BASE_URL:-http://localhost:8080/v2}"\n'
+		printf 'export BASE_URL\n'
+		printf 'export API_KEY="special-key"\n'
+		printf 'export OAUTH_TOKEN="special-key"\n'
+		printf 'export BASIC_AUTH="user:pass"\n\n'
+		printf '# curl is a wrapper around the system curl command.\n'
+		printf 'curl() {\n'
+		printf '  out=$(command curl -s -w "\\n%%{http_code}" "$@" || true)\n'
+		printf '  status=$(printf "%%s\\n" "$out" | tail -n1)\n'
+		printf "  body=\$(printf \"%%s\\\\n\" \"\$out\" | sed '\$d')\n"
+		printf '  printf "%%s\\n" "$body"\n'
+		printf '  if [ "$status" -lt 200 ] || [ "$status" -ge 400 ]; then\n'
+		printf '    echo "HTTP error: $status" >&2\n'
+		printf '    exit 1\n'
+		printf '  fi\n'
+		printf '}\n'
 		printf "# shellcheck disable=SC1090,SC1091,SC2034\n"
 		printf ". \"\${DIR}/%s\"\n\n" "${routes_source_path}"
 
