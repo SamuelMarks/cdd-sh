@@ -43,6 +43,7 @@ func initWasi() {
 	// The wasip1 '.' preopen workaround has been disabled.
 	// It incorrectly matches directories in shims (like browser_wasi_shim)
 	// that return inode 0 for all directories, causing path resolution failures.
+	_ = runtimeGOOS
 }
 func getDir(ctx context.Context) (dir string) {
 	dir = "."
