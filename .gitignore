@@ -47,7 +47,6 @@ commit_msg*.txt
 debian.Dockerfile
 docs.json
 generate_files.py
-make.bat
 spec.json
 trace.sh
 
