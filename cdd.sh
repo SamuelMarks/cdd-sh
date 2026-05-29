@@ -4,16 +4,23 @@ set -feu
 VERSION="0.0.1"
 
 # usage prints the CLI help message.
-usage() {
-	printf "Usage: cdd-sh <command> [args]\n\n"
-	printf "Commands:\n"
-	printf "  to_openapi -i <code_file_or_dir> -o <spec.json>\n"
-	printf "  serve_json_rpc --port <port> --listen <ip>\n"
-	printf "  to_docs_json [--no-imports] [--no-wrapping] -i <spec.json> -o <docs.json>\n"
-	printf "  from_openapi [subcmd] -i <spec.json> -o <target_dir> [--no-github-actions] [--no-installable-package] [--tests]\n"
-	printf "  from_openapi [subcmd] --input-dir <specs_dir> -o <target_dir> [--no-github-actions] [--no-installable-package] [--tests]\n"
-	printf "  --help\n"
-	printf "  --version\n\n"
+print_help() {
+	printf "cdd-sh CLI\n"
+	printf "Usage:\n  cdd-sh [subcommand] [options]\n\n"
+	printf "Subcommands:\n"
+	printf "  from_openapi    Generate code from an OpenAPI specification.\n"
+	printf "  to_openapi      Generate an OpenAPI specification from source code.\n"
+	printf "  to_docs_json    Generate JSON documentation with code snippets for an OpenAPI specification.\n"
+	printf "  serve_json_rpc  Expose CLI interface as a JSON-RPC server.\n\n"
+	printf "Options:\n"
+	printf "  --help, -h      Show this help message\n"
+	printf "  --version, -v   Show version information\n\n"
+	printf "Examples:\n"
+	printf "  cdd-sh to_openapi -i <code_file_or_dir> -o <spec.json>\n"
+	printf "  cdd-sh serve_json_rpc [-p|--port <port>] [-l|--listen <ip>]\n"
+	printf "  cdd-sh to_docs_json [--no-imports] [--no-wrapping] -i <spec.json> -o <docs.json>\n"
+	printf "  cdd-sh from_openapi [subcmd] -i <spec.json> -o <target_dir> [--no-github-actions] [--no-installable-package] [--tests]\n"
+	printf "  cdd-sh from_openapi [subcmd] --input-dir <specs_dir> -o <target_dir> [--no-github-actions] [--no-installable-package] [--tests]\n\n"
 	printf "Note: All options can be passed via environment variables (e.g., CDD_PORT=8082 cdd-sh serve_json_rpc)\n"
 	exit 1
 }
@@ -40,20 +47,16 @@ export CDD_AST_PATH="${CDD_AST_PATH:-ast.json}"
 parse_global_args() {
 	while [ $# -gt 0 ]; do
 		case "$1" in
-		-f)
-			export CDD_FILE="$2"
+		-i | --input)
+			export CDD_INPUT="$2"
 			shift 2
 			;;
-		-o)
-			export CDD_OUT="$2"
-			shift 2
-			;;
-		-i)
-			export CDD_IN="$2"
+		-o | --output)
+			export CDD_OUTPUT="$2"
 			shift 2
 			;;
 		--input-dir)
-			export CDD_IN_DIR="$2"
+			export CDD_INPUT_DIR="$2"
 			shift 2
 			;;
 		--port)
@@ -80,7 +83,7 @@ parse_global_args() {
 			export CDD_NO_INSTALLABLE="1"
 			shift 1
 			;;
-		--tests | --create-composable-tests-mocks)
+		--tests)
 			export CDD_TESTS="1"
 			shift 1
 			;;
@@ -94,8 +97,8 @@ parse_global_args() {
 
 # ensure_output_dir creates the output directory if it does not exist.
 ensure_output_dir() {
-	if [ -z "${CDD_OUT:-}" ]; then
-		CDD_OUT="$(pwd)"
+	if [ -z "${CDD_OUTPUT:-}" ]; then
+		CDD_OUTPUT="$(pwd)"
 	fi
 }
 
@@ -194,8 +197,8 @@ serve_json_rpc)
 	;;
 to_openapi)
 	parse_global_args "$@"
-	FILE="${CDD_IN:-${CDD_FILE:-}}"
-	OUT="${CDD_OUT:-spec.json}"
+	FILE="${CDD_INPUT:-}"
+	OUT="${CDD_OUTPUT:-spec.json}"
 	if [ -z "$FILE" ]; then
 		echo "Error: -i <file> required" >&2
 		exit 1
@@ -218,15 +221,15 @@ to_docs_json)
 from_openapi)
 	if [ "$#" -eq 0 ]; then usage; fi
 	SUBCMD="to_sdk"
-	if [ "$1" != "-i" ] && [ "$1" != "--input-dir" ] && [ "$1" != "-o" ] && [ "$1" != "--no-github-actions" ] && [ "$1" != "--no-installable-package" ] && [ "$1" != "--tests" ] && [ "$1" != "--create-composable-tests-mocks" ]; then
+	if [ "$1" != "-i" ] && [ "$1" != "--input-dir" ] && [ "$1" != "-o" ] && [ "$1" != "--no-github-actions" ] && [ "$1" != "--no-installable-package" ] && [ "$1" != "--tests" ]; then
 		SUBCMD="$1"
 		shift
 	fi
 	parse_global_args "$@"
 	ensure_output_dir
-	IN="${CDD_IN:-}"
-	IN_DIR="${CDD_IN_DIR:-}"
-	OUT="${CDD_OUT}"
+	IN="${CDD_INPUT:-}"
+	IN_DIR="${CDD_INPUT_DIR:-}"
+	OUT="${CDD_OUTPUT}"
 
 	if [ -z "$IN" ] && [ -z "$IN_DIR" ]; then
 		echo "Error: -i or --input-dir required" >&2

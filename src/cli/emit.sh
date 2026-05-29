@@ -52,7 +52,7 @@ handle_emit_cli() {
       . as $root |
       if .paths then
       .paths | to_entries[] | .key as $path | .value | to_entries[] | select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers") | .key as $method | .value |
-      (if .operationId then .operationId else "\($method | ascii_upcase)_\($path | gsub("/"); "_") | gsub("[{}]"; ""))" end) as $opId |
+      (if .operationId then (.operationId | gsub("([a-z])([A-Z])"; "\(.captures[0].string)_\(.captures[1].string)") | ascii_downcase) else "\($method | ascii_upcase)_\($path | gsub("/"); "_") | gsub("[{}]"; ""))" end) as $opId |
       (if .summary == null then "Call \($method | ascii_upcase) \($path)" else .summary end) as $desc |
       "  echo \"  \($opId) - \($desc)\""
       else empty end
@@ -74,7 +74,7 @@ handle_emit_cli() {
       . as $root |
       if .paths then
       .paths | to_entries[] | .key as $path | .value | to_entries[] | select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers") | .key as $method | .value |
-      (if .operationId then .operationId else "\($method | ascii_upcase)_\($path | gsub("/"); "_") | gsub("[{}]"; ""))" end) as $opId |
+      (if .operationId then (.operationId | gsub("([a-z])([A-Z])"; "\(.captures[0].string)_\(.captures[1].string)") | ascii_downcase) else "\($method | ascii_upcase)_\($path | gsub("/"); "_") | gsub("[{}]"; ""))" end) as $opId |
       ((.parameters // []) + ($root.paths[$path].parameters // []) | map(if ."$ref" then ($root.components.parameters[."$ref" | sub("^#/components/parameters/"; "")] // .) else . end)) as $params |
       "  \($opId))\n" +
       "    while [ \$# -gt 0 ]; do\n" +

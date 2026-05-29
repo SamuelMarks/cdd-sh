@@ -9,7 +9,7 @@
 - `from_openapi`: Target code generation (SDK, Server)
   - Targets: `to_sdk`, `to_sdk_cli`, `to_server`
   - Required: `-i <spec.json>` or `--input-dir <dir>`
-  - Optional: `-o <output_dir>`, `--no-github-actions`, `--no-installable-package`, `--create-composable-tests-mocks`
+  - Optional: `-o <output_dir>`, `--no-github-actions`, `--no-installable-package`, `--tests`
 - `to_openapi`: Reverse-engineer source code to OpenAPI
   - Options: `-f <code_file.sh>`, `-o <out.json>`
 - `to_docs_json`: Emit documentation data structure for rendering API catalogs.
@@ -20,8 +20,6 @@
 All CLI options can be configured via Environment variables.
 - `CDD_PORT`
 - `CDD_LISTEN`
-- `CDD_INPUT_FILE`
+- `CDD_INPUT`
 - `CDD_INPUT_DIR`
-- `CDD_OUT_DIR`
-- `CDD_CODE_FILE`
-- `CDD_OUT_FILE`
+- `CDD_OUTPUT`

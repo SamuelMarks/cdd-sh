@@ -21,9 +21,9 @@ The CLI—at a minimum—has:
 - `cdd-sh from_openapi to_sdk_cli -i spec.json`
 - `cdd-sh from_openapi to_sdk -i spec.json`
 - `cdd-sh from_openapi to_server -i spec.json`
-- `cdd-sh to_openapi -f path/to/code`
+- `cdd-sh to_openapi -i path/to/code`
 - `cdd-sh to_docs_json --no-imports --no-wrapping -i spec.json`
-- `cdd-sh serve_json_rpc --port 8080 --listen 0.0.0.0`
+- `cdd-sh serve_json_rpc -p 8080 -l 0.0.0.0`
 
 ## SDK Example
 
