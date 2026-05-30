@@ -1,4 +1,6 @@
 #!/bin/sh
+# shellcheck disable=SC1091
+
 set -feu
 
 VERSION="0.0.1"
@@ -116,10 +118,11 @@ serve_json_rpc)
 	trap "rm -f \"$fifo\"" EXIT INT TERM
 
 	while true; do
+		# shellcheck disable=SC2094
 		{
 			read -r line || true
 			line=$(echo "$line" | tr -d '\r\n')
-			if [ -z "$line" ]; then continue; fi
+			if [ -z "$line" ]; then exit 0; fi
 
 			# Read headers
 			content_length=0
@@ -163,6 +166,7 @@ serve_json_rpc)
 						opts="$opts --tests"
 					fi
 
+					# shellcheck disable=SC2086
 					out=$(./bin/cdd-sh from_openapi "$subcmd_val" -i "$i_val" -o "$o_val" $opts 2>&1 || true)
 					;;
 				to_docs_json)
@@ -182,7 +186,7 @@ serve_json_rpc)
 
 				echo "HTTP/1.1 200 OK"
 				echo "Content-Type: application/json"
-				echo "Content-Length: $(echo "$response_json" | wc -c)"
+				echo "Content-Length: ${#response_json}"
 				echo ""
 				echo "$response_json"
 			else
@@ -283,6 +287,7 @@ from_openapi)
 			. "${LIBSCRIPT_ROOT_DIR:-.}/src/openapi/parse.sh"
 			handle_parse_openapi "$IN"
 
+			# shellcheck disable=SC1091
 			. "${LIBSCRIPT_ROOT_DIR:-.}/src/server/emit.sh"
 			handle_emit_server "$OUT/src/server.sh" "server"
 		fi

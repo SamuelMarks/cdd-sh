@@ -4,6 +4,7 @@ cd "$(dirname "$0")/.."
 rm -f ast.json
 ./bin/cdd-sh parse openapi tests/test_default.json
 ./bin/cdd-sh emit classes tests/test_default_out.sh
+# shellcheck disable=SC1091
 . tests/test_default_out.sh
 
 payload='{}'

@@ -5,6 +5,7 @@ rm -f ast.json
 ./bin/cdd-sh parse openapi tests/test_array_refs.json
 ./bin/cdd-sh emit classes tests/emitted_classes_array.sh
 
+# shellcheck disable=SC1091
 . tests/emitted_classes_array.sh
 payload='{"books": [{"title": "1984"}, {"title": "Brave New World"}]}'
 if validate_Library "$payload"; then echo "Valid library passed!"; else echo "FAIL valid library"; fi

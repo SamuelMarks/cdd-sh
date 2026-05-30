@@ -1,3 +1,6 @@
+#!/bin/sh
+# shellcheck disable=SC1091
+
 . ./emitted_classes_array.sh
 payload='{"books": [{"title": "1984"}, {"title": "Brave New World"}]}'
 if validate_Library "$payload"; then echo "Valid library passed!"; else echo "FAIL valid library"; fi

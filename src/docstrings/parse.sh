@@ -1,4 +1,6 @@
 #!/bin/sh
+# shellcheck disable=SC3054,SC3040,SC2059,SC2016
+
 set -feu
 if [ "${SCRIPT_NAME-}" ]; then this_file="${SCRIPT_NAME}"; elif [ "${BASH_SOURCE-}" ]; then
 	this_file="${BASH_SOURCE[0]}"

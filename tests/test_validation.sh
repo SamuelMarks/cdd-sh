@@ -5,6 +5,7 @@ rm -f ast.json
 ./bin/cdd-sh parse openapi tests/test_validation.json
 ./bin/cdd-sh emit classes tests/test_validation_out.sh
 cat tests/test_validation_out.sh
+# shellcheck disable=SC1091
 . tests/test_validation_out.sh
 
 payload='{"age": 20, "username": "bob123", "tags": ["a", "b"]}'

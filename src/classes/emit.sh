@@ -1,4 +1,6 @@
 #!/bin/sh
+# shellcheck disable=SC3054,SC3040,SC2059,SC2016
+
 set -feu
 # shellcheck disable=SC2296,SC3028,SC3040,SC3054,SC3043,SC2129
 if [ "${SCRIPT_NAME-}" ]; then
@@ -28,7 +30,7 @@ handle_emit_classes() {
 
 	{
 		printf "#!/bin/sh\n# Auto-generated Data Classes\nset -eu\n\n"
-		printf "_get_prop() {\n  printf '%%s' \"\$1\" | jq -c \".\\\\\"\$2\\\\\" // empty\"\n}\n\n"
+		printf "# get property\n_get_prop() {\n  printf '%%s' \"\$1\" | jq -c \".\\\\\"\$2\\\\\" // empty\"\n}\n\n"
 		jq -r -f "${LIBSCRIPT_ROOT_DIR}/src/classes/emit.jq" "${ast}"
 	} >"${file_path}.tmp"
 

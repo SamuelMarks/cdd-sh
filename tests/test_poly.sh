@@ -4,6 +4,7 @@ cd "$(dirname "$0")/.."
 rm -f ast.json
 ./bin/cdd-sh parse openapi tests/test_poly.json
 ./bin/cdd-sh emit classes tests/test_poly_out.sh
+# shellcheck disable=SC1091
 . tests/test_poly_out.sh
 
 payload='{"animal": {"bark": true}}'

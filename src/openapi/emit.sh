@@ -1,4 +1,6 @@
 #!/bin/sh
+# shellcheck disable=SC3054,SC3040,SC2059,SC2016
+
 set -feu
 # shellcheck disable=SC2296,SC3028,SC3040,SC3054,SC3043,SC2129
 if [ "${SCRIPT_NAME-}" ]; then

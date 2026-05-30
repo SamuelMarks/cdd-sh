@@ -4,6 +4,7 @@ cd "$(dirname "$0")/.."
 rm -f ast.json
 ./bin/cdd-sh parse openapi tests/test_enum_format.json
 ./bin/cdd-sh emit classes tests/test_enum_format_out.sh
+# shellcheck disable=SC1091
 . tests/test_enum_format_out.sh
 
 payload='{"email": "test@example.com", "status": "active"}'

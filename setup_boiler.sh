@@ -1,4 +1,6 @@
 #!/bin/sh
+# shellcheck disable=SC2016,SC2129
+
 set -eu
 
 PRELUDE='#!/bin/sh

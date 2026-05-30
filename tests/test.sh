@@ -4,7 +4,8 @@ set -eu
 
 # We need absolute paths or relative from ROOT
 DIR=$(CDPATH='' cd "$(dirname -- "$0")" && pwd)
-export LIBSCRIPT_ROOT_DIR="$(dirname "${DIR}")"
+LIBSCRIPT_ROOT_DIR="$(dirname "${DIR}")"
+export LIBSCRIPT_ROOT_DIR
 
 # 1. Start clean
 rm -f ast.json tests/emitted_*.sh tests/emitted_*.json tests/emitted_*.txt
@@ -171,25 +172,19 @@ echo "Testing Array Validation Emit..."
 ./bin/cdd-sh emit classes tests/emitted_classes_array.sh
 
 echo "Testing Constraints Validation Emit..."
-tests/test_validation.sh >/dev/null
-if [ $? -eq 0 ]; then echo "All constraints valid!"; else exit 1; fi
+if tests/test_validation.sh >/dev/null; then echo "All constraints valid!"; else exit 1; fi
 
 echo "Testing Polymorphism Emit..."
-tests/test_poly.sh >/dev/null
-if [ $? -eq 0 ]; then echo "All polymorphism constraints valid!"; else exit 1; fi
+if tests/test_poly.sh >/dev/null; then echo "All polymorphism constraints valid!"; else exit 1; fi
 
 echo "Testing Enum & Format Emit..."
-tests/test_enum_format.sh >/dev/null
-if [ $? -eq 0 ]; then echo "All enum & format constraints valid!"; else exit 1; fi
+if tests/test_enum_format.sh >/dev/null; then echo "All enum & format constraints valid!"; else exit 1; fi
 
 echo "Testing Default Values Emit..."
-tests/test_default.sh >/dev/null
-if [ $? -eq 0 ]; then echo "All default constraints valid!"; else exit 1; fi
+if tests/test_default.sh >/dev/null; then echo "All default constraints valid!"; else exit 1; fi
 
 echo "Testing Array Validation Emit..."
-tests/test_array_validation.sh >/dev/null
-if [ $? -eq 0 ]; then echo "All array constraints valid!"; else exit 1; fi
+if tests/test_array_validation.sh >/dev/null; then echo "All array constraints valid!"; else exit 1; fi
 
 echo "Testing Advanced Validation Emit..."
-tests/test_advanced_validation.sh >/dev/null
-if [ $? -eq 0 ]; then echo "All advanced constraints valid!"; else exit 1; fi
+if tests/test_advanced_validation.sh >/dev/null; then echo "All advanced constraints valid!"; else exit 1; fi

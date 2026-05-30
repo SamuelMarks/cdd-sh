@@ -1,4 +1,6 @@
 #!/bin/sh
+# shellcheck disable=SC3054,SC3040,SC2059,SC2016
+
 set -feu
 # shellcheck disable=SC2296,SC3028,SC3040,SC3054,SC3043,SC2129
 if [ "${SCRIPT_NAME-}" ]; then
@@ -119,7 +121,7 @@ handle_emit_tests() {
         ] | sort_by(if .method == "post" then 1 elif .method == "put" then 2 elif .method == "get" then 3 else 4 end) as $ops |
         
         ([ $ops[] | 
-          "test_\(.id)() {\n" +
+          "# test \(.id)\ntest_\(.id)() {\n" +
           "  echo \"Testing \(.id)\"\n" +
           "  out=$(\(.id) \(.args | join(" ")))\n" +
           "  if [ -n \"$out\" ]; then\n" +
@@ -127,7 +129,7 @@ handle_emit_tests() {
           "  fi\n" +
           "}\n"
         ] | join("\n")) +
-        "\nrun_all_tests() {\n  touch test_string\n" +
+        "\n# run all tests\nrun_all_tests() {\n  touch test_string\n" +
         ([ $ops[] | "  test_\(.id)" ] | join("\n")) +
         "\n}\n\n" +
         "if ! (return 0 2>/dev/null); then\n  run_all_tests \"$@\"\nfi\n"

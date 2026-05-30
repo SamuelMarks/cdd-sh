@@ -5,6 +5,7 @@ cd "$(dirname "$0")/.."
 ./bin/cdd-sh from_openapi -i tests/test_advanced.json --no-github-actions --no-installable-package -o ./tmp_out
 ./bin/cdd-sh emit classes tests/test_advanced_out.sh
 
+# shellcheck disable=SC1091
 . tests/test_advanced_out.sh
 
 echo "Testing BasePet"
