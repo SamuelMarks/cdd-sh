@@ -271,6 +271,11 @@ from_openapi)
 			. "${LIBSCRIPT_ROOT_DIR:-.}/src/classes/emit.sh"
 			handle_emit_classes "$OUT/src/classes.sh"
 
+			if [ -f "${LIBSCRIPT_ROOT_DIR:-.}/src/sdk/emit.sh" ]; then
+				. "${LIBSCRIPT_ROOT_DIR:-.}/src/sdk/emit.sh"
+				handle_emit_sdk "$OUT/src/sdk.sh"
+			fi
+
 			if [ "${CDD_TESTS:-0}" = "1" ]; then
 				mkdir -p "$OUT/tests" "$OUT/mocks"
 				. "${LIBSCRIPT_ROOT_DIR:-.}/src/tests/emit.sh"

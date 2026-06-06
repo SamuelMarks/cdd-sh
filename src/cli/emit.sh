@@ -54,7 +54,7 @@ handle_emit_cli() {
       . as $root |
       if .paths then
       .paths | to_entries[] | .key as $path | .value | to_entries[] | select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers") | .key as $method | .value |
-      (if .operationId then (.operationId | gsub("([a-z])([A-Z])"; "\(.captures[0].string)_\(.captures[1].string)") | ascii_downcase) else "\($method | ascii_upcase)_\($path | gsub("/"); "_") | gsub("[{}]"; ""))" end) as $opId |
+      (if .operationId then (.operationId | gsub("([a-z])([A-Z])"; "\(.captures[0].string)_\(.captures[1].string)") | ascii_downcase) else "\($method | ascii_upcase)_\($path | gsub("/"; "_") | gsub("[{}]"; ""))" end) as $opId |
       (if .summary == null then "Call \($method | ascii_upcase) \($path)" else .summary end) as $desc |
       "  echo \"  \($opId) - \($desc)\""
       else empty end
@@ -72,21 +72,92 @@ handle_emit_cli() {
 		printf "[ -z \"\$CMD\" ] && usage && exit 1\n"
 		printf "shift\n"
 		printf "case \"\$CMD\" in\n"
+		cat <<'EOF'
+  mcp)
+    while read -r line || [ -n "$line" ]; do
+      if echo "$line" | grep -qi "^Content-Length:"; then
+        read -r empty_line
+        content_length=$(echo "$line" | awk '{print $2}' | tr -d '\r\n')
+        line=$(dd bs=1 count="$content_length" 2>/dev/null)
+      elif echo "$line" | grep -qi "^[A-Za-z-]\+: "; then
+        continue
+      elif [ -z "$(echo "$line" | tr -d '\r\n')" ]; then
+        continue
+      fi
+      method=$(echo "$line" | jq -r '.method // empty')
+      id=$(echo "$line" | jq -r '.id // null')
+      if [ "$method" = "initialize" ]; then
+        echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":\"$TITLE\",\"version\":\"$VERSION\"}}}"
+      elif [ "$method" = "tools/list" ]; then
+EOF
+
+		# Generate the static JSON string for tools/list
+		tools_json=$(jq -c '
+		  if .paths then
+		    [
+		      .paths | to_entries[] | .key as $path | .value | to_entries[] | select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers") | .key as $method | .value |
+		      (if .operationId then (.operationId | gsub("([a-z])([A-Z])"; "\(.captures[0].string)_\(.captures[1].string)") | ascii_downcase) else "\($method | ascii_upcase)_\($path | gsub("/"; "_") | gsub("[{}]"; ""))" end) as $opId |
+		      {
+		        name: $opId,
+		        description: (.summary // "Call \($method) \($path)"),
+		        inputSchema: {
+		          type: "object",
+		          properties: (
+		            ((.parameters // []) | map({(.name): {type: (.schema.type // "string")}})) | add // {}
+		          ),
+		          required: (
+		            ((.parameters // []) | map(select(.required == true) | .name)) // []
+		          )
+		        }
+		      }
+		    ]
+		  else
+		    []
+		  end
+		' "${ast}")
+
+		cat <<EOF
+        tools_json='$(echo "$tools_json" | sed "s/'/'\\\\''/g")'
+        echo "{\"jsonrpc\":\"2.0\",\"id\":\$id,\"result\":{\"tools\":\$tools_json}}"
+      elif [ "\$method" = "tools/call" ]; then
+        tool_name=\$(echo "\$line" | jq -r '.params.name')
+        args=\$(echo "\$line" | jq -c '.params.arguments // {}')
+        
+        eval_args=\$(echo "\$args" | jq -r 'to_entries | map("--\(.key) '\''\(.value)'\''") | join(" ")')
+        
+        # We capture the exit status
+        set +e
+        res=\$(eval "\$0 \$tool_name \$eval_args" 2>&1)
+        exit_code=\$?
+        set -e
+        
+        res_escaped=\$(printf "%s" "\$res" | jq -R -s '.')
+        if [ "\$exit_code" -ne 0 ]; then
+          printf '{"jsonrpc":"2.0","id":%s,"result":{"isError":true,"content":[{"type":"text","text":%s}]}}\n' "\$id" "\$res_escaped"
+        else
+          printf '{"jsonrpc":"2.0","id":%s,"result":{"isError":false,"content":[{"type":"text","text":%s}]}}\n' "\$id" "\$res_escaped"
+        fi
+      else
+        echo "{\"jsonrpc\":\"2.0\",\"id\":\$id,\"error\":{\"code\":-32601,\"message\":\"Method not found\"}}"
+      fi
+    done
+    ;;
+EOF
 		jq -r '
       . as $root |
       if .paths then
       .paths | to_entries[] | .key as $path | .value | to_entries[] | select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers") | .key as $method | .value |
-      (if .operationId then (.operationId | gsub("([a-z])([A-Z])"; "\(.captures[0].string)_\(.captures[1].string)") | ascii_downcase) else "\($method | ascii_upcase)_\($path | gsub("/"); "_") | gsub("[{}]"; ""))" end) as $opId |
+      (if .operationId then (.operationId | gsub("([a-z])([A-Z])"; "\(.captures[0].string)_\(.captures[1].string)") | ascii_downcase) else "\($method | ascii_upcase)_\($path | gsub("/"; "_") | gsub("[{}]"; ""))" end) as $opId |
       ((.parameters // []) + ($root.paths[$path].parameters // []) | map(if ."$ref" then ($root.components.parameters[."$ref" | sub("^#/components/parameters/"; "")] // .) else . end)) as $params |
       "  \($opId))\n" +
-      "    while [ \$# -gt 0 ]; do\n" +
-      "      case \"\$1\" in\n" +
+      "    while [ $# -gt 0 ]; do\n" +
+      "      case \"$1\" in\n" +
       ([
         $params[] |
-        "        --\(.name)) export \(.name | gsub("-"; "_"))=\"\$2\"; shift 2;;"
+        "        --\(.name)) export \(.name | gsub("-"; "_"))=\"$2\"; shift 2;;"
       ] | join("\n")) +
-      (if .requestBody then "\n        --body) export requestBody=\"\$2\"; shift 2;;" else "" end) +
-      "\n        *) echo \"Unknown flag \$1\"; exit 1;;\n" +
+      (if .requestBody then "\n        --body) export requestBody=\"$2\"; shift 2;;" else "" end) +
+      "\n        *) echo \"Unknown flag $1\"; exit 1;;\n" +
       "      esac\n" +
       "    done\n" +
       "    echo \"Executing \($opId)...\"\n" +
