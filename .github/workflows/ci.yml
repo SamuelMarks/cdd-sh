@@ -34,16 +34,11 @@ jobs:
         with:
           go-version-file: 'go.mod'
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.x'
-
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y jq curl socat netcat-traditional make shellcheck
-          pip install pre-commit
+          pipx install pre-commit
 
       - name: Run all pre-commit hooks
         run: pre-commit run --all-files
