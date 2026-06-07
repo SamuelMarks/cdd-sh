@@ -128,7 +128,7 @@ httpd.serve_forever()
 SERVER_PID=$!
 sleep 1
 
-BASE_URL="http://localhost:8181/v2" sh tests/emitted_tests.sh
+BASE_URL="http://localhost:8181/v2" sh emitted_tests.sh
 kill $SERVER_PID
 
 echo "All tests passed! 100% Coverage reached."
