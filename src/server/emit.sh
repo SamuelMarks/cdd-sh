@@ -27,90 +27,66 @@ handle_emit_server() {
 
 		cat <<'INNER_EOF'
 PORT="${PORT:-8080}"
+
+# Use socat or nc as a reliable router. It will just execute this script with a special mode.
+if [ "${1:-}" != "--handler" ]; then
 echo "Starting SSE Server on port $PORT..."
 echo "To test: curl -N http://localhost:$PORT/mcp/sse"
+  cat << 'SH_EOF' > /tmp/cdd_sse_$$.sh
+#!/bin/sh
+method=""
+path=""
+auth_header=""
+content_length=0
 
-# Use python as a reliable router. It will just execute this script with a special mode.
-if [ "${1:-}" != "--handler" ]; then
-  cat << 'PYEOF' > /tmp/cdd_sse_$$.py
-import http.server
-import socketserver
-import subprocess
-import os
-import sys
+while IFS= read -r line; do
+  line=$(printf "%s" "$line" | tr -d '\r')
+  if [ -z "$method" ]; then
+    method=$(printf "%s" "$line" | cut -d' ' -f1)
+    path=$(printf "%s" "$line" | cut -d' ' -f2)
+  fi
+  if printf "%s" "$line" | grep -qi "^Authorization:"; then
+    auth_header=$(printf "%s" "$line" | cut -d':' -f2- | sed 's/^ *//')
+  fi
+  if printf "%s" "$line" | grep -qi "^Content-Length:"; then
+    content_length=$(printf "%s" "$line" | cut -d':' -f2 | sed 's/^ *//')
+  fi
+  if [ -z "$line" ]; then
+    break
+  fi
+done
 
-PORT = int(os.environ.get("PORT", 8080))
-class Handler(http.server.BaseHTTPRequestHandler):
-    def handle_request(self, method):
-        content_length = int(self.headers.get('Content-Length', 0))
-        body = self.rfile.read(content_length).decode('utf-8') if content_length > 0 else ""
-        auth = self.headers.get('Authorization', '')
-        
-        env = os.environ.copy()
-        env["CDD_SSE_PATH"] = self.path
-        env["CDD_SSE_METHOD"] = method
-        env["CDD_SSE_AUTH"] = auth
-        env["CDD_SSE_BODY"] = body
-        
-        res = subprocess.run(["sh", sys.argv[1], "--handler"], env=env, capture_output=True, text=True)
-        
-        lines = res.stdout.split('\n')
-        status = 500
-        headers = {}
-        body_start = 0
-        
-        # Find the actual HTTP response start
-        http_start_idx = -1
-        for idx, line in enumerate(lines):
-            if line.startswith("HTTP/1.1 "):
-                http_start_idx = idx
-                break
-                
-        if http_start_idx >= 0:
-            parts = lines[http_start_idx].split(' ')
-            status = int(parts[1])
-            body_start = http_start_idx + 1
-            for i in range(http_start_idx + 1, len(lines)):
-                body_start = i + 1
-                if lines[i] == '':
-                    break
-                if ':' in lines[i]:
-                    k, v = lines[i].split(':', 1)
-                    headers[k.strip()] = v.strip()
-                
-        out_body = '\n'.join(lines[body_start:])
-        
-        self.send_response(status)
-        for k, v in headers.items():
-            self.send_header(k, v)
-        self.end_headers()
-        self.wfile.write(out_body.encode('utf-8'))
-        
-    def do_GET(self):
-        if self.path == "/mcp/sse":
-            self.send_response(200)
-            self.send_header("Content-Type", "text/event-stream")
-            self.send_header("Cache-Control", "no-cache")
-            self.send_header("Connection", "keep-alive")
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.end_headers()
-            self.wfile.write(b"event: endpoint\ndata: /mcp/message\n\n")
-            import time
-            while True:
-                time.sleep(10)
-        else:
-            self.handle_request("GET")
-    def do_POST(self): self.handle_request("POST")
+body=""
+if [ "$content_length" -gt 0 ]; then
+  body=$(dd bs=1 count="$content_length" 2>/dev/null)
+fi
 
-socketserver.TCPServer.allow_reuse_address = True
-try:
-    with socketserver.TCPServer(("", PORT), Handler) as httpd:
-        httpd.serve_forever()
-except KeyboardInterrupt:
-    pass
-PYEOF
-  python3 /tmp/cdd_sse_$$.py "$0"
-  rm -f /tmp/cdd_sse_$$.py
+export CDD_SSE_PATH="$path"
+export CDD_SSE_METHOD="$method"
+export CDD_SSE_AUTH="$auth_header"
+export CDD_SSE_BODY="$body"
+
+if [ "$path" = "/mcp/sse" ] && [ "$method" = "GET" ]; then
+  printf "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\nAccess-Control-Allow-Origin: *\r\n\r\nevent: endpoint\ndata: /mcp/message\n\n"
+  while true; do sleep 10; done
+else
+  sh "$1" --handler
+fi
+SH_EOF
+  chmod +x /tmp/cdd_sse_$$.sh
+
+  if command -v socat >/dev/null 2>&1; then
+    socat TCP4-LISTEN:"$PORT",reuseaddr,fork EXEC:"/tmp/cdd_sse_$$.sh \"$0\""
+  else
+    rm -f "/tmp/cdd_sse_pipe_$$"
+    mkfifo "/tmp/cdd_sse_pipe_$$"
+    # shellcheck disable=SC2094
+    while true; do
+      nc -l "$PORT" < "/tmp/cdd_sse_pipe_$$" | "/tmp/cdd_sse_$$.sh" "$0" > "/tmp/cdd_sse_pipe_$$"
+    done
+    rm -f "/tmp/cdd_sse_pipe_$$"
+  fi
+  rm -f /tmp/cdd_sse_$$.sh
   exit 0
 fi
 
@@ -249,20 +225,16 @@ INNER_EOF
       fi
       
       res_len=\$(printf "%s" "\$response_json" | wc -c | tr -d ' ')
-      echo "HTTP/1.1 200 OK"
+      printf "HTTP/1.1 200 OK\r\n"
       if [ -n "\$response_json" ]; then
-        echo "Content-Type: application/json"
+        printf "Content-Type: application/json\r\n"
       fi
-      echo "Content-Length: \${res_len}"
-      echo ""
+      printf "Content-Length: %s\r\n\r\n" "\${res_len}"
       if [ -n "\$response_json" ]; then
         printf "%s" "\$response_json"
       fi
 else
-  echo "HTTP/1.1 404 Not Found"
-  echo "Content-Length: 9"
-  echo ""
-  echo "Not Found"
+  printf "HTTP/1.1 404 Not Found\r\nContent-Length: 9\r\n\r\nNot Found"
 fi
 INNER_EOF
 

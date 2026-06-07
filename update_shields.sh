@@ -5,6 +5,6 @@ echo "Running tests..."
 tests/test.sh
 
 echo "Updating badges..."
-python3 scripts/update_badges.py
+go run scripts/update_badges.go
 
 echo "Updated README.md with dynamically calculated test coverage and doc coverage shields."

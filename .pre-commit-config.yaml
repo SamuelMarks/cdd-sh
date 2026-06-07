@@ -34,20 +34,20 @@ repos:
 
       - id: update-badges
         name: Update Badges (Doc & Test Coverage)
-        entry: python3 scripts/update_badges.py
+        entry: go run scripts/update_badges.go
         language: system
         pass_filenames: false
         always_run: true
 
       - id: swagger-2-petstore
         name: Swagger 2.0 Petstore Test
-        entry: bash -c 'python3 -c "import yaml, json, sys; json.dump(yaml.safe_load(sys.stdin), sys.stdout)" < ../petstore.json > temp-sh-spec.json && ./cdd.sh from_openapi -i temp-sh-spec.json -o temp-sh-dir && ./cdd.sh to_openapi -i temp-sh-dir -o temp-sh-out.json && rm -rf temp-sh-spec.json temp-sh-dir temp-sh-out.json ast.json'
+        entry: bash -c 'cat ../petstore.json > temp-sh-spec.json && ./cdd.sh from_openapi -i temp-sh-spec.json -o temp-sh-dir && ./cdd.sh to_openapi -i temp-sh-dir -o temp-sh-out.json && rm -rf temp-sh-spec.json temp-sh-dir temp-sh-out.json ast.json'
         language: system
         pass_filenames: false
 
       - id: openapi-3-petstore
         name: OpenAPI 3.2.0 Petstore Test
-        entry: bash -c 'python3 -c "import yaml, json, sys; json.dump(yaml.safe_load(sys.stdin), sys.stdout)" < ../petstore_oas3.json > temp-sh-spec.json && ./cdd.sh from_openapi -i temp-sh-spec.json -o temp-sh-dir && ./cdd.sh to_openapi -i temp-sh-dir -o temp-sh-out.json && rm -rf temp-sh-spec.json temp-sh-dir temp-sh-out.json ast.json'
+        entry: bash -c 'cat ../petstore_oas3.json > temp-sh-spec.json && ./cdd.sh from_openapi -i temp-sh-spec.json -o temp-sh-dir && ./cdd.sh to_openapi -i temp-sh-dir -o temp-sh-out.json && rm -rf temp-sh-spec.json temp-sh-dir temp-sh-out.json ast.json'
         language: system
         pass_filenames: false
 

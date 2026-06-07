@@ -115,16 +115,23 @@ shellcheck emitted_routes.sh emitted_classes.sh emitted_tests.sh
 
 # 11. Execute generated tests
 echo "Running generated tests..."
-python3 -c "
-import http.server, socketserver
-class Handler(http.server.BaseHTTPRequestHandler):
-    def do_GET(self): self.send_response(200); self.end_headers(); self.wfile.write(b'{}')
-    def do_POST(self): self.send_response(200); self.end_headers(); self.wfile.write(b'{}')
-    def do_PUT(self): self.send_response(200); self.end_headers(); self.wfile.write(b'{}')
-    def do_DELETE(self): self.send_response(200); self.end_headers(); self.wfile.write(b'{}')
-socketserver.TCPServer.allow_reuse_address = True; httpd = socketserver.TCPServer(('', 8181), Handler)
-httpd.serve_forever()
-" >/dev/null 2>&1 &
+cat <<'EOF' >/tmp/mock_handler.sh
+#!/bin/sh
+while IFS= read -r line; do
+  line=$(printf "%s" "$line" | tr -d '\r')
+  if [ -z "$line" ]; then break; fi
+done
+printf "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}"
+EOF
+chmod +x /tmp/mock_handler.sh
+if command -v socat >/dev/null 2>&1; then
+	socat TCP4-LISTEN:8181,reuseaddr,fork EXEC:/tmp/mock_handler.sh >/dev/null 2>&1 &
+else
+	rm -f /tmp/nc_pipe
+	mkfifo /tmp/nc_pipe
+	# shellcheck disable=SC2094
+	while true; do nc -l 8181 </tmp/nc_pipe | /tmp/mock_handler.sh >/tmp/nc_pipe; done >/dev/null 2>&1 &
+fi
 SERVER_PID=$!
 sleep 1
 
