@@ -62,13 +62,46 @@ try:
         print("FAIL: Server tools/call")
         sys.exit(1)
 
+    time.sleep(0.5)
+    s = requests.Session()
+    resp = s.post("http://localhost:8101/mcp/message", json={"jsonrpc":"2.0","id":4,"method":"resources/list"}, timeout=2)
+    if "resources" not in resp.text:
+        print("FAIL: Server resources/list")
+        sys.exit(1)
+
+    time.sleep(0.5)
+    s = requests.Session()
+    resp = s.post("http://localhost:8101/mcp/message", json={"jsonrpc":"2.0","id":5,"method":"roots/list"}, timeout=2)
+    if "roots" not in resp.text:
+        print("FAIL: Server roots/list")
+        sys.exit(1)
+
+    time.sleep(0.5)
+    s = requests.Session()
+    resp = s.post("http://localhost:8101/mcp/message", json={"jsonrpc":"2.0","id":6,"method":"ping"}, timeout=2)
+    if "result" not in resp.text:
+        print("FAIL: Server ping")
+        sys.exit(1)
+
+    time.sleep(0.5)
+    s = requests.Session()
+    try:
+        resp = s.post("http://localhost:8101/mcp/message", json={"jsonrpc":"2.0","method":"notifications/message","params":{"level":"info","data":"test log"}}, timeout=2)
+    except requests.exceptions.ReadTimeout:
+        pass
+    except requests.exceptions.ConnectionError:
+        pass
+
     print("Server generation test passed!")
+
 except Exception as e:
     print(f"FAIL: Request failed - {e}")
     sys.exit(1)
 finally:
     if 'server_process' in globals():
         server_process.kill()
+    import subprocess
+    subprocess.run(["pkill", "-f", "cdd_sse_"], check=False)
 MOCK
 
 python3 tests/out/src/server_mock_test.py || exit 1

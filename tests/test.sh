@@ -148,7 +148,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
     def do_DELETE(self): self.send_response(200); self.end_headers(); self.wfile.write(b'{}')
 socketserver.TCPServer.allow_reuse_address = True; httpd = socketserver.TCPServer(('', 8181), Handler)
 httpd.serve_forever()
-" &
+" >/dev/null 2>&1 &
 SERVER_PID=$!
 sleep 1
 
@@ -191,3 +191,4 @@ if tests/test_advanced_validation.sh >/dev/null; then echo "All advanced constra
 sh tests/test_mcp.sh
 sh tests/test_server.sh
 sh tests/test_sdk.sh
+sh tests/test_serve_rpc.sh

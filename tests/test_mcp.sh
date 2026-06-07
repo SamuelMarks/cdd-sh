@@ -53,6 +53,152 @@ if ! echo "$res" | grep -q '"tools":'; then
 	exit 1
 fi
 
+# ping
+echo '{"jsonrpc": "2.0", "id": 6, "method": "ping"}' >tests/out/mcp_in.txt
+res=$(tests/out/bin/sdk-cli mcp <tests/out/mcp_in.txt)
+if ! echo "$res" | grep -q '"result":{}'; then
+	echo "FAIL: ping"
+	echo "$res"
+	exit 1
+fi
+
+# prompts/list
+echo '{"jsonrpc": "2.0", "id": 7, "method": "prompts/list"}' >tests/out/mcp_in.txt
+res=$(tests/out/bin/sdk-cli mcp <tests/out/mcp_in.txt)
+if ! echo "$res" | grep -q '"test_prompt"'; then
+	echo "FAIL: prompts/list"
+	echo "$res"
+	exit 1
+fi
+
+# prompts/get
+echo '{"jsonrpc": "2.0", "id": 8, "method": "prompts/get", "params": {"name": "test_prompt"}}' >tests/out/mcp_in.txt
+res=$(tests/out/bin/sdk-cli mcp <tests/out/mcp_in.txt)
+if ! echo "$res" | grep -q '"Please test this"'; then
+	echo "FAIL: prompts/get"
+	echo "$res"
+	exit 1
+fi
+
+# completion/complete
+echo '{"jsonrpc": "2.0", "id": 9, "method": "completion/complete", "params": {"ref": {"type": "ref_type", "name": "ref_name"}, "argument": {"name": "arg_name", "value": "val"}}}' >tests/out/mcp_in.txt
+res=$(tests/out/bin/sdk-cli mcp <tests/out/mcp_in.txt)
+if ! echo "$res" | grep -q '"completion":{'; then
+	echo "FAIL: completion/complete"
+	echo "$res"
+	exit 1
+fi
+
+# sampling/createMessage
+echo '{"jsonrpc": "2.0", "id": 10, "method": "sampling/createMessage", "params": {"messages": [{"role": "user", "content": {"type": "text", "text": "test"}}], "maxTokens": 100, "modelPreferences": {"costPriority": 0.5, "hints": [{"name": "test-model"}]}}}' >tests/out/mcp_in.txt
+res=$(tests/out/bin/sdk-cli mcp <tests/out/mcp_in.txt)
+if ! echo "$res" | grep -q '"Sampled message"'; then
+	echo "FAIL: sampling/createMessage"
+	echo "$res"
+	exit 1
+fi
+
+# logging/setLevel
+echo '{"jsonrpc": "2.0", "id": 11, "method": "logging/setLevel", "params": {"level": "debug"}}' >tests/out/mcp_in.txt
+res=$(tests/out/bin/sdk-cli mcp <tests/out/mcp_in.txt)
+if ! echo "$res" | grep -q '"result":{}'; then
+	echo "FAIL: logging/setLevel"
+	echo "$res"
+	exit 1
+fi
+
+# pagination test (resources/list with cursor)
+echo '{"jsonrpc": "2.0", "id": 12, "method": "resources/list", "params": {"cursor": "next"}}' >tests/out/mcp_in.txt
+res=$(tests/out/bin/sdk-cli mcp <tests/out/mcp_in.txt)
+if ! echo "$res" | grep -q '"resources":\[\]'; then
+	echo "FAIL: resources/list with cursor"
+	echo "$res"
+	exit 1
+fi
+
+# roots/list
+echo '{"jsonrpc": "2.0", "id": 13, "method": "roots/list"}' >tests/out/mcp_in.txt
+res=$(tests/out/bin/sdk-cli mcp <tests/out/mcp_in.txt)
+if ! echo "$res" | grep -q '"roots":'; then
+	echo "FAIL: roots/list"
+	echo "$res"
+	exit 1
+fi
+
+# resources/templates/list
+echo '{"jsonrpc": "2.0", "id": 14, "method": "resources/templates/list"}' >tests/out/mcp_in.txt
+res=$(tests/out/bin/sdk-cli mcp <tests/out/mcp_in.txt)
+if ! echo "$res" | grep -q '"resourceTemplates":\['; then
+	echo "FAIL: resources/templates/list"
+	echo "$res"
+	exit 1
+fi
+
+# resources/subscribe
+echo '{"jsonrpc": "2.0", "id": 15, "method": "resources/subscribe", "params": {"uri": "openapi://spec"}}' >tests/out/mcp_in.txt
+res=$(tests/out/bin/sdk-cli mcp <tests/out/mcp_in.txt)
+if ! echo "$res" | grep -q '"result":{}'; then
+	echo "FAIL: resources/subscribe"
+	echo "$res"
+	exit 1
+fi
+
+# resources/unsubscribe
+echo '{"jsonrpc": "2.0", "id": 16, "method": "resources/unsubscribe", "params": {"uri": "openapi://spec"}}' >tests/out/mcp_in.txt
+res=$(tests/out/bin/sdk-cli mcp <tests/out/mcp_in.txt)
+if ! echo "$res" | grep -q '"result":{}'; then
+	echo "FAIL: resources/unsubscribe"
+	echo "$res"
+	exit 1
+fi
+
+# notifications
+echo '{"jsonrpc": "2.0", "method": "notifications/tools/list_changed"}' >tests/out/mcp_in.txt
+# we expect no output for notifications, so we just run it and ensure it doesn't crash or output anything
+res=$(tests/out/bin/sdk-cli mcp <tests/out/mcp_in.txt)
+if [ -n "$res" ]; then
+	echo "FAIL: notifications"
+	echo "$res"
+	exit 1
+fi
+
+echo '{"jsonrpc": "2.0", "method": "notifications/roots/list_changed"}' >tests/out/mcp_in.txt
+res=$(tests/out/bin/sdk-cli mcp <tests/out/mcp_in.txt)
+if [ -n "$res" ]; then
+	echo "FAIL: notifications/roots/list_changed"
+	echo "$res"
+	exit 1
+fi
+
+echo '{"jsonrpc": "2.0", "method": "notifications/cancelled", "params": {"requestId": "123", "reason": "timeout"}}' >tests/out/mcp_in.txt
+res=$(tests/out/bin/sdk-cli mcp <tests/out/mcp_in.txt)
+if [ -n "$res" ]; then
+	echo "FAIL: notifications/cancelled"
+	echo "$res"
+	exit 1
+fi
+
+echo '{"jsonrpc": "2.0", "method": "notifications/progress", "params": {"progressToken": "token1", "progress": 50, "total": 100}}' >tests/out/mcp_in.txt
+res=$(tests/out/bin/sdk-cli mcp <tests/out/mcp_in.txt)
+if [ -n "$res" ]; then
+	echo "FAIL: notifications/progress"
+	echo "$res"
+	exit 1
+fi
+
+echo '{"jsonrpc": "2.0", "method": "notifications/message", "params": {"level": "info", "data": "A test message"}}' >tests/out/mcp_in.txt
+res=$(tests/out/bin/sdk-cli mcp <tests/out/mcp_in.txt 2>tests/out/mcp_err.txt)
+if [ -n "$res" ]; then
+	echo "FAIL: notifications/message stdout should be empty"
+	echo "$res"
+	exit 1
+fi
+if ! grep -q "\[info\] A test message" tests/out/mcp_err.txt; then
+	echo "FAIL: notifications/message did not log to stderr"
+	cat tests/out/mcp_err.txt
+	exit 1
+fi
+
 # Unknown / Invalid method
 echo '{"jsonrpc": "2.0", "id": 5, "method": "unknown_method"}' >tests/out/mcp_in.txt
 res=$(tests/out/bin/sdk-cli mcp <tests/out/mcp_in.txt)
@@ -63,3 +209,69 @@ if ! echo "$res" | grep -q '"error":{"code":-32601'; then
 fi
 
 echo "MCP test passed!"
+
+# cdd.sh Generator MCP tests
+echo '{"jsonrpc": "2.0", "id": 1, "method": "initialize"}' >tests/out/mcp_cdd_in.txt
+res=$(./bin/cdd-sh mcp <tests/out/mcp_cdd_in.txt)
+if ! echo "$res" | grep -q '"protocolVersion"'; then
+	echo "FAIL: cdd-sh mcp initialize"
+	echo "$res"
+	exit 1
+fi
+
+echo '{"jsonrpc": "2.0", "id": 2, "method": "tools/list"}' >tests/out/mcp_cdd_in.txt
+res=$(./bin/cdd-sh mcp <tests/out/mcp_cdd_in.txt)
+if ! echo "$res" | grep -q 'to_openapi'; then
+	echo "FAIL: cdd-sh mcp tools/list"
+	echo "$res"
+	exit 1
+fi
+
+echo '{"jsonrpc": "2.0", "id": 3, "method": "ping"}' >tests/out/mcp_cdd_in.txt
+res=$(./bin/cdd-sh mcp <tests/out/mcp_cdd_in.txt)
+if ! echo "$res" | grep -q '"result":{}'; then
+	echo "FAIL: cdd-sh mcp ping"
+	echo "$res"
+	exit 1
+fi
+
+echo "Generator MCP test passed!"
+
+# More MCP missing branches
+echo '{"jsonrpc": "2.0", "method": "initialized"}' >tests/out/mcp_in.txt
+tests/out/bin/sdk-cli mcp <tests/out/mcp_in.txt >/dev/null
+
+echo '{"jsonrpc": "2.0", "method": "notifications/initialized"}' >tests/out/mcp_in.txt
+tests/out/bin/sdk-cli mcp <tests/out/mcp_in.txt >/dev/null
+
+echo '{"jsonrpc": "2.0", "method": "notifications/prompts/list_changed"}' >tests/out/mcp_in.txt
+tests/out/bin/sdk-cli mcp <tests/out/mcp_in.txt >/dev/null
+
+echo '{"jsonrpc": "2.0", "method": "notifications/resources/list_changed"}' >tests/out/mcp_in.txt
+tests/out/bin/sdk-cli mcp <tests/out/mcp_in.txt >/dev/null
+
+echo '{"jsonrpc": "2.0", "method": "notifications/resources/updated"}' >tests/out/mcp_in.txt
+tests/out/bin/sdk-cli mcp <tests/out/mcp_in.txt >/dev/null
+
+echo '{"jsonrpc": "2.0", "id": 101, "method": "resources/read", "params": {"uri": "openapi://spec"}}' >tests/out/mcp_in.txt
+res=$(tests/out/bin/sdk-cli mcp <tests/out/mcp_in.txt)
+if ! echo "$res" | grep -q '"contents":'; then
+	echo "FAIL: resources/read openapi://spec"
+	exit 1
+fi
+
+echo '{"jsonrpc": "2.0", "id": 102, "method": "resources/read", "params": {"uri": "invalid"}}' >tests/out/mcp_in.txt
+res=$(tests/out/bin/sdk-cli mcp <tests/out/mcp_in.txt)
+if ! echo "$res" | grep -q '"error":'; then
+	echo "FAIL: resources/read invalid"
+	exit 1
+fi
+
+echo '{"jsonrpc": "2.0", "id": 103, "method": "tools/call", "params": {"name": "from_openapi", "arguments": {"subcmd": "to_sdk", "input": "tests/test.json", "output": "tests/out2", "tests": true}}}' >tests/out/mcp_cdd_in.txt
+res=$(./bin/cdd-sh mcp <tests/out/mcp_cdd_in.txt || true)
+
+echo '{"jsonrpc": "2.0", "id": 104, "method": "tools/call", "params": {"name": "from_openapi", "arguments": {"subcmd": "to_sdk", "input": "tests/test.json", "output": "tests/out2", "tests": false}}}' >tests/out/mcp_cdd_in.txt
+res=$(./bin/cdd-sh mcp <tests/out/mcp_cdd_in.txt || true)
+
+echo '{"jsonrpc": "2.0", "id": 105, "method": "tools/call", "params": {"name": "to_openapi", "arguments": {"input": "tests/test.json", "output": "tests/out_spec.json"}}}' >tests/out/mcp_cdd_in.txt
+res=$(./bin/cdd-sh mcp <tests/out/mcp_cdd_in.txt || true)

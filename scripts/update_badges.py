@@ -32,7 +32,7 @@ def main():
         
         # Shell doc coverage
         for root, _, files in os.walk(base_dir):
-            if any(x in root for x in ['/tests', '/tmp_out', '/temp_sdk', '/cdd-openapi-test-harness', '/.git', '/emsdk', '/out', '/bin', '/temp-sh']):
+            if any(x in root for x in ['/tests', '/tmp_out', '/temp_sdk', '/.git', '/emsdk', '/out', '/bin', '/temp-sh']):
                 continue
             for file in files:
                 if file.startswith('emitted_') or file.startswith('test_'): continue
@@ -50,7 +50,7 @@ def main():
 
         # Go doc coverage
         for root, _, files in os.walk(base_dir):
-            if any(x in root for x in ['/tests', '/tmp_out', '/temp_sdk', '/cdd-openapi-test-harness', '/.git', '/emsdk', '/out', '/bin', '/temp-sh']):
+            if any(x in root for x in ['/tests', '/tmp_out', '/temp_sdk', '/.git', '/emsdk', '/out', '/bin', '/temp-sh']):
                 continue
             for file in files:
                 if file.endswith('.go') and not file.endswith('_test.go'):

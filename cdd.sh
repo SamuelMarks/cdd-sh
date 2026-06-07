@@ -3,7 +3,7 @@
 
 set -feu
 
-VERSION="0.0.1"
+VERSION="0.0.2"
 
 # usage prints the CLI help message.
 print_help() {
@@ -13,7 +13,8 @@ print_help() {
 	printf "  from_openapi    Generate code from an OpenAPI specification.\n"
 	printf "  to_openapi      Generate an OpenAPI specification from source code.\n"
 	printf "  to_docs_json    Generate JSON documentation with code snippets for an OpenAPI specification.\n"
-	printf "  serve_json_rpc  Expose CLI interface as a JSON-RPC server.\n\n"
+	printf "  serve_json_rpc  Expose CLI interface as a JSON-RPC server.\n"
+	printf "  mcp             Run as an MCP server over stdio.\n\n"
 	printf "Options:\n"
 	printf "  --help, -h      Show this help message\n"
 	printf "  --version, -v   Show version information\n\n"
@@ -105,6 +106,121 @@ ensure_output_dir() {
 }
 
 case "${CMD}" in
+mcp)
+	while read -r line || [ -n "$line" ]; do
+		if echo "$line" | grep -qi "^Content-Length:"; then
+			read -r _
+			content_length=$(echo "$line" | awk '{print $2}' | tr -d '\r\n')
+			line=$(dd bs=1 count="$content_length" 2>/dev/null)
+		elif echo "$line" | grep -qi "^[A-Za-z-]\+: "; then
+			continue
+		elif [ -z "$(echo "$line" | tr -d '\r\n')" ]; then
+			continue
+		fi
+		method=$(echo "$line" | jq -r '.method // empty')
+		id=$(echo "$line" | jq -r '.id // null')
+
+		if [ "$method" = "initialize" ]; then
+			echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{\"tools\":{\"listChanged\":true},\"resources\":{\"listChanged\":true,\"subscribe\":true},\"logging\":{},\"prompts\":{\"listChanged\":true}},\"serverInfo\":{\"name\":\"cdd-sh\",\"version\":\"$VERSION\"}}}"
+		elif [ "$method" = "notifications/initialized" ] || [ "$method" = "initialized" ]; then
+			:
+		elif [ "$method" = "notifications/tools/list_changed" ] || [ "$method" = "notifications/resources/list_changed" ] || [ "$method" = "notifications/prompts/list_changed" ] || [ "$method" = "notifications/roots/list_changed" ] || [ "$method" = "notifications/resources/updated" ]; then
+			:
+		elif [ "$method" = "notifications/cancelled" ] || [ "$method" = "notifications/progress" ]; then
+			:
+		elif [ "$method" = "notifications/message" ]; then
+			level=$(echo "$line" | jq -r '.params.level // "info"')
+			msg=$(echo "$line" | jq -r '.params.data // ""')
+			echo "[$level] $msg" >&2
+
+		elif [ "$method" = "roots/list" ]; then
+			echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{\"roots\":[{\"uri\":\"file://$(pwd)\",\"name\":\"Workspace\"}]}}"
+
+		elif [ "$method" = "ping" ]; then
+			echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{}}"
+		elif [ "$method" = "prompts/list" ]; then
+			echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{\"prompts\":[{\"name\":\"test_prompt\",\"description\":\"A test prompt\",\"arguments\":[{\"name\":\"arg1\",\"description\":\"An argument\",\"required\":true}]}]}}"
+		elif [ "$method" = "prompts/get" ]; then
+			prompt_name=$(echo "$line" | jq -r '.params.name // empty')
+			if [ "$prompt_name" = "test_prompt" ]; then
+				echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{\"description\":\"A test prompt\",\"messages\":[{\"role\":\"user\",\"content\":{\"type\":\"text\",\"text\":\"Please test this\"}}]}}"
+			else
+				echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"error\":{\"code\":-32602,\"message\":\"Invalid prompt\"}}"
+			fi
+		elif [ "$method" = "completion/complete" ]; then
+			echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{\"completion\":{\"values\":[],\"total\":0,\"hasMore\":false}}}"
+		elif [ "$method" = "sampling/createMessage" ]; then
+			echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{\"role\":\"assistant\",\"content\":{\"type\":\"text\",\"text\":\"Sampled message\"}\",\"model\":\"test-model\",\"stopReason\":\"endTurn\"}}"
+		elif [ "$method" = "logging/setLevel" ]; then
+			echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{}}"
+		elif [ "$method" = "resources/list" ]; then
+			cursor=$(echo "$line" | jq -r '.params.cursor // empty')
+			if [ "$cursor" = "next" ]; then
+				res_json='[]'
+				echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{\"resources\":$res_json}}"
+			else
+				res_json='[{"uri":"cdd://ast","name":"AST","mimeType":"application/json"}]'
+				echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{\"resources\":$res_json,\"nextCursor\":\"next\"}}"
+			fi
+		elif [ "$method" = "resources/templates/list" ]; then
+			echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{\"resourceTemplates\":[]}}"
+		elif [ "$method" = "resources/subscribe" ] || [ "$method" = "resources/unsubscribe" ]; then
+			echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{}}"
+
+		elif [ "$method" = "resources/read" ]; then
+			uri=$(echo "$line" | jq -r '.params.uri')
+			if [ "$uri" = "cdd://ast" ]; then
+				ast_content=$(cat "$CDD_AST_PATH" 2>/dev/null || echo "{}")
+				ast_escaped=$(printf "%s" "$ast_content" | jq -R -s '.')
+				echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{\"contents\":[{\"uri\":\"cdd://ast\",\"mimeType\":\"application/json\",\"text\":$ast_escaped}]}}"
+			else
+				echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"error\":{\"code\":-32602,\"message\":\"Invalid URI\"}}"
+			fi
+		elif [ "$method" = "tools/list" ]; then
+			tools_json='[
+                                {"name":"to_openapi","description":"Generate OpenAPI spec from source","inputSchema":{"type":"object","properties":{"input":{"type":"string"},"output":{"type":"string"}},"required":["input","output"]}},
+                                {"name":"from_openapi","description":"Generate code from OpenAPI spec","inputSchema":{"type":"object","properties":{"subcmd":{"type":"string"},"input":{"type":"string"},"output":{"type":"string"},"tests":{"type":"boolean"}},"required":["subcmd","input","output"]}}
+                        ]'
+			cursor=$(echo "$line" | jq -r '.params.cursor // empty')
+			if [ "$cursor" = "next" ]; then echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{\"tools\":[]}}"; else echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{\"tools\":$tools_json,\"nextCursor\":\"next\"}}"; fi
+		elif [ "$method" = "tools/call" ]; then
+			tool_name=$(echo "$line" | jq -r '.params.name')
+			args=$(echo "$line" | jq -c '.params.arguments // {}')
+
+			set +e
+			if [ "$tool_name" = "to_openapi" ]; then
+				input=$(echo "$args" | jq -r '.input')
+				output=$(echo "$args" | jq -r '.output')
+				res=$(./bin/cdd-sh to_openapi -i "$input" -o "$output" 2>&1)
+			elif [ "$tool_name" = "from_openapi" ]; then
+				subcmd=$(echo "$args" | jq -r '.subcmd')
+				input=$(echo "$args" | jq -r '.input')
+				output=$(echo "$args" | jq -r '.output')
+				if [ "$(echo "$args" | jq -r '.tests // false')" = "true" ]; then
+					res=$(./bin/cdd-sh from_openapi "$subcmd" -i "$input" -o "$output" --tests 2>&1)
+				else
+					res=$(./bin/cdd-sh from_openapi "$subcmd" -i "$input" -o "$output" 2>&1)
+				fi
+			else
+				res="Unknown tool: $tool_name"
+				exit_code=1
+			fi
+			exit_code=$?
+			set -e
+
+			res_escaped=$(printf "%s" "$res" | jq -R -s '.')
+			if [ "$exit_code" -ne 0 ]; then
+				printf '{"jsonrpc":"2.0","id":%s,"result":{"isError":true,"content":[{"type":"text","text":%s}]}}\n' "$id" "$res_escaped"
+			else
+				printf '{"jsonrpc":"2.0","id":%s,"result":{"isError":false,"content":[{"type":"text","text":%s}]}}\n' "$id" "$res_escaped"
+			fi
+		else
+			if [ "$id" != "null" ]; then
+				echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"error\":{\"code\":-32601,\"message\":\"Method not found\"}}"
+			fi
+		fi
+	done
+	;;
 serve_json_rpc)
 	parse_global_args "$@"
 	PORT="${CDD_PORT:-8082}"
@@ -196,7 +312,7 @@ serve_json_rpc)
 				echo ""
 				echo "Bad Request"
 			fi
-		} <"$fifo" | nc -l -p "$PORT" >"$fifo"
+		} <"$fifo" | nc -l "$PORT" >"$fifo" 2>/dev/null || nc -l -p "$PORT" >"$fifo"
 	done
 	;;
 to_openapi)

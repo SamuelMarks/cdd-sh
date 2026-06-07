@@ -24,6 +24,7 @@ The CLI—at a minimum—has:
 - `cdd-sh to_openapi -i path/to/code`
 - `cdd-sh to_docs_json --no-imports --no-wrapping -i spec.json`
 - `cdd-sh serve_json_rpc -p 8080 -l 0.0.0.0`
+- `cdd-sh mcp`
 
 ## SDK Example
 
@@ -71,7 +72,7 @@ The `cdd-sh` compiler leverages a unified architecture to support various facets
 
 **Uncommon Features:**
 
-`cdd-sh` supports standard CDD features.
+`cdd-sh` supports standard CDD features, as well as Model Context Protocol (MCP) support via the `mcp` command.
 
 ## CLI Options
 

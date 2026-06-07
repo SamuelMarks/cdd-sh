@@ -135,10 +135,48 @@ if [ "$path" = "/mcp/message" ] && [ "$method" = "POST" ]; then
   json_id=$(echo "$body" | jq -r '.id // null')
 
   if [ "$json_method" = "initialize" ]; then
-    out="{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{\"tools\":{}},\"serverInfo\":{\"name\":\"SSE Server\",\"version\":\"0.0.1\"}}"
+    out="{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{\"tools\":{\"listChanged\":true},\"resources\":{\"listChanged\":true,\"subscribe\":true},\"logging\":{},\"prompts\":{\"listChanged\":true}},\"serverInfo\":{\"name\":\"SSE Server\",\"version\":\"0.0.2\"}}"
     response_json=$(jq -n --arg id "$json_id" --argjson out "$out" '{"jsonrpc": "2.0", "result": $out, "id": $id}')
-  elif [ "$json_method" = "notifications/initialized" ] || [ "$json_method" = "initialized" ]; then
-    response_json="{\"jsonrpc\":\"2.0\",\"id\":null,\"result\":{}}"
+  elif [ "$json_method" = "notifications/initialized" ] || [ "$json_method" = "initialized" ] || [ "$json_method" = "notifications/tools/list_changed" ] || [ "$json_method" = "notifications/resources/list_changed" ] || [ "$json_method" = "notifications/prompts/list_changed" ] || [ "$json_method" = "notifications/roots/list_changed" ] || [ "$json_method" = "notifications/cancelled" ] || [ "$json_method" = "notifications/progress" ] || [ "$json_method" = "notifications/resources/updated" ]; then
+    response_json=""
+  elif [ "$json_method" = "notifications/message" ]; then
+    level=$(echo "$body" | jq -r '.params.level // "info"')
+    msg=$(echo "$body" | jq -r '.params.data // ""')
+    echo "[$level] $msg" >&2
+    response_json=""
+  elif [ "$json_method" = "completion/complete" ]; then
+    response_json=$(jq -n --arg id "$json_id" '{"jsonrpc":"2.0","id":$id,"result":{"completion":{"values":[],"total":0,"hasMore":false}}}')
+  elif [ "$json_method" = "sampling/createMessage" ]; then
+    response_json=$(jq -n --arg id "$json_id" '{"jsonrpc":"2.0","id":$id,"result":{"role":"assistant","content":{"type":"text","text":"Sampled message"},"model":"test-model","stopReason":"endTurn"}}')
+  elif [ "$json_method" = "ping" ]; then
+    response_json=$(jq -n --arg id "$json_id" '{"jsonrpc":"2.0","id":$id,"result":{}}')
+  elif [ "$json_method" = "roots/list" ]; then
+    response_json=$(jq -n --arg id "$json_id" '{"jsonrpc":"2.0","id":$id,"result":{"roots":[{"uri":"file:///" ,"name":"Workspace"}]}}')
+  elif [ "$json_method" = "resources/list" ]; then
+    response_json=$(jq -n --arg id "$json_id" '{"jsonrpc":"2.0","id":$id,"result":{"resources":[{"uri":"openapi://spec","name":"OpenAPI Spec","mimeType":"application/json"}]}}')
+  elif [ "$json_method" = "prompts/list" ]; then
+    response_json=$(jq -n --arg id "$json_id" '{"jsonrpc":"2.0","id":$id,"result":{"prompts":[{"name":"test_prompt","description":"A test prompt","arguments":[{"name":"arg1","description":"An argument","required":true}]}]}}')
+  elif [ "$json_method" = "prompts/get" ]; then
+    prompt_name=$(echo "$body" | jq -r '.params.name // empty')
+    if [ "$prompt_name" = "test_prompt" ]; then
+      response_json=$(jq -n --arg id "$json_id" '{"jsonrpc":"2.0","id":$id,"result":{"description":"A test prompt","messages":[{"role":"user","content":{"type":"text","text":"Please test this"}}]}}')
+    else
+      response_json=$(jq -n --arg id "$json_id" '{"jsonrpc":"2.0","error":{"code":-32602,"message":"Invalid prompt"},"id":$id}')
+    fi
+  elif [ "$json_method" = "logging/setLevel" ]; then
+    response_json=$(jq -n --arg id "$json_id" '{"jsonrpc":"2.0","id":$id,"result":{}}')
+  elif [ "$json_method" = "resources/templates/list" ]; then
+    response_json=$(jq -n --arg id "$json_id" '{"jsonrpc":"2.0","id":$id,"result":{"resourceTemplates":[]}}')
+  elif [ "$json_method" = "resources/subscribe" ] || [ "$json_method" = "resources/unsubscribe" ]; then
+    response_json=$(jq -n --arg id "$json_id" '{"jsonrpc":"2.0","id":$id,"result":{}}')
+  elif [ "$json_method" = "resources/read" ]; then
+    uri=$(echo "$body" | jq -r '.params.uri // empty')
+    if [ "$uri" = "openapi://spec" ]; then
+      # Assume spec is available or return empty
+      response_json=$(jq -n --arg id "$json_id" '{"jsonrpc":"2.0","id":$id,"result":{"contents":[{"uri":"openapi://spec","mimeType":"application/json","text":"{}"}]}}')
+    else
+      response_json=$(jq -n --arg id "$json_id" '{"jsonrpc":"2.0","error":{"code":-32602,"message":"Invalid URI"},"id":$id}')
+    fi
   elif [ "$json_method" = "tools/list" ]; then
 INNER_EOF
 
@@ -170,12 +208,20 @@ INNER_EOF
 
 		cat <<INNER_EOF
         tools_json='${tools_json}'
-        if [ "\$json_id" = "null" ]; then
-          response_json="{\"jsonrpc\":\"2.0\",\"id\":null,\"result\":{\"tools\":\$tools_json}}"
-        elif echo "\$json_id" | grep -q "^[0-9]*\$"; then
-          response_json="{\"jsonrpc\":\"2.0\",\"id\":\$json_id,\"result\":{\"tools\":\$tools_json}}"
+        cursor=\$(echo "\$body" | jq -r '.params.cursor // empty')
+        if [ "\$cursor" = "next" ]; then
+          res_tools="[]"
+          next_cursor=""
         else
-          response_json="{\"jsonrpc\":\"2.0\",\"id\":\"\$json_id\",\"result\":{\"tools\":\$tools_json}}"
+          res_tools="\$tools_json"
+          next_cursor=",\"nextCursor\":\"next\""
+        fi
+        if [ "\$json_id" = "null" ]; then
+          response_json="{\"jsonrpc\":\"2.0\",\"id\":null,\"result\":{\"tools\":\${res_tools}\${next_cursor}}}"
+        elif echo "\$json_id" | grep -q "^[0-9]*\$"; then
+          response_json="{\"jsonrpc\":\"2.0\",\"id\":\$json_id,\"result\":{\"tools\":\${res_tools}\${next_cursor}}}"
+        else
+          response_json="{\"jsonrpc\":\"2.0\",\"id\":\"\$json_id\",\"result\":{\"tools\":\${res_tools}\${next_cursor}}}"
         fi
       elif [ "\$json_method" = "tools/call" ]; then
         tool_name=\$(echo "\$body" | jq -r '.params.name')
@@ -195,15 +241,23 @@ INNER_EOF
           response_json=\$(jq -n --arg id "\$json_id" --argjson content "\$res_escaped" '{"jsonrpc":"2.0","id":\$id,"result":{"isError":false,"content":[{"type":"text","text":\$content}]}}')
         fi
       else
-        response_json=\$(jq -n --arg id "\$json_id" '{"jsonrpc": "2.0", "error": {"code": -32601, "message": "Method not found"}, "id": \$id}')
+        if [ "\$json_id" != "null" ]; then
+          response_json=\$(jq -n --arg id "\$json_id" '{"jsonrpc": "2.0", "error": {"code": -32601, "message": "Method not found"}, "id": \$id}')
+        else
+          response_json=""
+        fi
       fi
       
       res_len=\$(printf "%s" "\$response_json" | wc -c | tr -d ' ')
       echo "HTTP/1.1 200 OK"
-      echo "Content-Type: application/json"
+      if [ -n "\$response_json" ]; then
+        echo "Content-Type: application/json"
+      fi
       echo "Content-Length: \${res_len}"
       echo ""
-      printf "%s" "\$response_json"
+      if [ -n "\$response_json" ]; then
+        printf "%s" "\$response_json"
+      fi
 else
   echo "HTTP/1.1 404 Not Found"
   echo "Content-Length: 9"
