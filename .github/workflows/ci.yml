@@ -20,8 +20,8 @@ jobs:
 
       - name: Fetch Petstore Specs directly
         run: |
-          wget -q https://raw.githubusercontent.com/OAI/OpenAPI-Specification/refs/tags/3.1.0/examples/v2.0/json/petstore.json -O ../petstore.json || echo "{}" > ../petstore.json
-          wget -q https://raw.githubusercontent.com/OAI/OpenAPI-Specification/refs/tags/3.1.0/examples/v3.0/petstore.json -O ../petstore_oas3.json || echo "{}" > ../petstore_oas3.json
+          wget -q https://petstore.swagger.io/v2/swagger.json -O ../petstore.json || echo "{}" > ../petstore.json
+          wget -q https://petstore3.swagger.io/api/v3/openapi.json -O ../petstore_oas3.json || echo "{}" > ../petstore_oas3.json
           # Note: The true source of these files in the local workspace is one directory up, 
           # which in CI would be outside the actions/checkout workspace.
           # To make the paths in .pre-commit-config.yaml (`../petstore.json`) work,

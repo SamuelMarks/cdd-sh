@@ -67,7 +67,7 @@ func main() {
 		if err != nil {
 			return nil
 		}
-		for _, ignore := range []string{"/tests", "/tmp_out", "/temp_sdk", "/.git", "/emsdk", "/out", "/bin", "/temp-sh"} {
+		for _, ignore := range []string{"/tests", "/tmp_out", "tmp_out", "/temp_sdk", "/.git", "/emsdk", "/out", "out", "/bin", "/temp-sh", "temp-swagger-sdk", "temp-openapi-sdk"} {
 			if strings.Contains(filepath.ToSlash(path), ignore) {
 				if info.IsDir() {
 					return filepath.SkipDir

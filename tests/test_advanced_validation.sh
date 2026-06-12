@@ -1,5 +1,17 @@
 #!/bin/sh
 set -eu
+# shellcheck disable=SC2296,SC3028,SC3040,SC3054
+if [ "${SCRIPT_NAME-}" ]; then
+	THIS_FILE="${SCRIPT_NAME}"
+elif [ "${BASH_SOURCE-}" ]; then
+	THIS_FILE="${BASH_SOURCE[0]}"
+	set -o pipefail
+elif [ "${ZSH_VERSION-}" ]; then
+	eval 'THIS_FILE="${(%):-%x}"'
+	set -o pipefail
+else
+	THIS_FILE="${0}"
+fi
 cd "$(dirname "$0")/.."
 
 ./bin/cdd-sh from_openapi -i tests/test_advanced.json --no-github-actions --no-installable-package -o ./tmp_out
@@ -27,4 +39,5 @@ if validate_AnyPet '{"name": "Fido", "bark": true}'; then echo "AnyPet Dog valid
 if validate_AnyPet '{"name": "Fido", "bark": true, "meow": true}'; then echo "AnyPet Dog+Cat valid (Expected)"; else echo "AnyPet Dog+Cat failed (Unexpected)" && exit 1; fi
 if validate_AnyPet '{"name": "Fido"}'; then echo "AnyPet invalid valid (Unexpected)" && exit 1; else echo "AnyPet invalid failed (Expected)"; fi
 
+rm -rf tmp_out
 echo "All advanced tests passed!"

@@ -1,5 +1,17 @@
 #!/bin/sh
 set -eu
+# shellcheck disable=SC2296,SC3028,SC3040,SC3054
+if [ "${SCRIPT_NAME-}" ]; then
+	THIS_FILE="${SCRIPT_NAME}"
+elif [ "${BASH_SOURCE-}" ]; then
+	THIS_FILE="${BASH_SOURCE[0]}"
+	set -o pipefail
+elif [ "${ZSH_VERSION-}" ]; then
+	eval 'THIS_FILE="${(%):-%x}"'
+	set -o pipefail
+else
+	THIS_FILE="${0}"
+fi
 
 # Generate the SDK
 rm -rf tests/out
@@ -24,7 +36,7 @@ if ! echo "$tools" | grep -q "genull_nullsers"; then
 fi
 
 res=$(mcp_execute_tool "genull_nullsers" "{}")
-if ! echo "$res" | grep -q "Executing genull_nullsers"; then
+if ! printf "%s\n" "$res" | grep -q "Executing genull_nullsers"; then
 	echo "FAIL: mcp_execute_tool did not return tool output"
 	exit 1
 fi
@@ -38,63 +50,63 @@ if [ "$res" != "ok" ]; then
 fi
 
 res=$(mcp_get_prompts)
-if ! echo "$res" | grep -q 'test_prompt'; then
+if ! printf "%s\n" "$res" | grep -q 'test_prompt'; then
 	echo "FAIL: mcp_get_prompts did not return test_prompt"
-	echo "$res"
+	printf "%s\n" "$res"
 	exit 1
 fi
 
 res=$(mcp_get_prompt "test_prompt")
-if ! echo "$res" | grep -q "Please test this"; then
+if ! printf "%s\n" "$res" | grep -q "Please test this"; then
 	echo "FAIL: mcp_get_prompt did not return mock message"
-	echo "$res"
+	printf "%s\n" "$res"
 	exit 1
 fi
 
 res=$(mcp_complete "t" "n" "an" "av")
-if ! echo "$res" | grep -q "values"; then
+if ! printf "%s\n" "$res" | grep -q "values"; then
 	echo "FAIL: mcp_complete did not return valid result"
 	exit 1
 fi
 
 res=$(mcp_create_message '[{"role": "user", "content": {"type": "text", "text": "hello"}}]' "100")
-if ! echo "$res" | grep -q "Sampled message"; then
+if ! printf "%s\n" "$res" | grep -q "Sampled message"; then
 	echo "FAIL: mcp_create_message did not return valid result"
 	exit 1
 fi
 
 res=$(mcp_set_logging_level "info")
-if ! echo "$res" | grep -q "{}"; then
+if ! printf "%s\n" "$res" | grep -q "{}"; then
 	echo "FAIL: mcp_set_logging_level did not return valid result"
 	exit 1
 fi
 
 res=$(mcp_get_resources "next")
-if ! echo "$res" | grep -q '"resources":\[\]'; then
+if ! printf "%s\n" "$res" | grep -q '"resources":\[\]'; then
 	echo "FAIL: mcp_get_resources with cursor did not return valid result"
 	exit 1
 fi
 
 res=$(mcp_get_resource_templates)
-if ! echo "$res" | grep -q '"resourceTemplates":\['; then
+if ! printf "%s\n" "$res" | grep -q '"resourceTemplates":\['; then
 	echo "FAIL: mcp_get_resource_templates did not return valid result"
 	exit 1
 fi
 
 res=$(mcp_subscribe_resource "file:///test")
-if ! echo "$res" | grep -q "{}"; then
+if ! printf "%s\n" "$res" | grep -q "{}"; then
 	echo "FAIL: mcp_subscribe_resource did not return valid result"
 	exit 1
 fi
 
 res=$(mcp_unsubscribe_resource "file:///test")
-if ! echo "$res" | grep -q "{}"; then
+if ! printf "%s\n" "$res" | grep -q "{}"; then
 	echo "FAIL: mcp_unsubscribe_resource did not return valid result"
 	exit 1
 fi
 
 res=$(mcp_get_roots)
-if ! echo "$res" | grep -q 'Workspace'; then
+if ! printf "%s\n" "$res" | grep -q 'Workspace'; then
 	echo "FAIL: mcp_get_roots did not return valid result"
 	exit 1
 fi
