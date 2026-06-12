@@ -28,6 +28,7 @@ fail() {
   echo "FAIL: $1"
   kill $SERVER_PID 2>/dev/null || true
   pkill -f cdd_sse_ 2>/dev/null || true
+  kill $(lsof -t -i:8101) 2>/dev/null || true
   exit 1
 }
 
@@ -76,6 +77,7 @@ curl -s -X POST http://localhost:8101/mcp/message -H "Content-Type: application/
 echo "Server generation test passed!"
 kill $SERVER_PID 2>/dev/null || true
 pkill -f cdd_sse_ 2>/dev/null || true
+kill $(lsof -t -i:8101) 2>/dev/null || true
 MOCK
 
 sh tests/out/src/server_mock_test.sh || exit 1

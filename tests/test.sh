@@ -199,3 +199,4 @@ sh tests/test_mcp.sh
 sh tests/test_server.sh
 sh tests/test_sdk.sh
 sh tests/test_serve_rpc.sh
+sh tests/test_petstore_sdks.sh
