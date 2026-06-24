@@ -1,7 +1,7 @@
 .PHONY: test build build_wasm clean docs
 
 test: build
-	go test -coverprofile=coverage.out ./...
+	go test -coverprofile=coverage.out $$(go list ./... | grep -v /scripts)
 	./test.sh
 	./tests/test.sh
 

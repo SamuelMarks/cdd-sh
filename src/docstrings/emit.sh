@@ -39,7 +39,7 @@ handle_emit_docstrings() {
 		printf "# API Documentation\n\n"
 		jq -r '
       if .info then
-        "# \(.info.title // "API") (\(.info.version // "0.0.2"))\n\n" +
+        "# \(.info.title // "API") (\(.info.version // "0.0.3"))\n\n" +
         "\(.info.description // "")\n\n"
       else empty end
     ' "${ast}"

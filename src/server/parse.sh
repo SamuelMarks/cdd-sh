@@ -29,7 +29,7 @@ handle_parse_server() {
 	if [ ! -f "${file_path}" ]; then return 1; fi
 
 	ast="${CDD_AST_PATH:-${LIBSCRIPT_ROOT_DIR}/ast.json}"
-	if [ ! -f "${ast}" ]; then echo '{"openapi": "3.2.0", "info": {"title": "Parsed API", "version": "0.0.2"}}' >"${ast}"; fi
+	if [ ! -f "${ast}" ]; then echo '{"openapi": "3.2.0", "info": {"title": "Parsed API", "version": "0.0.3"}}' >"${ast}"; fi
 
 	# Extract tools_json array
 	awk '

@@ -120,3 +120,5 @@ tmp_out*/
 tmp_sdk_test*/
 vendor/
 tests/out2/
+*.tmp
+temp-*

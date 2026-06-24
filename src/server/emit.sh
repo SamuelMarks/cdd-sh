@@ -122,19 +122,22 @@ fi
 INNER_EOF
 		fi
 
-		dao_funcs=$(jq -r '
-  if .paths then
-    .paths | to_entries[] | .key as $path | .value | to_entries[] | select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers") | .key as $method | .value |
-    (if .operationId then (.operationId | split("") | map(if test("[A-Z]") then "_" + ascii_downcase else . end) | join("")) else "\($method | ascii_upcase)_\($path | gsub("/"; "_") | gsub("[{}]"; ""))" end) as $opId |
-    "# dao_stub_\($opId) is the stub implementation for \($method | ascii_upcase) \($path).\n# Returns a NotImplemented error.\n" +
-    "dao_stub_\($opId)() {\n  echo \"{\\\"error\\\": \\\"Not Implemented\\\"}\"\n  return 1\n}\n" +
-    "# dao_concrete_\($opId) is the concrete DB implementation for \($method | ascii_upcase) \($path).\n# Interacts with DATABASE_URL.\n" +
-    "dao_concrete_\($opId)() {\n  echo \"{}\"\n  return 0\n}\n"
-  else
-    empty
-  end
-' "${ast}")
-		echo "$dao_funcs"
+		cat <<'INNER_EOF'
+# Load generated models
+for _model_file in "$(dirname "$0")"/models/*.sh; do
+  [ -f "$_model_file" ] && . "$_model_file"
+done
+
+# Load generated DAOs (mocks)
+for _mock_file in "$(dirname "$0")"/mocks/*.sh; do
+  [ -f "$_mock_file" ] && . "$_mock_file"
+done
+
+# Load generated route handlers and router
+for _route_file in "$(dirname "$0")"/routes/*.sh; do
+  [ -f "$_route_file" ] && . "$_route_file"
+done
+INNER_EOF
 
 		cat <<'INNER_EOF'
 # Use socat or nc as a reliable router. It will just execute this script with a special mode.
@@ -230,7 +233,7 @@ if [ "$path" = "/mcp/message" ] && [ "$method" = "POST" ]; then
   json_id=$(echo "$body" | jq -r '.id // null')
 
   if [ "$json_method" = "initialize" ]; then
-    out="{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{\"tools\":{\"listChanged\":true},\"resources\":{\"listChanged\":true,\"subscribe\":true},\"logging\":{},\"prompts\":{\"listChanged\":true}},\"serverInfo\":{\"name\":\"SSE Server\",\"version\":\"0.0.2\"}}"
+    out="{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{\"tools\":{\"listChanged\":true},\"resources\":{\"listChanged\":true,\"subscribe\":true},\"logging\":{},\"prompts\":{\"listChanged\":true}},\"serverInfo\":{\"name\":\"SSE Server\",\"version\":\"0.0.3\"}}"
     response_json=$(jq -n --arg id "$json_id" --argjson out "$out" '{"jsonrpc": "2.0", "result": $out, "id": $id}')
   elif [ "$json_method" = "notifications/initialized" ] || [ "$json_method" = "initialized" ] || [ "$json_method" = "notifications/tools/list_changed" ] || [ "$json_method" = "notifications/resources/list_changed" ] || [ "$json_method" = "notifications/prompts/list_changed" ] || [ "$json_method" = "notifications/roots/list_changed" ] || [ "$json_method" = "notifications/cancelled" ] || [ "$json_method" = "notifications/progress" ] || [ "$json_method" = "notifications/resources/updated" ]; then
     response_json=""
@@ -351,16 +354,10 @@ INNER_EOF
       found="true"
 INNER_EOF
 
-		http_routes=$(jq -r '
-      if .paths then
-      .paths | to_entries[] | .key as $path | .value | to_entries[] | select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers") | .key as $method | .value |
-      (if .operationId then (.operationId | split("") | map(if test("[A-Z]") then "_" + ascii_downcase else . end) | join("")) else "\($method | ascii_upcase)_\($path | gsub("/"; "_") | gsub("[{}]"; ""))" end) as $opId |
-      "elif [ \"$path\" = \"\($path)\" ] && [ \"$method\" = \"\($method | ascii_upcase)\" ]; then\n  found=\"true\"\n  set +e\n  res=$(dao_${ACTIVE_DAO}_\($opId))\n  exit_code=$?\n  set -e\n  if [ \"$exit_code\" -ne 0 ]; then\n    response_json=\"{\\\"error\\\": \\\"Not Implemented\\\"}\"\n  else\n    response_json=\"$res\"\n  fi"
-      else
-      empty
-      end
-      ' "${ast}")
-		echo "$http_routes"
+		cat <<'INNER_EOF'
+      elif type router_dispatch >/dev/null 2>&1 && router_dispatch; then
+        : # router_dispatch will set found="true" and response_json
+INNER_EOF
 
 		cat <<'INNER_EOF'
 elif [ "$START_AUTH_SERVER" = "true" ] || [ "$START_AUTH_SERVER" = "1" ] && [ "$path" = "/auth/register" ] && [ "$method" = "POST" ]; then

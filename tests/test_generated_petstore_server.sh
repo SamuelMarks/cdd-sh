@@ -25,6 +25,14 @@ if [ "$TYPE" = "openapi" ]; then
 	PORT=8112
 fi
 
+# Assert composability
+if [ ! -d "$OUT_SERVER/src/models" ] || [ ! -d "$OUT_SERVER/src/routes" ] || [ ! -d "$OUT_SERVER/src/mocks" ] || [ ! -d "$OUT_SERVER/tests" ]; then
+	echo "FAIL: Expected server composable directories (models, routes, mocks, tests) not found!"
+	exit 1
+fi
+
+echo "Running generated server tests in isolation before starting server..."
+# The generated server tests curl the server, so we must start it first.
 echo "Starting generated server on port $PORT..."
 PORT=$PORT sh "$OUT_SERVER/src/server.sh" --ephemeral </dev/null >/dev/null 2>&1 &
 SERVER_PID=$!
@@ -32,6 +40,13 @@ sleep 2
 trap 'kill $SERVER_PID 2>/dev/null || true' EXIT
 
 export BASE_URL="http://localhost:$PORT"
+
+echo "Running generated server tests..."
+if ! sh "$OUT_SERVER/tests/run_all.sh"; then
+	echo "FAIL: Generated server tests failed"
+	kill $SERVER_PID 2>/dev/null || true
+	exit 1
+fi
 
 echo "Testing SDK against generated server ($BASE_URL)..."
 # shellcheck disable=SC1091

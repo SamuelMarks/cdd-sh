@@ -15,9 +15,9 @@ else
 	THIS_FILE="${0}"
 fi
 
-VERSION="0.0.2"
+VERSION="0.0.3"
 
-# usage prints the CLI help message.
+# print_help prints the CLI help message.
 print_help() {
 	printf "cdd-sh CLI\n"
 	printf "Usage:\n  cdd-sh [subcommand] [options]\n\n"
@@ -41,14 +41,14 @@ print_help() {
 }
 
 if [ "$#" -eq 0 ]; then
-	usage
+	print_help
 fi
 
 CMD="${1}"
 shift
 
 if [ "${CMD}" = "-help" ] || [ "${CMD}" = "--help" ]; then
-	usage
+	print_help
 fi
 
 if [ "${CMD}" = "-version" ] || [ "${CMD}" = "--version" ]; then
@@ -375,7 +375,7 @@ to_docs_json)
 	handle_to_docs_json "$@"
 	;;
 from_openapi)
-	if [ "$#" -eq 0 ]; then usage; fi
+	if [ "$#" -eq 0 ]; then print_help; fi
 	SUBCMD="to_sdk"
 	if [ "$1" != "-i" ] && [ "$1" != "--input-dir" ] && [ "$1" != "-o" ] && [ "$1" != "--no-github-actions" ] && [ "$1" != "--no-installable-package" ] && [ "$1" != "--tests" ] && [ "$1" != "--ephemeral" ] && [ "$1" != "--seed" ] && [ "$1" != "--strict-validation" ] && [ "$1" != "--enforce-auth" ] && [ "$1" != "--start-auth-server" ]; then
 		SUBCMD="$1"
@@ -444,9 +444,26 @@ from_openapi)
 			. "${LIBSCRIPT_ROOT_DIR:-.}/src/openapi/parse.sh"
 			handle_parse_openapi "$IN"
 
+			# Emit Server Models
+			. "${LIBSCRIPT_ROOT_DIR:-.}/src/server/emit_models.sh"
+			handle_emit_server_models "$OUT/src/models"
+
+			# Emit Server DAOs (Mocks)
+			. "${LIBSCRIPT_ROOT_DIR:-.}/src/server/emit_daos.sh"
+			handle_emit_server_daos "$OUT/src/mocks"
+
+			# Emit Server Routes
+			. "${LIBSCRIPT_ROOT_DIR:-.}/src/server/emit_routes.sh"
+			handle_emit_server_routes "$OUT/src/routes"
+
+			# Emit Server Entrypoint
 			# shellcheck disable=SC1091
 			. "${LIBSCRIPT_ROOT_DIR:-.}/src/server/emit.sh"
 			handle_emit_server "$OUT/src/server.sh" "server"
+
+			# Emit Server Tests
+			. "${LIBSCRIPT_ROOT_DIR:-.}/src/server/emit_tests.sh"
+			handle_emit_server_tests "$OUT/tests"
 		fi
 		echo "Generated Server in $OUT"
 		;;
@@ -517,6 +534,6 @@ parse | emit | sync)
 	;;
 *)
 	echo "Unknown command: $CMD" >&2
-	usage
+	print_help
 	;;
 esac

@@ -40,8 +40,11 @@ func main() {
 	}
 
 	testCov := 0
-	errTest := exec.Command("go", "test", "-coverprofile=coverage.out", "./...").Run()
-	_ = errTest
+	if os.Getenv("SKIP_GO_TEST") == "" {
+		cmdStr := "go test -coverprofile=coverage.out $(go list ./... | grep -v /scripts)"
+		errTest := exec.Command("sh", "-c", cmdStr).Run()
+		_ = errTest
+	}
 
 	cmd := exec.Command("go", "tool", "cover", "-func=coverage.out")
 	if out, err := cmd.CombinedOutput(); err == nil {
