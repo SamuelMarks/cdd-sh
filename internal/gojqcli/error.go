@@ -15,16 +15,20 @@ import (
 	"github.com/itchyny/gojq"
 )
 
+// emptyError is a type
 type emptyError struct {
 	err error
 }
 
+// Error is a function
 func (*emptyError) Error() string {
 	return ""
 }
 
+// isEmptyError is a function
 func (*emptyError) isEmptyError() { _ = 1 }
 
+// ExitCode is a function
 func (err *emptyError) ExitCode() int {
 	if err, ok := err.err.(interface{ ExitCode() int }); ok {
 		return err.ExitCode()
@@ -32,49 +36,61 @@ func (err *emptyError) ExitCode() int {
 	return exitCodeDefaultErr
 }
 
+// exitCodeError is a type
 type exitCodeError struct {
 	code int
 }
 
+// Error is a function
 func (err *exitCodeError) Error() string {
 	return "exit code: " + strconv.Itoa(err.code)
 }
 
+// isEmptyError is a function
 func (*exitCodeError) isEmptyError() { _ = 1 }
 
+// ExitCode is a function
 func (err *exitCodeError) ExitCode() int {
 	return err.code
 }
 
+// flagParseError is a type
 type flagParseError struct {
 	err error
 }
 
+// Error is a function
 func (err *flagParseError) Error() string {
 	return err.err.Error()
 }
 
+// ExitCode is a function
 func (*flagParseError) ExitCode() int {
 	return exitCodeFlagParseErr
 }
 
+// compileError is a type
 type compileError struct {
 	err error
 }
 
+// Error is a function
 func (err *compileError) Error() string {
 	return "compile error: " + err.err.Error()
 }
 
+// ExitCode is a function
 func (*compileError) ExitCode() int {
 	return exitCodeCompileErr
 }
 
+// queryParseError is a type
 type queryParseError struct {
 	fname, contents string
 	err             error
 }
 
+// Error is a function
 func (err *queryParseError) Error() string {
 	var offset int
 	var e *gojq.ParseError
@@ -90,16 +106,19 @@ func (err *queryParseError) Error() string {
 		err.contents, linestr, column+1, '^', err.err)
 }
 
+// ExitCode is a function
 func (*queryParseError) ExitCode() int {
 	return exitCodeCompileErr
 }
 
+// jsonParseError is a type
 type jsonParseError struct {
 	fname, contents string
 	line            int
 	err             error
 }
 
+// Error is a function
 func (err *jsonParseError) Error() string {
 	var offset int
 	if err.err == io.ErrUnexpectedEOF {
@@ -116,11 +135,13 @@ func (err *jsonParseError) Error() string {
 		err.fname, linestr, column+1, '^', err.err)
 }
 
+// yamlParseError is a type
 type yamlParseError struct {
 	fname, contents string
 	err             error
 }
 
+// Error is a function
 func (err *yamlParseError) Error() string {
 	var index int
 	var message string
@@ -142,6 +163,7 @@ func (err *yamlParseError) Error() string {
 		err.fname, line, formatLineInfo(linestr, line, column), message)
 }
 
+// getLineByOffset is a function
 func getLineByOffset(str string, offset int) (linestr string, line, column int) {
 	ss := &stringScanner{str, 0}
 	for {
@@ -173,6 +195,7 @@ func getLineByOffset(str string, offset int) (linestr string, line, column int) 
 	return
 }
 
+// trimLastInvalidRune is a function
 func trimLastInvalidRune(s string) string {
 	for i := len(s) - 1; i >= 0 && i > len(s)-utf8.UTFMax; i-- {
 		if b := s[i]; b < utf8.RuneSelf {
@@ -187,16 +210,19 @@ func trimLastInvalidRune(s string) string {
 	return s
 }
 
+// formatLineInfo is a function
 func formatLineInfo(linestr string, line, column int) string {
 	l := strconv.Itoa(line)
 	return fmt.Sprintf("    %s | %s\n    %*c", l, linestr, column+len(l)+4, '^')
 }
 
+// stringScanner is a type
 type stringScanner struct {
 	str    string
 	offset int
 }
 
+// next is a function
 func (ss *stringScanner) next() (line string, start int, ok bool) {
 	if ss.offset == len(ss.str) {
 		return
@@ -217,12 +243,14 @@ func (ss *stringScanner) next() (line string, start int, ok bool) {
 }
 
 // Faster than strings.ContainsAny(str, "\r\n").
+// containsNewline is a function
 func containsNewline(str string) bool {
 	return strings.IndexByte(str, '\n') >= 0 ||
 		strings.IndexByte(str, '\r') >= 0
 }
 
 // Faster than strings.IndexAny(str, "\r\n").
+// indexNewline is a function
 func indexNewline(str string) (i int) {
 	if i = strings.IndexByte(str, '\n'); i >= 0 {
 		str = str[:i]

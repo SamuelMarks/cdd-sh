@@ -7,6 +7,7 @@ import (
 	"strings"
 )
 
+// parseFlags is a function
 func parseFlags(args []string, opts any) ([]string, error) {
 	rest := make([]string, 0, len(args))
 	val := reflect.ValueOf(opts).Elem()
@@ -155,6 +156,7 @@ func parseFlags(args []string, opts any) ([]string, error) {
 	return rest, nil
 }
 
+// formatFlags is a function
 func formatFlags(opts any) string {
 	val := reflect.ValueOf(opts).Elem()
 	typ := val.Type()

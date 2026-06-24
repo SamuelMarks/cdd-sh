@@ -15,12 +15,14 @@ import (
 	"github.com/itchyny/gojq"
 )
 
+// inputReader is a type
 type inputReader struct {
 	io.Reader
 	rs  io.ReadSeeker
 	buf *bytes.Buffer
 }
 
+// newInputReader is a function
 func newInputReader(r io.Reader) *inputReader {
 	if r, ok := r.(io.ReadSeeker); ok {
 		if _, err := r.Seek(0, io.SeekCurrent); err == nil {
@@ -31,6 +33,7 @@ func newInputReader(r io.Reader) *inputReader {
 	return &inputReader{io.TeeReader(r, &buf), nil, &buf}
 }
 
+// getContents is a function
 func (ir *inputReader) getContents(offset *int64, line *int) string {
 	if buf := ir.buf; buf != nil {
 		return buf.String()
@@ -61,12 +64,14 @@ func (ir *inputReader) getContents(offset *int64, line *int) string {
 	return buf.String()
 }
 
+// inputIter is a type
 type inputIter interface {
 	gojq.Iter
 	io.Closer
 	Name() string
 }
 
+// jsonInputIter is a type
 type jsonInputIter struct {
 	next   func() (any, error)
 	ir     *inputReader
@@ -76,6 +81,7 @@ type jsonInputIter struct {
 	err    error
 }
 
+// newJSONInputIter is a function
 func newJSONInputIter(r io.Reader, fname string) inputIter {
 	ir := newInputReader(r)
 	dec := json.NewDecoder(ir)
@@ -84,6 +90,7 @@ func newJSONInputIter(r io.Reader, fname string) inputIter {
 	return &jsonInputIter{next: next, ir: ir, fname: fname}
 }
 
+// Next is a function
 func (i *jsonInputIter) Next() (any, bool) {
 	if i.err != nil {
 		return nil, false
@@ -115,15 +122,18 @@ func (i *jsonInputIter) Next() (any, bool) {
 	return v, true
 }
 
+// Close is a function
 func (i *jsonInputIter) Close() error {
 	i.err = io.EOF
 	return nil
 }
 
+// Name is a function
 func (i *jsonInputIter) Name() string {
 	return i.fname
 }
 
+// newStreamInputIter is a function
 func newStreamInputIter(r io.Reader, fname string) inputIter {
 	ir := newInputReader(r)
 	dec := json.NewDecoder(ir)
@@ -131,14 +141,17 @@ func newStreamInputIter(r io.Reader, fname string) inputIter {
 	return &jsonInputIter{next: newJSONStream(dec).next, ir: ir, fname: fname}
 }
 
+// nullInputIter is a type
 type nullInputIter struct {
 	err error
 }
 
+// newNullInputIter is a function
 func newNullInputIter() inputIter {
 	return &nullInputIter{}
 }
 
+// Next is a function
 func (i *nullInputIter) Next() (any, bool) {
 	if i.err != nil {
 		return nil, false
@@ -147,15 +160,18 @@ func (i *nullInputIter) Next() (any, bool) {
 	return nil, true
 }
 
+// Close is a function
 func (i *nullInputIter) Close() error {
 	i.err = io.EOF
 	return nil
 }
 
+// Name is a function
 func (*nullInputIter) Name() string {
 	return ""
 }
 
+// filesInputIter is a type
 type filesInputIter struct {
 	newIter func(io.Reader, string) inputIter
 	fnames  []string
@@ -165,12 +181,14 @@ type filesInputIter struct {
 	err     error
 }
 
+// newFilesInputIter is a function
 func newFilesInputIter(
 	newIter func(io.Reader, string) inputIter, fnames []string, stdin io.Reader,
 ) inputIter {
 	return &filesInputIter{newIter: newIter, fnames: fnames, stdin: stdin}
 }
 
+// Next is a function
 func (i *filesInputIter) Next() (any, bool) {
 	if i.err != nil {
 		return nil, false
@@ -226,6 +244,7 @@ func (i *filesInputIter) Next() (any, bool) {
 	}
 }
 
+// Close is a function
 func (i *filesInputIter) Close() error {
 	if i.file != nil {
 		if r, ok := i.file.(io.Closer); ok && i.file != i.stdin {
@@ -237,6 +256,7 @@ func (i *filesInputIter) Close() error {
 	return nil
 }
 
+// Name is a function
 func (i *filesInputIter) Name() string {
 	if i.iter != nil {
 		return i.iter.Name()
@@ -244,16 +264,19 @@ func (i *filesInputIter) Name() string {
 	return ""
 }
 
+// rawInputIter is a type
 type rawInputIter struct {
 	r     *bufio.Reader
 	fname string
 	err   error
 }
 
+// newRawInputIter is a function
 func newRawInputIter(r io.Reader, fname string) inputIter {
 	return &rawInputIter{r: bufio.NewReader(r), fname: fname}
 }
 
+// Next is a function
 func (i *rawInputIter) Next() (any, bool) {
 	if i.err != nil {
 		return nil, false
@@ -271,15 +294,18 @@ func (i *rawInputIter) Next() (any, bool) {
 	return strings.TrimSuffix(line, "\n"), true
 }
 
+// Close is a function
 func (i *rawInputIter) Close() error {
 	i.err = io.EOF
 	return nil
 }
 
+// Name is a function
 func (i *rawInputIter) Name() string {
 	return i.fname
 }
 
+// yamlInputIter is a type
 type yamlInputIter struct {
 	dec   *yaml.Decoder
 	ir    *inputReader
@@ -287,12 +313,14 @@ type yamlInputIter struct {
 	err   error
 }
 
+// newYAMLInputIter is a function
 func newYAMLInputIter(r io.Reader, fname string) inputIter {
 	ir := newInputReader(r)
 	dec := yaml.NewDecoder(ir)
 	return &yamlInputIter{dec: dec, ir: ir, fname: fname}
 }
 
+// Next is a function
 func (i *yamlInputIter) Next() (any, bool) {
 	if i.err != nil {
 		return nil, false
@@ -309,24 +337,29 @@ func (i *yamlInputIter) Next() (any, bool) {
 	return v, true
 }
 
+// Close is a function
 func (i *yamlInputIter) Close() error {
 	i.err = io.EOF
 	return nil
 }
 
+// Name is a function
 func (i *yamlInputIter) Name() string {
 	return i.fname
 }
 
+// slurpInputIter is a type
 type slurpInputIter struct {
 	iter inputIter
 	err  error
 }
 
+// newSlurpInputIter is a function
 func newSlurpInputIter(iter inputIter) inputIter {
 	return &slurpInputIter{iter: iter}
 }
 
+// Next is a function
 func (i *slurpInputIter) Next() (any, bool) {
 	if i.err != nil {
 		return nil, false
@@ -347,6 +380,7 @@ func (i *slurpInputIter) Next() (any, bool) {
 	}
 }
 
+// Close is a function
 func (i *slurpInputIter) Close() error {
 	if i.iter != nil {
 		i.iter.Close()
@@ -356,20 +390,24 @@ func (i *slurpInputIter) Close() error {
 	return nil
 }
 
+// Name is a function
 func (i *slurpInputIter) Name() string {
 	return i.iter.Name()
 }
 
+// readAllIter is a type
 type readAllIter struct {
 	r     io.Reader
 	fname string
 	err   error
 }
 
+// newReadAllIter is a function
 func newReadAllIter(r io.Reader, fname string) inputIter {
 	return &readAllIter{r: r, fname: fname}
 }
 
+// Next is a function
 func (i *readAllIter) Next() (any, bool) {
 	if i.err != nil {
 		return nil, false
@@ -382,24 +420,29 @@ func (i *readAllIter) Next() (any, bool) {
 	return string(cnt), true
 }
 
+// Close is a function
 func (i *readAllIter) Close() error {
 	i.err = io.EOF
 	return nil
 }
 
+// Name is a function
 func (i *readAllIter) Name() string {
 	return i.fname
 }
 
+// slurpRawInputIter is a type
 type slurpRawInputIter struct {
 	iter inputIter
 	err  error
 }
 
+// newSlurpRawInputIter is a function
 func newSlurpRawInputIter(iter inputIter) inputIter {
 	return &slurpRawInputIter{iter: iter}
 }
 
+// Next is a function
 func (i *slurpRawInputIter) Next() (any, bool) {
 	if i.err != nil {
 		return nil, false
@@ -420,6 +463,7 @@ func (i *slurpRawInputIter) Next() (any, bool) {
 	}
 }
 
+// Close is a function
 func (i *slurpRawInputIter) Close() error {
 	if i.iter != nil {
 		i.iter.Close()
@@ -429,6 +473,7 @@ func (i *slurpRawInputIter) Close() error {
 	return nil
 }
 
+// Name is a function
 func (i *slurpRawInputIter) Name() string {
 	return i.iter.Name()
 }

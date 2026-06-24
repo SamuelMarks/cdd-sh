@@ -8,10 +8,12 @@ import (
 
 var noColor bool
 
+// newColor is a function
 func newColor(c string) []byte {
 	return []byte("\x1b[" + c + "m")
 }
 
+// setColor is a function
 func setColor(buf *bytes.Buffer, color []byte) {
 	if !noColor {
 		buf.Write(color)
@@ -30,6 +32,7 @@ var (
 	objectColor    = []byte(nil)      // No color
 )
 
+// validColor is a function
 func validColor(x string) bool {
 	var num bool
 	for _, c := range x {
@@ -44,6 +47,7 @@ func validColor(x string) bool {
 	return num
 }
 
+// setColors is a function
 func setColors(colors string) error {
 	var color string
 	for _, target := range []*[]byte{

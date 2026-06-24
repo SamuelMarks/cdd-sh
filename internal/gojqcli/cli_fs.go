@@ -7,6 +7,7 @@ var EmbeddedFS fs.FS
 
 var ResolvePath func(string) string
 
+// resolveJqPath is a function
 func resolveJqPath(p string) string {
 	if ResolvePath != nil {
 		return ResolvePath(p)

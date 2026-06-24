@@ -13,6 +13,7 @@ import (
 	"unicode/utf8"
 )
 
+// encoder is a type
 type encoder struct {
 	out    io.Writer
 	w      *bytes.Buffer
@@ -22,22 +23,26 @@ type encoder struct {
 	buf    [64]byte
 }
 
+// newEncoder is a function
 func newEncoder(tab bool, indent int) *encoder {
 	// reuse the buffer in multiple calls of marshal
 	return &encoder{w: new(bytes.Buffer), tab: tab, indent: indent}
 }
 
+// flush is a function
 func (e *encoder) flush() error {
 	_, err := e.out.Write(e.w.Bytes())
 	e.w.Reset()
 	return err
 }
 
+// marshal is a function
 func (e *encoder) marshal(v any, w io.Writer) error {
 	e.out = w
 	return cmp.Or(e.encode(v), e.flush())
 }
 
+// encode is a function
 func (e *encoder) encode(v any) error {
 	switch v := v.(type) {
 	case nil:
@@ -159,6 +164,7 @@ func (e *encoder) encodeString(s string, color []byte) {
 	}
 }
 
+// encodeArray is a function
 func (e *encoder) encodeArray(vs []any) error {
 	e.writeByte('[', arrayColor)
 	e.depth += e.indent
@@ -181,6 +187,7 @@ func (e *encoder) encodeArray(vs []any) error {
 	return nil
 }
 
+// encodeObject is a function
 func (e *encoder) encodeObject(vs map[string]any) error {
 	e.writeByte('{', objectColor)
 	e.depth += e.indent
@@ -221,6 +228,7 @@ func (e *encoder) encodeObject(vs map[string]any) error {
 	return nil
 }
 
+// writeIndent is a function
 func (e *encoder) writeIndent() {
 	e.w.WriteByte('\n')
 	if n := e.depth; n > 0 {
@@ -232,6 +240,7 @@ func (e *encoder) writeIndent() {
 	}
 }
 
+// writeIndentInternal is a function
 func (e *encoder) writeIndentInternal(n int, spaces string) {
 	if l := len(spaces); n <= l {
 		e.w.WriteString(spaces[:n])
@@ -246,6 +255,7 @@ func (e *encoder) writeIndentInternal(n int, spaces string) {
 	}
 }
 
+// writeByte is a function
 func (e *encoder) writeByte(b byte, color []byte) {
 	if color == nil {
 		e.w.WriteByte(b)
@@ -256,6 +266,7 @@ func (e *encoder) writeByte(b byte, color []byte) {
 	}
 }
 
+// write is a function
 func (e *encoder) write(bs, color []byte) {
 	if color == nil {
 		e.w.Write(bs)

@@ -15,11 +15,11 @@ fi
 
 echo "Starting local Petstore server (swaggerapi/petstore)..."
 if command -v docker >/dev/null 2>&1; then
-	CONTAINER_ID=$(docker run -d -p 8080:8080 swaggerapi/petstore)
+	CONTAINER_ID=$(docker run -d -e SWAGGER_URL=http://localhost:8080/api/swagger.json -p 8080:8080 swaggerapi/petstore)
 	# shellcheck disable=SC2064
 	trap 'docker rm -f "$CONTAINER_ID" >/dev/null 2>&1' EXIT
 	echo "Waiting for local Petstore server to be ready..."
-	timeout=30
+	timeout=60
 	while [ $timeout -gt 0 ]; do
 		if curl -s -f http://localhost:8080/api/swagger.json >/dev/null; then
 			break

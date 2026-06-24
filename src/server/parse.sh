@@ -23,6 +23,7 @@ LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(
 	printf '%s' "${d}"
 )}"
 
+# handle_parse_server is a function
 handle_parse_server() {
 	file_path="${1:-server.sh}"
 	if [ ! -f "${file_path}" ]; then return 1; fi

@@ -10,6 +10,7 @@ import (
 	"strings"
 )
 
+// getColor is a function
 func getColor(pct int) string {
 	if pct >= 90 {
 		return "brightgreen"
@@ -29,6 +30,7 @@ func getColor(pct int) string {
 	return "red"
 }
 
+// main is a function
 func main() {
 	readmePath := filepath.Join("..", "README.md")
 	if _, err := os.Stat("README.md"); err == nil {

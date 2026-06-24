@@ -31,6 +31,7 @@ const (
 	exitCodeDefaultErr
 )
 
+// cli is a type
 type cli struct {
 	inStream  io.Reader
 	outStream io.Writer
@@ -55,6 +56,7 @@ type cli struct {
 	exitCodeError       error
 }
 
+// flagopts is a type
 type flagopts struct {
 	OutputRaw     bool              `short:"r" long:"raw-output" description:"output raw strings"`
 	OutputRaw0    bool              `long:"raw-output0" description:"implies -r with NUL character delimiter"`
@@ -85,6 +87,7 @@ type flagopts struct {
 
 var addDefaultModulePaths = true
 
+// run is a function
 func (cli *cli) run(args []string) int {
 	if err := cli.runInternal(args); err != nil {
 		if _, ok := err.(interface{ isEmptyError() }); !ok {
@@ -98,6 +101,7 @@ func (cli *cli) run(args []string) int {
 	return exitCodeOK
 }
 
+// runInternal is a function
 func (cli *cli) runInternal(args []string) (err error) {
 	var opts flagopts
 	args, err = parseFlags(args, &opts)
@@ -301,6 +305,8 @@ Usage:
 	}
 	return cli.process(iter, code)
 }
+
+// slurpFile is a function
 func slurpFile(name string) (any, error) {
 	iter := newSlurpInputIter(
 		newFilesInputIter(newJSONInputIter, []string{name}, nil),
@@ -313,6 +319,7 @@ func slurpFile(name string) (any, error) {
 	return val, nil
 }
 
+// createInputIter is a function
 func (cli *cli) createInputIter(args []string) (iter inputIter) {
 	var newIter func(io.Reader, string) inputIter
 	switch {
@@ -344,6 +351,7 @@ func (cli *cli) createInputIter(args []string) (iter inputIter) {
 	return newFilesInputIter(newIter, args, cli.inStream)
 }
 
+// process is a function
 func (cli *cli) process(iter inputIter, code *gojq.Code) error {
 	var err error
 	for {
@@ -380,6 +388,7 @@ func (cli *cli) process(iter inputIter, code *gojq.Code) error {
 	return nil
 }
 
+// printValues is a function
 func (cli *cli) printValues(iter gojq.Iter) error {
 	m := cli.createMarshaler()
 	for {
@@ -416,6 +425,7 @@ func (cli *cli) printValues(iter gojq.Iter) error {
 	return nil
 }
 
+// createMarshaler is a function
 func (cli *cli) createMarshaler() marshaler {
 	if cli.outputYAML {
 		return yamlFormatter(cli.outputIndent)
@@ -435,6 +445,7 @@ func (cli *cli) createMarshaler() marshaler {
 	return f
 }
 
+// funcDebug is a function
 func (cli *cli) funcDebug(v any, _ []any) any {
 	if err := newEncoder(false, -1).
 		marshal([]any{"DEBUG:", v}, cli.errStream); err != nil {
@@ -446,6 +457,7 @@ func (cli *cli) funcDebug(v any, _ []any) any {
 	return v
 }
 
+// funcStderr is a function
 func (cli *cli) funcStderr(v any, _ []any) any {
 	if err := (&rawMarshaler{m: newEncoder(false, -1)}).
 		marshal(v, cli.errStream); err != nil {

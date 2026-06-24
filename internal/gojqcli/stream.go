@@ -5,12 +5,14 @@ import (
 	"io"
 )
 
+// jsonStream is a type
 type jsonStream struct {
 	dec    *json.Decoder
 	path   []any
 	states []int
 }
 
+// newJSONStream is a function
 func newJSONStream(dec *json.Decoder) *jsonStream {
 	return &jsonStream{dec: dec, states: []int{jsonStateTopValue}, path: []any{}}
 }
@@ -28,6 +30,7 @@ const (
 	jsonStateObjectEmptyEnd
 )
 
+// next is a function
 func (s *jsonStream) next() (any, error) {
 	switch s.states[len(s.states)-1] {
 	case jsonStateArrayEnd, jsonStateObjectEnd:
@@ -104,6 +107,7 @@ func (s *jsonStream) next() (any, error) {
 	}
 }
 
+// copyPath is a function
 func (s *jsonStream) copyPath() []any {
 	path := make([]any, len(s.path))
 	copy(path, s.path)
