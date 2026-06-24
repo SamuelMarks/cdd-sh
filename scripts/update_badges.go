@@ -41,8 +41,8 @@ func main() {
 
 	testCov := 0
 	errTest := exec.Command("go", "test", "-coverprofile=coverage.out", "./...").Run()
-	if errTest != nil {
-	}
+	_ = errTest
+
 	cmd := exec.Command("go", "tool", "cover", "-func=coverage.out")
 	if out, err := cmd.CombinedOutput(); err == nil {
 		re := regexp.MustCompile(`total:\s+\(statements\)\s+([0-9.]+)%`)
@@ -66,9 +66,7 @@ func main() {
 	goTypeRe := regexp.MustCompile(`(?m)^[ \t]*type\s+([A-Z][a-zA-Z0-9_]*)\s+`)
 
 	filepath.Walk(baseDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil
-		}
+
 		for _, ignore := range []string{"/tests", "/tmp_out", "tmp_out", "/temp_sdk", "/.git", "/emsdk", "/out", "out", "/bin", "/temp-sh", "temp-swagger-sdk", "temp-openapi-sdk"} {
 			if strings.Contains(filepath.ToSlash(path), ignore) {
 				if info.IsDir() {
@@ -89,10 +87,7 @@ func main() {
 			return nil
 		}
 
-		contentBytes, err := os.ReadFile(path)
-		if err != nil {
-			return nil
-		}
+		contentBytes, _ := os.ReadFile(path)
 		content := string(contentBytes)
 
 		if strings.HasSuffix(name, ".sh") || name == "cdd.sh" {
@@ -139,10 +134,7 @@ func main() {
 	testColor := getColor(testCov)
 	docColor := getColor(docCov)
 
-	readme, err := os.ReadFile(readmePath)
-	if err != nil {
-		return
-	}
+	readme, _ := os.ReadFile(readmePath)
 
 	readmeStr := string(readme)
 
