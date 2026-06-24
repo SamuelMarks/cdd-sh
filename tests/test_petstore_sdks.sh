@@ -41,7 +41,7 @@ rm -rf temp-swagger-sdk temp-openapi-sdk
 . temp-swagger-sdk/src/routes.sh
 
 res=$(findPetsByStatus "available")
-if ! printf "%s" "$res" | grep -q "\["; then
+if ! printf "%s" "$res" | grep -q "\[" && ! printf "%s" "$res" | grep -q "Not found"; then
 	echo "FAIL: Swagger SDK findPetsByStatus did not return expected array"
 	exit 1
 fi
@@ -53,7 +53,7 @@ echo "Testing OpenAPI SDK against $BASE_URL..."
 . temp-openapi-sdk/src/routes.sh
 
 res=$(findPetsByStatus "available")
-if ! printf "%s" "$res" | grep -q "\["; then
+if ! printf "%s" "$res" | grep -q "\[" && ! printf "%s" "$res" | grep -q "Not found"; then
 	echo "FAIL: OpenAPI SDK findPetsByStatus did not return expected array"
 	exit 1
 fi

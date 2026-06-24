@@ -4,7 +4,7 @@ cdd-sh
 [![interactive WASM web demo](https://img.shields.io/badge/interactive-WASM_web_demo-blue.svg)](https://offscale.io/wasm_web_demo)
 [![CI](https://github.com/SamuelMarks/cdd-sh/actions/workflows/ci.yml/badge.svg)](https://github.com/SamuelMarks/cdd-sh/actions)
 [![Test Coverage](https://img.shields.io/badge/test_coverage-92%25-brightgreen.svg)](#)
-[![Doc Coverage](https://img.shields.io/badge/doc_coverage-100%25-brightgreen.svg)](#)
+[![Doc Coverage](https://img.shields.io/badge/doc_coverage-98%25-brightgreen.svg)](#)
 
 ----
 
@@ -34,6 +34,23 @@ The CLI—at a minimum—has:
 ./bin/cdd-sh from_openapi to_sdk -i spec.json -o src/models
 echo "SDK generation complete."
 ```
+
+
+## Decoupled Mock Server Modes
+
+The cdd-sh generated server operates in decoupled tiers to support various testing and mock capabilities:
+
+- PORT=8080 sh src/server.sh (No DB configured): **Stub Mode**. Server runs using traditional scaffolds, and endpoints return NotImplementedError (Exit code 1) or empty bodies.
+- PORT=8080 DATABASE_URL="postgresql://..." sh src/server.sh: **Production Mode**. Uses actual ORM/DAO interactions against a real database.
+- PORT=8080 sh src/server.sh --ephemeral: **Sandbox Mode**. Uses actual ORM interactions against a fresh, throwaway /tmp database.
+- PORT=8080 sh src/server.sh --ephemeral --seed: **Full Mock Mode**. Ephemeral database, automatically populated with a localized fake data graph (via Awk faker).
+
+## Sync and Reverse Generation
+
+You can bidirectionally synchronize your OpenAPI spec and Server representations:
+
+- cdd-sh to_openapi: Dynamically emit the runtime OpenAPI specification directly from the generated source code (DAOs and Handlers).
+- cdd-sh sync --truth SOURCE: Ensure code artifacts are forced to match the selected source of truth.
 
 ## Installation
 

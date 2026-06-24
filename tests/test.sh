@@ -212,3 +212,5 @@ sh tests/test_server.sh
 sh tests/test_sdk.sh
 sh tests/test_serve_rpc.sh
 sh tests/test_petstore_sdks.sh
+sh tests/test_generated_petstore_server.sh swagger ../petstore.json
+sh tests/test_generated_petstore_server.sh openapi ../petstore_oas3.json

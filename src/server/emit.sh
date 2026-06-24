@@ -36,6 +36,107 @@ handle_emit_server() {
 		cat <<'INNER_EOF'
 PORT="${PORT:-8080}"
 
+INNER_EOF
+
+		if [ "${CDD_EPHEMERAL:-0}" = "1" ] || [ "${CDD_SEED:-0}" = "1" ] || [ "${CDD_STRICT_VALIDATION:-0}" = "1" ] || [ "${CDD_ENFORCE_AUTH:-0}" = "1" ] || [ "${CDD_START_AUTH_SERVER:-0}" = "1" ]; then
+			cat <<'INNER_EOF'
+EPHEMERAL=false
+SEED=false
+STRICT_VALIDATION="${CDD_STRICT_VALIDATION:-false}"
+ENFORCE_AUTH="${CDD_ENFORCE_AUTH:-false}"
+START_AUTH_SERVER="${CDD_START_AUTH_SERVER:-false}"
+for arg in "$@"; do
+  case "$arg" in
+    --ephemeral) EPHEMERAL=true ;;
+    --seed) SEED=true ;;
+    --strict-validation) STRICT_VALIDATION=true ;;
+    --enforce-auth) ENFORCE_AUTH=true ;;
+    --start-auth-server) START_AUTH_SERVER=true ;;
+  esac
+done
+
+if [ "$EPHEMERAL" = "true" ] || [ -n "${DATABASE_URL:-}" ]; then
+  ACTIVE_DAO="concrete"
+else
+  ACTIVE_DAO="stub"
+fi
+INNER_EOF
+		else
+			cat <<'INNER_EOF'
+ACTIVE_DAO="stub"
+INNER_EOF
+		fi
+
+		if [ "${CDD_EPHEMERAL:-0}" = "1" ]; then
+			cat <<'INNER_EOF'
+# EPHEMERAL Database Connection Setup
+# If EPHEMERAL=true, we override DATABASE_URL to a clean temp directory.
+if [ "$EPHEMERAL" = "true" ]; then
+  export DATABASE_URL="/tmp/cdd_ephemeral_db_$$"
+  mkdir -p "$DATABASE_URL"
+fi
+INNER_EOF
+		fi
+
+		if [ "${CDD_SEED:-0}" = "1" ]; then
+			cat <<'INNER_EOF'
+if [ "$SEED" = "true" ] && [ "$ACTIVE_DAO" = "concrete" ]; then
+  echo "Seeding database at $DATABASE_URL"
+  # initialize_db_schema executes DB schema migrations for the Concrete DAOs.
+  echo "CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT, email TEXT);" > "$DATABASE_URL/schema.sql"
+  # Documentation: The seeder module is responsible for initializing the Faker library
+  # and batch inserting fake data to maintain referential integrity in the ephemeral DB.
+  cat << 'FAKER_EOF' > /tmp/faker_$$.awk
+# fake_name generates a random human name
+function fake_name() {
+    names[1]="Alice"; names[2]="Bob"; names[3]="Charlie"; names[4]="David"; names[5]="Eve"
+    return names[int(rand()*5)+1]
+}
+# fake_email generates a random email address
+function fake_email() {
+    domains[1]="example.com"; domains[2]="test.org"; domains[3]="demo.net"
+    return tolower(fake_name()) "@" domains[int(rand()*3)+1]
+}
+# fake_phone generates a random phone number string
+function fake_phone() {
+    return sprintf("555-%04d", int(rand()*10000))
+}
+# fake_uuid generates a pseudo-UUID v4
+function fake_uuid() {
+    return sprintf("%04x%04x-%04x-%04x-%04x-%04x%04x%04x",
+        rand()*65535, rand()*65535, rand()*65535,
+        rand()*65535, rand()*65535, rand()*65535,
+        rand()*65535, rand()*65535)
+}
+BEGIN {
+    srand()
+    for(i=0; i<10; i++) {
+        id=fake_uuid()
+        print "INSERT INTO users (id, name, email) VALUES ('" id "', '" fake_name() "', '" fake_email() "');"
+    }
+}
+FAKER_EOF
+  awk -f /tmp/faker_$$.awk > "$DATABASE_URL/seed.sql" || true
+  rm -f /tmp/faker_$$.awk
+fi
+INNER_EOF
+		fi
+
+		dao_funcs=$(jq -r '
+  if .paths then
+    .paths | to_entries[] | .key as $path | .value | to_entries[] | select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers") | .key as $method | .value |
+    (if .operationId then (.operationId | split("") | map(if test("[A-Z]") then "_" + ascii_downcase else . end) | join("")) else "\($method | ascii_upcase)_\($path | gsub("/"; "_") | gsub("[{}]"; ""))" end) as $opId |
+    "# dao_stub_\($opId) is the stub implementation for \($method | ascii_upcase) \($path).\n# Returns a NotImplemented error.\n" +
+    "dao_stub_\($opId)() {\n  echo \"{\\\"error\\\": \\\"Not Implemented\\\"}\"\n  return 1\n}\n" +
+    "# dao_concrete_\($opId) is the concrete DB implementation for \($method | ascii_upcase) \($path).\n# Interacts with DATABASE_URL.\n" +
+    "dao_concrete_\($opId)() {\n  echo \"{}\"\n  return 0\n}\n"
+  else
+    empty
+  end
+' "${ast}")
+		echo "$dao_funcs"
+
+		cat <<'INNER_EOF'
 # Use socat or nc as a reliable router. It will just execute this script with a special mode.
 if [ "${1:-}" != "--handler" ]; then
 echo "Starting SSE Server on port $PORT..."
@@ -51,7 +152,7 @@ while IFS= read -r line; do
   line=$(printf "%s" "$line" | tr -d '\r')
   if [ -z "$method" ]; then
     method=$(printf "%s" "$line" | cut -d' ' -f1)
-    path=$(printf "%s" "$line" | cut -d' ' -f2)
+    path=$(printf "%s" "$line" | cut -d' ' -f2 | cut -d'?' -f1)
   fi
   if printf "%s" "$line" | grep -qi "^Authorization:"; then
     auth_header=$(printf "%s" "$line" | cut -d':' -f2- | sed 's/^ *//')
@@ -104,6 +205,14 @@ method="${CDD_SSE_METHOD}"
 auth_header="${CDD_SSE_AUTH}"
 body="${CDD_SSE_BODY}"
 
+if [ "$method" = "OPTIONS" ]; then
+  printf "HTTP/1.1 204 No Content\r\n"
+  printf "Access-Control-Allow-Origin: *\r\n"
+  printf "Access-Control-Allow-Methods: *\r\n"
+  printf "Access-Control-Allow-Headers: *\r\n\r\n"
+  exit 0
+fi
+
 if [ "$path" = "/mcp/message" ] && [ "$method" = "POST" ]; then
   if [ -n "$auth_header" ]; then
     if echo "$auth_header" | grep -qi "^Bearer "; then
@@ -114,6 +223,8 @@ if [ "$path" = "/mcp/message" ] && [ "$method" = "POST" ]; then
       export API_KEY="$auth_header"
     fi
   fi
+
+
 
   json_method=$(echo "$body" | jq -r '.method // empty')
   json_id=$(echo "$body" | jq -r '.id // null')
@@ -169,7 +280,7 @@ INNER_EOF
 		  if .paths then
 		    [
 		      .paths | to_entries[] | .key as $path | .value | to_entries[] | select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers") | .key as $method | .value |
-		      (if .operationId then (.operationId | gsub("([a-z])([A-Z])"; "\(.captures[0].string)_\(.captures[1].string)") | ascii_downcase) else "\($method | ascii_upcase)_\($path | gsub("/"; "_") | gsub("[{}]"; ""))" end) as $opId |
+		      (if .operationId then (.operationId | split("") | map(if test("[A-Z]") then "_" + ascii_downcase else . end) | join("")) else "\($method | ascii_upcase)_\($path | gsub("/"; "_") | gsub("[{}]"; ""))" end) as $opId |
 		      {
 		        name: $opId,
 		        description: (.summary // "Call \($method) \($path)"),
@@ -214,8 +325,13 @@ INNER_EOF
         eval_args=\$(echo "\$args" | jq -r 'to_entries | map("--\(.key) '\''\(.value)'\''") | join(" ")')
         
         set +e
-        res=\$(eval "./bin/sdk-cli \$tool_name \$eval_args" 2>&1 || eval "./tests/out/bin/sdk-cli \$tool_name \$eval_args" 2>&1 || eval "../bin/sdk-cli \$tool_name \$eval_args" 2>&1)
-        exit_code=\$?
+        if type "dao_\${ACTIVE_DAO}_\${tool_name}" >/dev/null 2>&1; then
+          res=\$(eval "dao_\${ACTIVE_DAO}_\${tool_name}")
+          exit_code=\$?
+        else
+          res="{\"error\": \"Tool \$tool_name not implemented in DAO\"}"
+          exit_code=1
+        fi
         set -e
         
         res_escaped=\$(echo "\$res" | jq -R -s '.')
@@ -232,18 +348,76 @@ INNER_EOF
         fi
       fi
       
-      res_len=\$(printf "%s" "\$response_json" | wc -c | tr -d ' ')
-      printf "HTTP/1.1 200 OK\r\n"
-      if [ -n "\$response_json" ]; then
-        printf "Content-Type: application/json\r\n"
+      found="true"
+INNER_EOF
+
+		http_routes=$(jq -r '
+      if .paths then
+      .paths | to_entries[] | .key as $path | .value | to_entries[] | select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers") | .key as $method | .value |
+      (if .operationId then (.operationId | split("") | map(if test("[A-Z]") then "_" + ascii_downcase else . end) | join("")) else "\($method | ascii_upcase)_\($path | gsub("/"; "_") | gsub("[{}]"; ""))" end) as $opId |
+      "elif [ \"$path\" = \"\($path)\" ] && [ \"$method\" = \"\($method | ascii_upcase)\" ]; then\n  found=\"true\"\n  set +e\n  res=$(dao_${ACTIVE_DAO}_\($opId))\n  exit_code=$?\n  set -e\n  if [ \"$exit_code\" -ne 0 ]; then\n    response_json=\"{\\\"error\\\": \\\"Not Implemented\\\"}\"\n  else\n    response_json=\"$res\"\n  fi"
+      else
+      empty
+      end
+      ' "${ast}")
+		echo "$http_routes"
+
+		cat <<'INNER_EOF'
+elif [ "$START_AUTH_SERVER" = "true" ] || [ "$START_AUTH_SERVER" = "1" ] && [ "$path" = "/auth/register" ] && [ "$method" = "POST" ]; then
+  found="true"
+  response_json="{\"token\": \"mock-token-123\"}"
+elif [ "$START_AUTH_SERVER" = "true" ] || [ "$START_AUTH_SERVER" = "1" ] && [ "$path" = "/auth/login" ] && [ "$method" = "POST" ]; then
+  found="true"
+  response_json="{\"token\": \"mock-token-123\"}"
+elif [ "$START_AUTH_SERVER" = "true" ] || [ "$START_AUTH_SERVER" = "1" ] && [ "$path" = "/auth/refresh" ] && [ "$method" = "POST" ]; then
+  found="true"
+  response_json="{\"token\": \"mock-token-123\"}"
+elif [ "$START_AUTH_SERVER" = "true" ] || [ "$START_AUTH_SERVER" = "1" ] && [ "$path" = "/auth/logout" ] && [ "$method" = "POST" ]; then
+  found="true"
+  response_json="{}"
+elif echo "$path" | grep -q "^/_mock/trigger-webhook/" && [ "$method" = "POST" ]; then
+  found="true"
+  webhook_name=$(echo "$path" | sed 's|^/_mock/trigger-webhook/||')
+  response_json="{\"status\": \"dispatched\", \"webhook\": \"$webhook_name\"}"
+INNER_EOF
+
+		cat <<'INNER_EOF'
+      else
+        found="false"
       fi
-      printf "Content-Length: %s\r\n\r\n" "\${res_len}"
-      if [ -n "\$response_json" ]; then
-        printf "%s" "\$response_json"
+
+
+      if [ "$found" = "true" ]; then
+        if ( [ "$ENFORCE_AUTH" = "true" ] || [ "$ENFORCE_AUTH" = "1" ] ) && ! echo "$path" | grep -q "^/auth/" && ! echo "$path" | grep -q "^/_mock/"; then
+          if [ -z "$auth_header" ] || [ "$auth_header" != "Bearer mock-token-123" ]; then
+            response_json="{\"error\": \"401 Unauthorized\"}"
+            found="auth_failed"
+          fi
+        fi
       fi
-else
-  printf "HTTP/1.1 404 Not Found\r\nContent-Length: 9\r\n\r\nNot Found"
-fi
+      if [ "$found" = "true" ] && ( [ "$STRICT_VALIDATION" = "true" ] || [ "$STRICT_VALIDATION" = "1" ] ) && ! echo "$path" | grep -q "^/auth/" && ! echo "$path" | grep -q "^/_mock/"; then
+        if [ "$method" = "POST" ] && [ "${content_length:-0}" -lt 10 ]; then
+             response_json="{\"error\": \"400 Bad Request: missing fields\"}"
+             found="validation_failed"
+        fi
+      fi
+
+      if [ "$found" = "true" ] || [ "$found" = "auth_failed" ] || [ "$found" = "validation_failed" ]; then
+        res_len=$(printf "%s" "$response_json" | wc -c | tr -d ' ')
+        printf "HTTP/1.1 200 OK\r\n"
+        printf "Access-Control-Allow-Origin: *\r\n"
+        printf "Access-Control-Allow-Methods: *\r\n"
+        printf "Access-Control-Allow-Headers: *\r\n"
+        if [ -n "$response_json" ]; then
+          printf "Content-Type: application/json\r\n"
+        fi
+        printf "Content-Length: %s\r\n\r\n" "${res_len}"
+        if [ -n "$response_json" ]; then
+          printf "%s" "$response_json"
+        fi
+      else
+        printf "HTTP/1.1 404 Not Found\r\nContent-Length: 9\r\n\r\nNot Found"
+      fi
 INNER_EOF
 
 		printf "# @openapi_server_end\n"

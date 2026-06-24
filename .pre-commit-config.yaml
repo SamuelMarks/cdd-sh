@@ -51,6 +51,18 @@ repos:
         language: system
         pass_filenames: false
 
+
+      - id: swagger-2-petstore-server
+        name: Swagger 2.0 Petstore Generated Server Test
+        entry: bash -c 'sh tests/test_generated_petstore_server.sh swagger ../petstore.json'
+        language: system
+        pass_filenames: false
+
+      - id: openapi-3-petstore-server
+        name: OpenAPI 3.2.0 Petstore Generated Server Test
+        entry: bash -c 'sh tests/test_generated_petstore_server.sh openapi ../petstore_oas3.json'
+        language: system
+        pass_filenames: false
       - id: make-build-wasm
         name: Build WASM
         entry: make build_wasm

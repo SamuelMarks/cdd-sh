@@ -62,6 +62,10 @@ export CDD_AST_PATH="${CDD_AST_PATH:-ast.json}"
 parse_global_args() {
 	while [ $# -gt 0 ]; do
 		case "$1" in
+		--truth)
+			export CDD_TRUTH="$2"
+			shift 2
+			;;
 		-i | --input)
 			export CDD_INPUT="$2"
 			shift 2
@@ -88,6 +92,26 @@ parse_global_args() {
 			;;
 		--no-wrapping)
 			export CDD_NO_WRAPPING="1"
+			shift 1
+			;;
+		--ephemeral)
+			export CDD_EPHEMERAL="1"
+			shift 1
+			;;
+		--seed)
+			export CDD_SEED="1"
+			shift 1
+			;;
+		--strict-validation)
+			export CDD_STRICT_VALIDATION="1"
+			shift 1
+			;;
+		--enforce-auth)
+			export CDD_ENFORCE_AUTH="1"
+			shift 1
+			;;
+		--start-auth-server)
+			export CDD_START_AUTH_SERVER="1"
 			shift 1
 			;;
 		--no-github-actions)
@@ -353,7 +377,7 @@ to_docs_json)
 from_openapi)
 	if [ "$#" -eq 0 ]; then usage; fi
 	SUBCMD="to_sdk"
-	if [ "$1" != "-i" ] && [ "$1" != "--input-dir" ] && [ "$1" != "-o" ] && [ "$1" != "--no-github-actions" ] && [ "$1" != "--no-installable-package" ] && [ "$1" != "--tests" ]; then
+	if [ "$1" != "-i" ] && [ "$1" != "--input-dir" ] && [ "$1" != "-o" ] && [ "$1" != "--no-github-actions" ] && [ "$1" != "--no-installable-package" ] && [ "$1" != "--tests" ] && [ "$1" != "--ephemeral" ] && [ "$1" != "--seed" ] && [ "$1" != "--strict-validation" ] && [ "$1" != "--enforce-auth" ] && [ "$1" != "--start-auth-server" ]; then
 		SUBCMD="$1"
 		shift
 	fi
@@ -448,8 +472,14 @@ from_openapi)
 	esac
 	;;
 parse | emit | sync)
-	TYPE="${1:-}"
-	FILE="${2:-}"
+	if [ "$CMD" = "sync" ]; then
+		parse_global_args "$@"
+		TYPE="${CDD_TRUTH:-server}"
+		FILE="${CDD_INPUT:-}"
+	else
+		TYPE="${1:-}"
+		FILE="${2:-}"
+	fi
 
 	if [ "${CMD}" = "sync" ]; then
 		HANDLER="${LIBSCRIPT_ROOT_DIR:-.}/src/${TYPE}/parse.sh"
@@ -476,7 +506,9 @@ parse | emit | sync)
 				ext="sh"
 				if [ "$t" = "openapi" ] || [ "$t" = "mocks" ] || [ "$t" = "docsjson" ]; then ext="json"; fi
 				if [ "$t" = "docstrings" ]; then ext="md"; fi
-				"handle_emit_${t}" "emitted_${t}.${ext}"
+				if type "handle_emit_${t}" >/dev/null 2>&1; then
+					"handle_emit_${t}" "emitted_${t}.${ext}"
+				fi
 			fi
 		done
 	else
