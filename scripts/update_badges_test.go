@@ -75,3 +75,17 @@ func TestMainFunc_WithTypes(t *testing.T) {
 
 	main()
 }
+
+func TestMainFunc_IrregularFile(t *testing.T) {
+	os.Setenv("SKIP_GO_TEST", "1")
+	defer os.Unsetenv("SKIP_GO_TEST")
+	tmp := t.TempDir()
+
+	os.WriteFile(tmp+"/README.md", []byte(""), 0644)
+	os.Symlink(tmp+"/README.md", tmp+"/symlink")
+
+	orig, _ := os.Getwd()
+	os.Chdir(tmp)
+	defer os.Chdir(orig)
+	main()
+}

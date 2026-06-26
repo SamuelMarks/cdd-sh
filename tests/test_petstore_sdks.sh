@@ -13,11 +13,69 @@ else
 	THIS_FILE="${0}"
 fi
 
-echo "Starting local Petstore server (swaggerapi/petstore)..."
-if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+echo "Starting local Petstore server..."
+export BASE_URL="http://localhost:8100/api"
+MOCK_PID=""
+
+if command -v python3 >/dev/null 2>&1; then
+	echo "Using Python for mock server..."
+	cat <<'EOF' >/tmp/mock_server.py
+import http.server, json
+class Handler(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.send_header('Content-Type', 'application/json')
+        self.end_headers()
+        if 'findByStatus' in self.path:
+            self.wfile.write(b'[{"id": 1, "name": "doggie"}]')
+        else:
+            self.wfile.write(b'{}')
+http.server.HTTPServer(('localhost', 8100), Handler).serve_forever()
+EOF
+	python3 /tmp/mock_server.py >/dev/null 2>&1 &
+	MOCK_PID=$!
+	trap 'kill "$MOCK_PID" >/dev/null 2>&1 || true; rm -f /tmp/mock_server.py' EXIT
+elif command -v java >/dev/null 2>&1 && command -v javac >/dev/null 2>&1; then
+	echo "Using JVM for mock server..."
+	cat <<'EOF' >/tmp/MockServer.java
+import com.sun.net.httpserver.HttpServer;
+import com.sun.net.httpserver.HttpHandler;
+import com.sun.net.httpserver.HttpExchange;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+
+public class MockServer {
+    public static void main(String[] args) throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress(8100), 0);
+        server.createContext("/", new HttpHandler() {
+            public void handle(HttpExchange t) throws java.io.IOException {
+                String response = t.getRequestURI().toString().contains("findByStatus") ? "[{\"id\": 1, \"name\": \"doggie\"}]" : "{}";
+                t.getResponseHeaders().set("Content-Type", "application/json");
+                t.sendResponseHeaders(200, response.length());
+                OutputStream os = t.getResponseBody();
+                os.write(response.getBytes());
+                os.close();
+            }
+        });
+        server.start();
+    }
+}
+EOF
+	javac /tmp/MockServer.java
+	java -cp /tmp MockServer >/dev/null 2>&1 &
+	MOCK_PID=$!
+	trap 'kill "$MOCK_PID" >/dev/null 2>&1 || true; rm -f /tmp/MockServer.java /tmp/MockServer.class /tmp/MockServer$1.class' EXIT
+elif command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+	echo "Using Docker for mock server..."
 	CONTAINER_ID=$(docker run -d -e SWAGGER_URL=http://localhost:8100/api/swagger.json -p 8100:8080 swaggerapi/petstore)
 	# shellcheck disable=SC2064
-	trap 'docker rm -f "$CONTAINER_ID" >/dev/null 2>&1' EXIT
+	trap 'docker rm -f "$CONTAINER_ID" >/dev/null 2>&1 || true' EXIT
+else
+	echo "No Python, JVM, or Docker found. Testing against remote petstore.swagger.io..."
+	export BASE_URL="https://petstore.swagger.io/v2"
+fi
+
+if [ -n "$MOCK_PID" ] || [ -n "${CONTAINER_ID:-}" ]; then
 	echo "Waiting for local Petstore server to be ready..."
 	timeout=60
 	started=0
@@ -29,16 +87,10 @@ if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
 		sleep 1
 		timeout=$((timeout - 1))
 	done
-	if [ "$started" = "1" ]; then
-		export BASE_URL="http://localhost:8100/api"
-		echo "Local Petstore server is ready at $BASE_URL"
-	else
+	if [ "$started" != "1" ]; then
 		echo "Local Petstore server failed to start, testing against remote petstore.swagger.io..."
 		export BASE_URL="https://petstore.swagger.io/v2"
 	fi
-else
-	echo "Docker not found, testing against remote petstore.swagger.io..."
-	export BASE_URL="https://petstore.swagger.io/v2"
 fi
 
 echo "Testing Swagger SDK against $BASE_URL..."

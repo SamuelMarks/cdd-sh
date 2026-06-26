@@ -58,3 +58,11 @@ func TestParseFlags_Extra(t *testing.T) {
 		t.Errorf("expected help string")
 	}
 }
+
+func TestParseFlags_OptsDone(t *testing.T) {
+	var o myOpts
+	_, err := parseFlags([]string{"--", "some_positional_arg"}, &o)
+	if err != nil {
+		t.Errorf("unexpected err: %v", err)
+	}
+}

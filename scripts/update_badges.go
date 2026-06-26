@@ -64,7 +64,7 @@ func main() {
 		baseDir = ".."
 	}
 
-	shFuncRe := regexp.MustCompile(`(?m)^[ \t]*([a-zA-Z_0-9]+)\(\)[ \t]*\{`)
+	shFuncRe := regexp.MustCompile(`(?m)^[ \t]*(?:function[ \t]+)?([a-zA-Z_0-9]+)\(\)[ \t]*\{`)
 	goFuncRe := regexp.MustCompile(`(?m)^[ \t]*func\s+([A-Z][a-zA-Z0-9_]*)\s*\(`)
 	goTypeRe := regexp.MustCompile(`(?m)^[ \t]*type\s+([A-Z][a-zA-Z0-9_]*)\s+`)
 

@@ -34,6 +34,7 @@ handle_parse_classes() {
 	if [ ! -f "${ast}" ]; then echo "{}" >"${ast}"; fi
 
 	awk '
+	# @function finish_class
 	function finish_class() {
 	if (class_name == "") return
 	printf "{\"name\": \"%s\", \"description\": \"%s\", \"required\": \"%s\", \"properties\": {", class_name, desc, req
