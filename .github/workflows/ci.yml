@@ -14,6 +14,15 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    services:
+      mock-server:
+        image: swaggerapi/petstore
+        ports:
+          - 8100:8080
+        env:
+          SWAGGER_URL: http://localhost:8100/api/swagger.json
+    env:
+      RUN_SLOW_TESTS: 1
     steps:
       - name: Checkout repository
         uses: actions/checkout@v7

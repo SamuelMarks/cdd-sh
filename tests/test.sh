@@ -207,10 +207,16 @@ if tests/test_array_validation.sh >/dev/null; then echo "All array constraints v
 
 echo "Testing Advanced Validation Emit..."
 if tests/test_advanced_validation.sh >/dev/null; then echo "All advanced constraints valid!"; else exit 1; fi
+sh tests/test_input_dir.sh
 sh tests/test_mcp.sh
 sh tests/test_server.sh
 sh tests/test_sdk.sh
 sh tests/test_serve_rpc.sh
-sh tests/test_petstore_sdks.sh
-sh tests/test_generated_petstore_server.sh swagger ../petstore.json
-sh tests/test_generated_petstore_server.sh openapi ../petstore_oas3.json
+
+if [ "${RUN_SLOW_TESTS:-0}" = "1" ]; then
+	sh tests/test_petstore_sdks.sh
+	sh tests/test_generated_petstore_server.sh swagger ../petstore.json
+	sh tests/test_generated_petstore_server.sh openapi ../petstore_oas3.json
+else
+	echo "Skipping slow tests (petstore SDKs and generated server) because RUN_SLOW_TESTS is not 1"
+fi

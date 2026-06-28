@@ -5,7 +5,7 @@ cdd-sh
 [![interactive WASM web demo](https://img.shields.io/badge/interactive-WASM_web_demo-blue.svg)](https://offscale.io/wasm_web_demo)
 [![CI](https://github.com/SamuelMarks/cdd-sh/actions/workflows/ci.yml/badge.svg)](https://github.com/SamuelMarks/cdd-sh/actions)
 [![Test Coverage](https://img.shields.io/badge/test_coverage-100%25-brightgreen.svg)](#)
-[![Doc Coverage](https://img.shields.io/badge/doc_coverage-100%25-brightgreen.svg)](#)
+[![Doc Coverage](https://img.shields.io/badge/doc_coverage-87%25-green.svg)](#)
 
 **Compiler Driven Development (CDD)** is a development approach designed to eradicate the disconnect between: API specifications; server implementations; client SDKs; and command-line tooling.
 
@@ -118,35 +118,84 @@ A true ecosystem requires standardized tooling. Once a developer learns the CDD 
 
 ### Core Subcommands
 
-#### `from_openapi to_sdk_cli`
-Generate a client SDK and a corresponding command-line interface (CLI) from an OpenAPI specification.
-- `--input, -i <spec>`: Path to the OpenAPI specification file.
+#### `from_openapi`
+```shell
+$ cdd-sh from_openapi --help
+Usage:
+  cdd-sh from_openapi [subcmd] [options]
 
-#### `from_openapi to_sdk`
-Generate a client SDK from an OpenAPI specification.
-- `--input, -i <spec>`: Path to the OpenAPI specification file.
+Subcommands:
+  to_sdk          Generate a client SDK.
+  to_sdk_cli      Generate a client SDK and CLI.
+  to_server       Generate server boilerplate, models, and routes.
+  to_openapi      Extract OpenAPI spec from an existing codebase.
+  to_docs_json    Extract documentation data structure.
 
-#### `from_openapi to_server`
-Generate server boilerplate, models, and routing logic from an OpenAPI specification.
-- `--input, -i <spec>`: Path to the OpenAPI specification file.
+Options:
+  -i, --input <spec>             Path to the OpenAPI specification file.
+  --input-dir <dir>              Path to a directory containing OpenAPI specification files.
+  -o, --output <target_dir>      Destination path for generation.
+  --no-github-actions            Skip generating GitHub Actions CI workflow.
+  --no-installable-package       Skip generating package definitions (e.g., package.json).
+  --tests                        Generate unit tests alongside the code.
+  --ephemeral                    (Server) Use ephemeral in-memory storage.
+  --seed                         (Server) Seed the database on startup.
+  --strict-validation            (Server) Enforce strict OpenAPI request validation.
+  --enforce-auth                 (Server) Enforce authentication for all endpoints.
+  --start-auth-server            (Server) Start an embedded authentication server.
+  --help, -h                     Show this help message.
+```
 
 #### `to_openapi`
-Parse the existing codebase and extract an authoritative OpenAPI specification.
-- `--input, -i <path>` (or `-f <path>`): Path to the source code directory or file to parse.
+```shell
+$ cdd-sh to_openapi --help
+Usage:
+  cdd-sh to_openapi [options]
+
+Options:
+  -i, --input <code_file_or_dir> Path to the source code directory or file to parse.
+  -o, --output <spec.json>       Destination path for the generated OpenAPI spec.
+  --help, -h                     Show this help message.
+```
 
 #### `to_docs_json`
-Convert an OpenAPI specification into a localized, documentation-optimized JSON format.
-- `--input, -i <spec>`: Path to the OpenAPI specification file.
-- `--no-imports`: Disable import statements in the generated documentation.
-- `--no-wrapping`: Disable line wrapping in the generated documentation.
+```shell
+$ cdd-sh to_docs_json --help
+Usage:
+  cdd-sh to_docs_json [options]
+
+Options:
+  -i, --input <spec.json>        Path to the OpenAPI specification file.
+  -o, --output <docs.json>       Destination path for the documentation data.
+  --no-imports                   Do not include import statements in generated snippets.
+  --no-wrapping                  Do not wrap the output in a top-level documentation object.
+  --help, -h                     Show this help message.
+```
 
 #### `serve_json_rpc`
-Launch a JSON-RPC server for editor and tool integrations.
-- `--port <port>` (or `-p`): Port to listen on (e.g., `8080`).
-- `--listen <address>` (or `-l`): Address to bind to (e.g., `0.0.0.0`).
+```shell
+$ cdd-sh serve_json_rpc --help
+Usage:
+  cdd-sh serve_json_rpc [options]
+
+Options:
+  --port <port>                  Port to listen on (default: 8082).
+  --listen <ip>                  IP to listen on (default: 0.0.0.0).
+  --help, -h                     Show this help message.
+```
 
 #### `mcp`
-Run the Model Context Protocol server via stdio.
+```shell
+$ cdd-sh mcp --help
+Usage:
+  cdd-sh mcp [options]
+
+Description:
+  Run the cdd-sh CLI as a Model Context Protocol (MCP) server over standard I/O.
+
+Options:
+  --help, -h                     Show this help message.
+```
 
 #### `parse`
 Parse specific source files into an AST. Supported types include `openapi`, `routes`, `classes`, `docstrings`, `tests`, `mocks`, `docsjson`.

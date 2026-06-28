@@ -40,6 +40,68 @@ print_help() {
 	exit 1
 }
 
+print_help_from_openapi() {
+	printf "Usage:\n  cdd-sh from_openapi [subcmd] [options]\n\n"
+	printf "Subcommands:\n"
+	printf "  to_sdk          Generate a client SDK.\n"
+	printf "  to_sdk_cli      Generate a client SDK and CLI.\n"
+	printf "  to_server       Generate server boilerplate, models, and routes.\n"
+	printf "  to_openapi      Extract OpenAPI spec from an existing codebase.\n"
+	printf "  to_docs_json    Extract documentation data structure.\n\n"
+	printf "Options:\n"
+	printf "  -i, --input <spec>             Path to the OpenAPI specification file.\n"
+	printf "  --input-dir <dir>              Path to a directory containing OpenAPI specification files.\n"
+	printf "  -o, --output <target_dir>      Destination path for generation.\n"
+	printf "  --no-github-actions            Skip generating GitHub Actions CI workflow.\n"
+	printf "  --no-installable-package       Skip generating package definitions (e.g., package.json).\n"
+	printf "  --tests                        Generate unit tests alongside the code.\n"
+	printf "  --ephemeral                    (Server) Use ephemeral in-memory storage.\n"
+	printf "  --seed                         (Server) Seed the database on startup.\n"
+	printf "  --strict-validation            (Server) Enforce strict OpenAPI request validation.\n"
+	printf "  --enforce-auth                 (Server) Enforce authentication for all endpoints.\n"
+	printf "  --start-auth-server            (Server) Start an embedded authentication server.\n"
+	printf "  --help, -h                     Show this help message.\n"
+	exit 1
+}
+
+print_help_to_openapi() {
+	printf "Usage:\n  cdd-sh to_openapi [options]\n\n"
+	printf "Options:\n"
+	printf "  -i, --input <code_file_or_dir> Path to the source code directory or file to parse.\n"
+	printf "  -o, --output <spec.json>       Destination path for the generated OpenAPI spec.\n"
+	printf "  --help, -h                     Show this help message.\n"
+	exit 1
+}
+
+print_help_to_docs_json() {
+	printf "Usage:\n  cdd-sh to_docs_json [options]\n\n"
+	printf "Options:\n"
+	printf "  -i, --input <spec.json>        Path to the OpenAPI specification file.\n"
+	printf "  -o, --output <docs.json>       Destination path for the documentation data.\n"
+	printf "  --no-imports                   Do not include import statements in generated snippets.\n"
+	printf "  --no-wrapping                  Do not wrap the output in a top-level documentation object.\n"
+	printf "  --help, -h                     Show this help message.\n"
+	exit 1
+}
+
+print_help_serve_json_rpc() {
+	printf "Usage:\n  cdd-sh serve_json_rpc [options]\n\n"
+	printf "Options:\n"
+	printf "  --port <port>                  Port to listen on (default: 8082).\n"
+	printf "  --listen <ip>                  IP to listen on (default: 0.0.0.0).\n"
+	printf "  --help, -h                     Show this help message.\n"
+	exit 1
+}
+
+print_help_mcp() {
+	printf "Usage:\n  cdd-sh mcp [options]\n\n"
+	printf "Description:\n"
+	printf "  Run the cdd-sh CLI as a Model Context Protocol (MCP) server over standard I/O.\n\n"
+	printf "Options:\n"
+	printf "  --help, -h                     Show this help message.\n"
+	exit 1
+}
+
 if [ "$#" -eq 0 ]; then
 	print_help
 fi
@@ -47,8 +109,27 @@ fi
 CMD="${1}"
 shift
 
-if [ "${CMD}" = "-help" ] || [ "${CMD}" = "--help" ]; then
+if [ "${CMD}" = "-help" ] || [ "${CMD}" = "--help" ] || [ "${CMD}" = "-h" ]; then
 	print_help
+fi
+
+has_help=0
+for arg in "$@"; do
+	if [ "$arg" = "--help" ] || [ "$arg" = "-help" ] || [ "$arg" = "-h" ]; then
+		has_help=1
+		break
+	fi
+done
+
+if [ "$has_help" -eq 1 ]; then
+	case "${CMD}" in
+	from_openapi) print_help_from_openapi ;;
+	to_openapi) print_help_to_openapi ;;
+	to_docs_json) print_help_to_docs_json ;;
+	serve_json_rpc) print_help_serve_json_rpc ;;
+	mcp) print_help_mcp ;;
+	*) print_help ;;
+	esac
 fi
 
 if [ "${CMD}" = "-version" ] || [ "${CMD}" = "--version" ]; then
@@ -404,9 +485,13 @@ from_openapi)
 	case "$SUBCMD" in
 	to_sdk_cli)
 		mkdir -p "$OUT/bin"
-		if [ -n "$IN" ]; then
+		if [ -n "$IN" ] || [ -n "$IN_DIR" ]; then
 			. "${LIBSCRIPT_ROOT_DIR:-.}/src/openapi/parse.sh"
-			handle_parse_openapi "$IN"
+			if [ -n "$IN" ]; then
+				handle_parse_openapi "$IN"
+			else
+				handle_parse_openapi_dir "$IN_DIR"
+			fi
 			. "${LIBSCRIPT_ROOT_DIR:-.}/src/cli/emit.sh"
 			handle_emit_cli "$OUT/bin/sdk-cli" "$OUT"
 		fi
@@ -414,9 +499,13 @@ from_openapi)
 		;;
 	to_sdk)
 		mkdir -p "$OUT/src"
-		if [ -n "$IN" ]; then
+		if [ -n "$IN" ] || [ -n "$IN_DIR" ]; then
 			. "${LIBSCRIPT_ROOT_DIR:-.}/src/openapi/parse.sh"
-			handle_parse_openapi "$IN"
+			if [ -n "$IN" ]; then
+				handle_parse_openapi "$IN"
+			else
+				handle_parse_openapi_dir "$IN_DIR"
+			fi
 
 			. "${LIBSCRIPT_ROOT_DIR:-.}/src/routes/emit.sh"
 			handle_emit_routes "$OUT/src/routes.sh" "sdk"
@@ -440,9 +529,13 @@ from_openapi)
 		;;
 	to_server)
 		mkdir -p "$OUT/src"
-		if [ -n "$IN" ]; then
+		if [ -n "$IN" ] || [ -n "$IN_DIR" ]; then
 			. "${LIBSCRIPT_ROOT_DIR:-.}/src/openapi/parse.sh"
-			handle_parse_openapi "$IN"
+			if [ -n "$IN" ]; then
+				handle_parse_openapi "$IN"
+			else
+				handle_parse_openapi_dir "$IN_DIR"
+			fi
 
 			# Emit Server Models
 			. "${LIBSCRIPT_ROOT_DIR:-.}/src/server/emit_models.sh"

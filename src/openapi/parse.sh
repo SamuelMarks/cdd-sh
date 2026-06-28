@@ -36,3 +36,14 @@ handle_parse_openapi() {
 	# Convert openapi to ast.json (direct copy, maybe minified/formatted)
 	jq -f "${LIBSCRIPT_ROOT_DIR}/src/openapi/swagger2openapi.jq" "${file_path}" >"${CDD_AST_PATH:-${LIBSCRIPT_ROOT_DIR}/ast.json}"
 }
+
+# handle_parse_openapi_dir merges all OpenAPI specs in a directory into the AST.
+handle_parse_openapi_dir() {
+	dir_path="${1}"
+	if [ ! -d "${dir_path}" ]; then
+		printf "Error: OpenAPI directory not found at %s\n" "${dir_path}" >&2
+		return 1
+	fi
+	# Convert and merge all json files in the directory
+	find "${dir_path}" -maxdepth 1 -name "*.json" -exec jq -f "${LIBSCRIPT_ROOT_DIR}/src/openapi/swagger2openapi.jq" {} + | jq -s 'reduce .[] as $item ({}; . * $item)' >"${CDD_AST_PATH:-${LIBSCRIPT_ROOT_DIR}/ast.json}"
+}

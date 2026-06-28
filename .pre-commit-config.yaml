@@ -54,13 +54,13 @@ repos:
 
       - id: swagger-2-petstore-server
         name: Swagger 2.0 Petstore Generated Server Test
-        entry: bash -c 'sh tests/test_generated_petstore_server.sh swagger ../petstore.json'
+        entry: bash -c 'if [ "${RUN_SLOW_TESTS:-0}" = "1" ]; then sh tests/test_generated_petstore_server.sh swagger ../petstore.json; else echo "Skipped due to RUN_SLOW_TESTS"; fi'
         language: system
         pass_filenames: false
 
       - id: openapi-3-petstore-server
         name: OpenAPI 3.2.0 Petstore Generated Server Test
-        entry: bash -c 'sh tests/test_generated_petstore_server.sh openapi ../petstore_oas3.json'
+        entry: bash -c 'if [ "${RUN_SLOW_TESTS:-0}" = "1" ]; then sh tests/test_generated_petstore_server.sh openapi ../petstore_oas3.json; else echo "Skipped due to RUN_SLOW_TESTS"; fi'
         language: system
         pass_filenames: false
       - id: make-build-wasm

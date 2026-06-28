@@ -46,7 +46,7 @@ This document provides a granular, step-by-step checklist to implement an orthog
 - [x] Initialize the Faker library instance and configure it with the appropriate locale.
 - [x] Create mapping functions/factories for domain entities (emails, names, phone numbers).
 - [x] **100% Doc Coverage:** Document every mapping function.
-- [x] **Relational Data - [ ] **Relational Data & Dependency Graph Generation:** Dependency Graph Generation:**
+- [x] **Relational Data - [x] **Relational Data & Dependency Graph Generation:** Dependency Graph Generation:**
   - [x] Map out the topological sort order of the CDD domain models (e.g., `User` -> `Post` -> `Comment`).
   - [x] Implement an `Entity Pool` to cache the IDs of successfully generated records in memory.
   - [x] Program the factories to randomly select valid foreign keys from the parent's `Entity Pool` to maintain referential integrity.
@@ -81,12 +81,12 @@ This document provides a granular, step-by-step checklist to implement an orthog
 - [x] Ensure the generator emits configuration to run code linters on the strictest settings against the generated code and resolves all warnings.
 
 ## Phase 7: Test Categories & Topologically Sorted Execution
-- [ ] Establish distinct testing categories within the test suite to exercise the orthogonal server states:
-  - [ ] **Category 1: Unit Tests:** Isolated tests for DAOs, Seeder mapping constraints, and Configuration parsers.
+- [x] Establish distinct testing categories within the test suite to exercise the orthogonal server states:
+  - [x] **Category 1: Unit Tests:** Isolated tests for DAOs, Seeder mapping constraints, and Configuration parsers.
   - [x] **Category 2: Stub Tests:** Run against `start` (no DB). Verify the server safely yields `NotImplementedError` or 501 HTTP status codes for all endpoints.
   - [x] **Category 3: Stateful Ephemeral Tests:** Run against `start --ephemeral`. Verifies writing to a clean slate.
   - [x] **Category 4: Seeded Mock Tests:** Run against `start --ephemeral --seed`. Verifies reading and traversing pre-populated relational graphs.
-- [x] **Topologically Sorted Integration Testing - [ ] **Topologically Sorted Integration Testing & Teardown:** Teardown:**
+- [x] **Topologically Sorted Integration Testing - [x] **Topologically Sorted Integration Testing & Teardown:** Teardown:**
   - [x] When writing tests for the empty Stateful Ephemeral mode, structure the test execution order (or setup fixtures) topologically to prevent cascading false-negative failures.
   - [x] *Creation Tier 1 (Independent):* Test `User` CRUD endpoints first.
   - [x] *Creation Tier 2 (Dependent):* Use the client SDK to successfully create `User`s, then test `Post` CRUD endpoints.
@@ -122,8 +122,8 @@ This document provides a granular, step-by-step checklist to implement an orthog
   - [x] Expose the `--truth` argument (e.g., `--truth class`, `--truth sqlalchemy`, `--truth function`) to designate the single source of truth.
   - [x] Ensure `sync` can bidirectionally propagate changes from the specified source of truth to the rest of the project (e.g., updating DAOs when models change, or updating OpenAPI specs when DAOs change) to prevent contract drift.
   - [x] Implement generalized parsing so that manually added changes to mock definitions, faker logic, or DB constraints can be symmetrically synchronized back to the specification.
-- [ ] **Continuous Integration & Validation:**
-  - [ ] Execute the Topologically Sorted Test Suite (Phase 7) during the CI pipeline to guarantee that the synchronized models and clients successfully drive the server.
+- [x] **Continuous Integration & Validation:**
+  - [x] Execute the Topologically Sorted Test Suite (Phase 7) during the CI pipeline to guarantee that the synchronized models and clients successfully drive the server.
 - [x] **100% Doc Coverage:** Document the unified CLI toolset in the `README.md`. Explicitly explain how developers should use `from_openapi`, `to_openapi`, and `sync --truth <SOURCE>` to maintain absolute harmony between the Server, the OpenAPI spec, the Database, and the Test Clients.
 
 ## Phase 10: Advanced Mock Capabilities (Validation, Auth, Webhooks, CORS)
