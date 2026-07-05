@@ -9,6 +9,7 @@ if "%~1"=="build" goto build
 if "%~1"=="test" goto test
 if "%~1"=="clean" goto clean
 if "%~1"=="build_wasm" goto build_wasm
+if "%~1"=="install_deps" goto install_deps
 
 echo Unknown command: %~1
 goto help
@@ -20,6 +21,7 @@ echo   build          Build the CLI binary
 echo   test           Run tests locally
 echo   clean          Clean build artifacts
 echo   build_wasm     Build WASM binary
+echo   install_deps   Install dependencies (jq, awk, curl) using winget or scoop
 echo   all            Show help text
 goto :EOF
 
@@ -64,4 +66,44 @@ if not exist "wasm_build" mkdir "wasm_build"
 set GOOS=wasip1
 set GOARCH=wasm
 go build -o wasm_build\cdd-sh.wasm main.go
+goto :EOF
+
+:install_deps
+echo Checking and installing dependencies...
+call :check_and_install jq jqlang.jq
+call :check_and_install awk gawk
+call :check_and_install curl curl.curl
+goto :EOF
+
+:check_and_install
+set "CMD=%~1"
+set "WINGET_ID=%~2"
+
+where %CMD% >nul 2>nul
+if %ERRORLEVEL% equ 0 (
+    echo %CMD% is already installed.
+    goto :EOF
+)
+
+echo %CMD% is missing. Attempting to install...
+
+where winget >nul 2>nul
+if %ERRORLEVEL% equ 0 (
+    echo Installing %CMD% with winget...
+    winget install --id %WINGET_ID% --accept-package-agreements --accept-source-agreements
+    goto :EOF
+)
+
+where scoop >nul 2>nul
+if %ERRORLEVEL% equ 0 (
+    echo Installing %CMD% with scoop...
+    if "%CMD%"=="awk" (
+        scoop install gawk
+    ) else (
+        scoop install %CMD%
+    )
+    goto :EOF
+)
+
+echo No supported package manager found (winget, scoop). Please install %CMD% manually.
 goto :EOF

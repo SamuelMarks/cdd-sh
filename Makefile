@@ -1,4 +1,22 @@
-.PHONY: test build build_wasm clean docs
+.PHONY: test build build_wasm clean docs install_deps
+
+install_deps:
+	@for pkg in jq awk curl; do \
+		if ! command -v $$pkg >/dev/null 2>&1; then \
+			echo "$$pkg is missing. Attempting to install..."; \
+			if command -v dnf >/dev/null 2>&1; then \
+				sudo dnf install -y $$pkg || ( [ "$$pkg" = "awk" ] && sudo dnf install -y gawk ); \
+			elif command -v apt-get >/dev/null 2>&1; then \
+				sudo apt-get install -y $$pkg || ( [ "$$pkg" = "awk" ] && sudo apt-get install -y gawk ); \
+			elif command -v apk >/dev/null 2>&1; then \
+				apk add --no-cache $$pkg || sudo apk add --no-cache $$pkg || ( [ "$$pkg" = "awk" ] && (apk add --no-cache gawk || sudo apk add --no-cache gawk) ); \
+			else \
+				echo "No supported package manager found (dnf, apt, apk). Please install $$pkg manually."; \
+			fi; \
+		else \
+			echo "$$pkg is already installed."; \
+		fi; \
+	done
 
 test: build
 	go test -coverprofile=coverage.out $$(go list ./... | grep -v /scripts)
