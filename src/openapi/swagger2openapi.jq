@@ -1,3 +1,5 @@
+# @file src/openapi/swagger2openapi.jq
+# @description Normalizes a Swagger 2.0 specification into an OpenAPI 3.2.0 AST representation.
 if .swagger == "2.0" then
   .openapi = "3.2.0" |
   .servers = [

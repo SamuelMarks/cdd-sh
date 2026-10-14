@@ -1,3 +1,4 @@
+// Package gojqcli implements ANSI color configuration and formatting for gojq output.
 package gojqcli
 
 import (
@@ -6,14 +7,22 @@ import (
 	"strings"
 )
 
+// noColor controls whether ANSI color escape codes are suppressed during encoding.
 var noColor bool
 
-// newColor is a function
+// newColor constructs an ANSI SGR escape sequence byte slice from a style code string.
+// Parameters:
+//   - c: The ANSI style code string (e.g., "32" or "34;1").
+//
+// Returns the formatted ANSI escape sequence bytes.
 func newColor(c string) []byte {
 	return []byte("\x1b[" + c + "m")
 }
 
-// setColor is a function
+// setColor writes the given ANSI color bytes to buf if coloring is enabled.
+// Parameters:
+//   - buf: The target buffer.
+//   - color: The ANSI escape sequence bytes to write.
 func setColor(buf *bytes.Buffer, color []byte) {
 	if !noColor {
 		buf.Write(color)
@@ -32,7 +41,11 @@ var (
 	objectColor    = []byte(nil)      // No color
 )
 
-// validColor is a function
+// validColor reports whether x is a valid semicolon-delimited ANSI numeric color code string.
+// Parameters:
+//   - x: The color specification string to validate.
+//
+// Returns true if valid, false otherwise.
 func validColor(x string) bool {
 	var num bool
 	for _, c := range x {
@@ -47,7 +60,11 @@ func validColor(x string) bool {
 	return num
 }
 
-// setColors is a function
+// setColors parses a colon-delimited GOJQ_COLORS configuration string and updates the color palette.
+// Parameters:
+//   - colors: Colon-separated ANSI color codes for null, false, true, number, string, key, array, object.
+//
+// Returns an error if any color segment is invalid.
 func setColors(colors string) error {
 	var color string
 	for _, target := range []*[]byte{
@@ -57,7 +74,7 @@ func setColors(colors string) error {
 		color, colors, _ = strings.Cut(colors, ":")
 		if color != "" {
 			if !validColor(color) {
-				return fmt.Errorf("invalid color: %q", color)
+				return newCliError(ErrKindInvalidColor, exitCodeDefaultErr, fmt.Sprintf("invalid color: %q", color))
 			}
 			*target = newColor(color)
 		} else {

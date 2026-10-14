@@ -159,5 +159,8 @@ func TestEncoderColors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// we mainly want to ensure that coloring code runs without error and covers the branches.
+	expectedColored := "A[R\nNnullRA,R\nTtrueRA,R\nFfalseRA,R\n#1RA,R\n#1.2RA,R\nO{R\nK\"a\"RO:R S\"b\"R\nO}R\nA]R"
+	if got := buf.String(); got != expectedColored {
+		t.Errorf("expected colored output %q, got %q", expectedColored, got)
+	}
 }

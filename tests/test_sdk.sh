@@ -1,17 +1,8 @@
 #!/bin/sh
-set -eu
-# shellcheck disable=SC2296,SC3028,SC3040,SC3054
-if [ "${SCRIPT_NAME-}" ]; then
-	THIS_FILE="${SCRIPT_NAME}"
-elif [ "${BASH_SOURCE-}" ]; then
-	THIS_FILE="${BASH_SOURCE[0]}"
-	set -o pipefail
-elif [ "${ZSH_VERSION-}" ]; then
-	eval 'THIS_FILE="${(%):-%x}"'
-	set -o pipefail
-else
-	THIS_FILE="${0}"
-fi
+# @file tests/test_sdk.sh
+# @description Integration tests for the generated MCP client SDK.
+# shellcheck disable=SC1091
+. "$(cd "$(dirname -- "$0")/.." && pwd)/lib/env.sh"
 
 # Generate the SDK
 rm -rf tests/out
@@ -30,13 +21,13 @@ fi
 
 export MCP_CLI_BIN="./tests/out/bin/sdk-cli"
 tools=$(mcp_get_tools)
-if ! echo "$tools" | grep -q "genull_nullsers"; then
+if ! echo "$tools" | grep -q "get_users"; then
 	echo "FAIL: mcp_get_tools did not return correct JSON"
 	exit 1
 fi
 
-res=$(mcp_execute_tool "genull_nullsers" "{}")
-if ! printf "%s\n" "$res" | grep -q "Executing genull_nullsers"; then
+res=$(mcp_execute_tool "get_users" "{}")
+if ! printf "%s\n" "$res" | grep -q "Executing get_users"; then
 	echo "FAIL: mcp_execute_tool did not return tool output"
 	exit 1
 fi

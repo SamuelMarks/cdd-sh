@@ -1,36 +1,18 @@
 #!/bin/sh
-# shellcheck disable=SC3054,SC3040,SC2059,SC2016
-
-set -feu
-# shellcheck disable=SC2296,SC3028,SC3040,SC3054
-if [ "${SCRIPT_NAME-}" ]; then
-	THIS_FILE="${SCRIPT_NAME}"
-elif [ "${BASH_SOURCE-}" ]; then
-	THIS_FILE="${BASH_SOURCE[0]}"
-	set -o pipefail
-elif [ "${ZSH_VERSION-}" ]; then
-	eval 'THIS_FILE="${(%):-%x}"'
-	set -o pipefail
-else
-	THIS_FILE="${0}"
-fi
-case "${STACK+x}" in *':'"${THIS_FILE}"':'*) if (return 0 2>/dev/null); then return; else exit 0; fi ;; esac
-export STACK="${STACK:-}${THIS_FILE}"':'
-DIR=$(CDPATH='' cd "$(dirname -- "${THIS_FILE}")" && pwd)
-LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(
-	d="${DIR}"
-	while [ ! -f "${d}"'/ROOT' ]; do d="$(dirname -- "${d}")"; done
-	printf '%s' "${d}"
-)}"
+# @file src/cli/parse.sh
+# @description Parses a generated CLI script into the OpenAPI AST.
+# shellcheck disable=SC2016,SC1091
+. "${LIBSCRIPT_ROOT_DIR:-.}/lib/env.sh"
 
 # handle_parse_cli parses the CLI application into the AST.
+# @param $1: file_path - The input CLI script path.
 handle_parse_cli() {
 	file_path="${1}"
 	ast="${CDD_AST_PATH:-${LIBSCRIPT_ROOT_DIR}/ast.json}"
 	if [ ! -f "${ast}" ]; then echo '{"openapi":"3.2.0"}' >"${ast}"; fi
 	if [ ! -f "${file_path}" ]; then return 0; fi
 
-	awk '
+	all_raw=$(awk '
 	/^VERSION=/ { split($0, a, "\""); version=a[2] }
 	/^TITLE=/ { split($0, a, "\""); title=a[2] }
 	/^SUMMARY=/ { split($0, a, "\""); summary=a[2] }
@@ -78,21 +60,20 @@ handle_parse_cli() {
 	}
 	printf "} }\n"
 	}
-	' <"$file_path" >all_temp.txt
+	' <"$file_path")
 
-	awk '/^INFO:/ { print substr($0, 6) }' <all_temp.txt >cli_info.json || true
-	awk '/^DIALECT:/ { print substr($0, 9) }' <all_temp.txt >cli_dialect.json || true
-	awk '/^OPENAPI:/ { print substr($0, 9) }' <all_temp.txt >cli_openapi.json || true
-	awk '/^PATHS:/ { print substr($0, 7) }' <all_temp.txt >cli_paths.json || true
-	rm -f all_temp.txt
-	if [ -f "cli_info.json" ]; then
-		touch cli_openapi.json
-		jq --slurpfile info cli_info.json --slurpfile paths cli_paths.json --slurpfile d cli_dialect.json --slurpfile o cli_openapi.json '
-      .info = ((.info // {}) * $info[0]) |
-      .paths = ((.paths // {}) * $paths[0].paths) |
-      if $d[0].jsonSchemaDialect != "" then .jsonSchemaDialect = $d[0].jsonSchemaDialect else . end |
-      (. + ($o[0] // {}))
+	cli_info=$(printf '%s\n' "$all_raw" | awk '/^INFO:/ { print substr($0, 6) }')
+	cli_dialect=$(printf '%s\n' "$all_raw" | awk '/^DIALECT:/ { print substr($0, 9) }')
+	cli_openapi=$(printf '%s\n' "$all_raw" | awk '/^OPENAPI:/ { print substr($0, 9) }')
+	cli_paths=$(printf '%s\n' "$all_raw" | awk '/^PATHS:/ { print substr($0, 7) }')
+	if [ -z "$cli_openapi" ]; then cli_openapi="{}"; fi
+
+	if [ -n "$cli_info" ]; then
+		jq --argjson info "$cli_info" --argjson paths "$cli_paths" --argjson d "$cli_dialect" --argjson o "$cli_openapi" '
+      .info = ((.info // {}) * $info) |
+      .paths = ((.paths // {}) * $paths.paths) |
+      if $d.jsonSchemaDialect != "" then .jsonSchemaDialect = $d.jsonSchemaDialect else . end |
+      (. + $o)
     ' "${ast}" >"${ast}.tmp" && mv "${ast}.tmp" "${ast}"
-		rm -f cli_info.json cli_paths.json cli_dialect.json cli_openapi.json
 	fi
 }

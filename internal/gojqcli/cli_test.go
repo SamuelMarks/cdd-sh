@@ -294,48 +294,81 @@ func TestRunJqErrorWriter(t *testing.T) {
 	}
 	// trigger error in printValues -> marshal
 	cli.outputYAML = true
-	cli.run([]string{"-n", "1"})
+	if code := cli.run([]string{"-n", "1"}); code == 0 {
+		t.Errorf("expected non-zero exit code for errorWriter on YAML output")
+	}
 
 	// trigger error in funcDebug
-	cli.run([]string{"-n", "debug"})
+	if code := cli.run([]string{"-n", "debug"}); code == 0 {
+		t.Errorf("expected non-zero exit code for errorWriter on debug")
+	}
 
 	// trigger error in funcStderr
-	cli.run([]string{"-n", "stderr"})
+	if code := cli.run([]string{"-n", "stderr"}); code == 0 {
+		t.Errorf("expected non-zero exit code for errorWriter on stderr")
+	}
 }
 
 func TestRunJqMoreCliBranches(t *testing.T) {
 	// exitCodeError override
-	runCli([]string{"-e", "-f", "missing.jq"}, "")
+	if code, _, _ := runCli([]string{"-e", "-f", "missing.jq"}, ""); code == 0 {
+		t.Errorf("expected non-zero exit code for missing.jq")
+	}
 
 	// Multibyte string and multiple keys
-	runCli([]string{"-n", `{"key1": "こんにちは", "key2": "world"}`}, "")
+	if code, out, _ := runCli([]string{"-n", `{"key1": "こんにちは", "key2": "world"}`}, ""); code != 0 || !strings.Contains(out, "こんにちは") {
+		t.Errorf("unexpected result for multibyte object: code=%d out=%q", code, out)
+	}
 	// raw-output0
-	runCli([]string{"--raw-output0", "-n", "1"}, "")
+	if code, out, _ := runCli([]string{"--raw-output0", "-n", "1"}, ""); code != 0 || out != "1\x00" {
+		t.Errorf("expected '1\\x00', got %q (code=%d)", out, code)
+	}
 
 	// jsonargs with missing positional
-	// wait, runCli with jsonargs?
-	runCli([]string{"--jsonargs", "-n", "1"}, "")
+	if code, _, _ := runCli([]string{"--jsonargs", "-n", "1"}, ""); code != 0 {
+		t.Errorf("expected exit code 0, got %d", code)
+	}
 }
 
 func TestFuncDebug(t *testing.T) {
-	c := &cli{outStream: os.Stdout, errStream: os.Stderr}
-	c.funcDebug("test", nil)
+	var errBuf bytes.Buffer
+	c := &cli{outStream: new(bytes.Buffer), errStream: &errBuf}
+	res := c.funcDebug("test", nil)
+	if res != "test" {
+		t.Errorf("expected 'test', got %v", res)
+	}
+	if !strings.Contains(errBuf.String(), `["DEBUG:","test"]`) {
+		t.Errorf("expected debug output in errStream, got %q", errBuf.String())
+	}
 }
 
 func TestFuncStderr(t *testing.T) {
-	c := &cli{outStream: os.Stdout, errStream: os.Stderr}
-	c.funcStderr("test", nil)
+	var errBuf bytes.Buffer
+	c := &cli{outStream: new(bytes.Buffer), errStream: &errBuf}
+	res := c.funcStderr("test", nil)
+	if res != "test" {
+		t.Errorf("expected 'test', got %v", res)
+	}
+	if errBuf.String() != "test" {
+		t.Errorf("expected 'test' in errStream, got %q", errBuf.String())
+	}
 }
 
 func TestFuncDebugError(t *testing.T) {
 	c := &cli{errStream: &errWriter{}}
-	c.funcDebug("test", nil)
-	c.funcStderr("test", nil)
+	if _, ok := c.funcDebug("test", nil).(error); !ok {
+		t.Errorf("expected error from funcDebug when errStream fails")
+	}
+	if _, ok := c.funcStderr("test", nil).(error); !ok {
+		t.Errorf("expected error from funcStderr when errStream fails")
+	}
 }
 
 func TestFuncDebugErrorWriteNewline(t *testing.T) {
 	c := &cli{errStream: &failOnNewlineWriter{}}
-	c.funcDebug("test", nil)
+	if _, ok := c.funcDebug("test", nil).(error); !ok {
+		t.Errorf("expected error from funcDebug when writing newline fails")
+	}
 }
 
 type failOnNewlineWriter struct{}

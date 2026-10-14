@@ -44,7 +44,28 @@ func TestEmbeddedFS(t *testing.T) {
 
 	cli.outStream = new(bytes.Buffer)
 	cli.errStream = new(bytes.Buffer)
-	cli.run([]string{"-f", "bad.jq", "test.json"})
-	cli.run([]string{"--slurpfile", "val", "bad.json", "."})
-	cli.run([]string{".", "/test.json"})
+	exitCode = cli.run([]string{"-f", "bad.jq", "test.json"})
+	if exitCode != exitCodeCompileErr {
+		t.Errorf("expected exitCodeCompileErr (%d), got %d", exitCodeCompileErr, exitCode)
+	}
+	if cli.errStream.(*bytes.Buffer).Len() == 0 {
+		t.Errorf("expected non-empty stderr for bad.jq")
+	}
+
+	cli.outStream = new(bytes.Buffer)
+	cli.errStream = new(bytes.Buffer)
+	exitCode = cli.run([]string{"--slurpfile", "val", "bad.json", "."})
+	if exitCode != exitCodeDefaultErr {
+		t.Errorf("expected exitCodeDefaultErr (%d), got %d", exitCodeDefaultErr, exitCode)
+	}
+	if cli.errStream.(*bytes.Buffer).Len() == 0 {
+		t.Errorf("expected non-empty stderr for bad.json")
+	}
+
+	cli.outStream = new(bytes.Buffer)
+	cli.errStream = new(bytes.Buffer)
+	exitCode = cli.run([]string{".", "/test.json"})
+	if exitCode != exitCodeOK {
+		t.Errorf("expected exitCodeOK (%d), got %d", exitCodeOK, exitCode)
+	}
 }

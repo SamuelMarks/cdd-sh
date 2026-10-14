@@ -2,7 +2,6 @@
 package gojqcli
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -31,7 +30,7 @@ const (
 	exitCodeDefaultErr
 )
 
-// cli is a type
+// cli holds the execution state, streams, and formatting options for a gojq invocation.
 type cli struct {
 	inStream  io.Reader
 	outStream io.Writer
@@ -56,7 +55,7 @@ type cli struct {
 	exitCodeError       error
 }
 
-// flagopts is a type
+// flagopts defines the command-line flags accepted by the gojq CLI.
 type flagopts struct {
 	OutputRaw     bool              `short:"r" long:"raw-output" description:"output raw strings"`
 	OutputRaw0    bool              `long:"raw-output0" description:"implies -r with NUL character delimiter"`
@@ -87,13 +86,17 @@ type flagopts struct {
 
 var addDefaultModulePaths = true
 
-// run is a function
+// run executes the gojq CLI with the given arguments and returns the process exit code.
+// Parameters:
+//   - args: The command-line arguments slice.
+//
+// Returns the numeric exit status code.
 func (cli *cli) run(args []string) int {
 	if err := cli.runInternal(args); err != nil {
-		if _, ok := err.(interface{ isEmptyError() }); !ok {
+		if _, ok := err.(EmptyError); !ok {
 			fmt.Fprintf(cli.errStream, "%s: %s\n", name, err)
 		}
-		if err, ok := err.(interface{ ExitCode() int }); ok {
+		if err, ok := err.(ExitCoder); ok {
 			return err.ExitCode()
 		}
 		return exitCodeDefaultErr
@@ -101,7 +104,11 @@ func (cli *cli) run(args []string) int {
 	return exitCodeOK
 }
 
-// runInternal is a function
+// runInternal parses flags, compiles the jq query, and processes all input streams.
+// Parameters:
+//   - args: The command-line arguments slice.
+//
+// Returns any flag, compilation, or runtime execution error.
 func (cli *cli) runInternal(args []string) (err error) {
 	var opts flagopts
 	args, err = parseFlags(args, &opts)
@@ -150,13 +157,13 @@ Usage:
 	}
 	if i := cli.outputIndent; i != nil {
 		if *i > 9 {
-			return fmt.Errorf("too many indentation count: %d", *i)
+			return newCliError(ErrKindInvalidIndent, exitCodeDefaultErr, fmt.Sprintf("too many indentation count: %d", *i))
 		} else if *i < 0 {
-			return fmt.Errorf("negative indentation count: %d", *i)
+			return newCliError(ErrKindInvalidIndent, exitCodeDefaultErr, fmt.Sprintf("negative indentation count: %d", *i))
 		}
 	}
 	if opts.OutputYAML && opts.OutputTab {
-		return errors.New("cannot use tabs for YAML output")
+		return newCliError(ErrKindYAMLTab, exitCodeDefaultErr, "cannot use tabs for YAML output")
 	}
 	cli.inputRaw, cli.inputStream, cli.inputYAML, cli.inputSlurp =
 		opts.InputRaw, opts.InputStream, opts.InputYAML, opts.InputSlurp
@@ -205,8 +212,8 @@ Usage:
 	}
 	positional := opts.Args
 	for i, v := range opts.JSONArgs {
-		if v != nil {
-			val, _ := newJSONInputIter(strings.NewReader(v.(string)), "--jsonargs").Next()
+		if strVal, ok := v.(string); ok {
+			val, _ := newJSONInputIter(strings.NewReader(strVal), "--jsonargs").Next()
 			if err, ok := val.(error); ok {
 				return err
 			}
@@ -225,7 +232,7 @@ Usage:
 	var arg, fname string
 	if opts.FromFile {
 		if len(args) == 0 {
-			return errors.New("expected a query file for flag `-f'")
+			return newCliError(ErrKindMissingFlagFile, exitCodeDefaultErr, "expected a query file for flag `-f'")
 		}
 		var src []byte
 		var err error
@@ -251,7 +258,7 @@ Usage:
 	if opts.ExitStatus {
 		cli.exitCodeError = &exitCodeError{exitCodeNoValueErr}
 		defer func() {
-			if _, ok := err.(interface{ ExitCode() int }); !ok {
+			if _, ok := err.(ExitCoder); !ok {
 				err = cli.exitCodeError
 			}
 		}()
@@ -306,7 +313,11 @@ Usage:
 	return cli.process(iter, code)
 }
 
-// slurpFile is a function
+// slurpFile reads all JSON values from the specified file into a slice.
+// Parameters:
+//   - name: Path to the JSON file to slurp.
+//
+// Returns the slice of parsed JSON values and any file or parse error.
 func slurpFile(name string) (any, error) {
 	iter := newSlurpInputIter(
 		newFilesInputIter(newJSONInputIter, []string{name}, nil),
@@ -319,7 +330,11 @@ func slurpFile(name string) (any, error) {
 	return val, nil
 }
 
-// createInputIter is a function
+// createInputIter constructs the appropriate inputIter based on CLI input flags and file arguments.
+// Parameters:
+//   - args: File paths to read from (or empty for stdin).
+//
+// Returns the configured inputIter.
 func (cli *cli) createInputIter(args []string) (iter inputIter) {
 	var newIter func(io.Reader, string) inputIter
 	switch {
@@ -351,7 +366,12 @@ func (cli *cli) createInputIter(args []string) (iter inputIter) {
 	return newFilesInputIter(newIter, args, cli.inStream)
 }
 
-// process is a function
+// process iterates over all input values, evaluates the compiled jq code, and prints output values.
+// Parameters:
+//   - iter: The input value iterator.
+//   - code: The compiled gojq bytecode program.
+//
+// Returns an emptyError wrapping any input or evaluation error.
 func (cli *cli) process(iter inputIter, code *gojq.Code) error {
 	var err error
 	for {
@@ -388,7 +408,11 @@ func (cli *cli) process(iter inputIter, code *gojq.Code) error {
 	return nil
 }
 
-// printValues is a function
+// printValues marshals and writes each value yielded by a gojq evaluation iterator to outStream.
+// Parameters:
+//   - iter: The gojq result iterator.
+//
+// Returns any evaluation or output marshaling error.
 func (cli *cli) printValues(iter gojq.Iter) error {
 	m := cli.createMarshaler()
 	for {
@@ -425,7 +449,8 @@ func (cli *cli) printValues(iter gojq.Iter) error {
 	return nil
 }
 
-// createMarshaler is a function
+// createMarshaler selects and configures the output marshaler based on CLI formatting flags.
+// Returns the configured marshaler instance.
 func (cli *cli) createMarshaler() marshaler {
 	if cli.outputYAML {
 		return yamlFormatter(cli.outputIndent)
@@ -445,7 +470,11 @@ func (cli *cli) createMarshaler() marshaler {
 	return f
 }
 
-// funcDebug is a function
+// funcDebug implements the built-in jq `debug` function by writing `["DEBUG:", v]` to errStream.
+// Parameters:
+//   - v: The current pipeline value.
+//
+// Returns v unchanged or an error if writing to errStream fails.
 func (cli *cli) funcDebug(v any, _ []any) any {
 	if err := newEncoder(false, -1).
 		marshal([]any{"DEBUG:", v}, cli.errStream); err != nil {
@@ -457,7 +486,11 @@ func (cli *cli) funcDebug(v any, _ []any) any {
 	return v
 }
 
-// funcStderr is a function
+// funcStderr implements the built-in jq `stderr` function by writing v in raw mode to errStream.
+// Parameters:
+//   - v: The current pipeline value.
+//
+// Returns v unchanged or an error if writing to errStream fails.
 func (cli *cli) funcStderr(v any, _ []any) any {
 	if err := (&rawMarshaler{m: newEncoder(false, -1)}).
 		marshal(v, cli.errStream); err != nil {

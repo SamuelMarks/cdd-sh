@@ -1,3 +1,5 @@
+# @file src/openapi/openapi2swagger.jq
+# @description Converts an OpenAPI 3.x specification AST back into a Swagger 2.0 JSON specification.
 if .swagger == "2.0" then
   .
 else

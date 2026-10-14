@@ -1,36 +1,18 @@
 #!/bin/sh
-# shellcheck disable=SC3054,SC3040,SC2059,SC2016
-
-set -feu
-# shellcheck disable=SC2296,SC3028,SC3040,SC3054,SC3043,SC2129
-# shellcheck disable=SC2296,SC3028,SC3040,SC3054
-if [ "${SCRIPT_NAME-}" ]; then
-	THIS_FILE="${SCRIPT_NAME}"
-elif [ "${BASH_SOURCE-}" ]; then
-	THIS_FILE="${BASH_SOURCE[0]}"
-	set -o pipefail
-elif [ "${ZSH_VERSION-}" ]; then
-	eval 'THIS_FILE="${(%):-%x}"'
-	set -o pipefail
-else
-	THIS_FILE="${0}"
-fi
-case "${STACK+x}" in
-*':'"${THIS_FILE}"':'*) if (return 0 2>/dev/null); then return; else exit 0; fi ;;
-esac
-export STACK="${STACK:-}${THIS_FILE}"':'
-DIR=$(CDPATH='' cd "$(dirname -- "${THIS_FILE}")" && pwd)
-LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(
-	d="${DIR}"
-	while [ ! -f "${d}"'/ROOT' ]; do d="$(dirname -- "${d}")"; done
-	printf '%s' "${d}"
-)}"
+# @file src/docsjson/emit.sh
+# @description Emits JSON documentation with shell code snippets from an OpenAPI specification.
+# shellcheck disable=SC2016,SC1091
+. "${LIBSCRIPT_ROOT_DIR:-.}/lib/env.sh"
 
 # handle_to_docs_json outputs the AST as a documentation JSON format.
+# @param $@: CLI flags (-i/--input, -o/--output, --no-imports, --no-wrapping)
 handle_to_docs_json() {
-	input_file=""
+	input_file="${CDD_INPUT:-}"
+	output_file="${CDD_OUTPUT:-}"
 	no_imports="false"
 	no_wrapping="false"
+	if [ "${CDD_NO_IMPORTS:-0}" = "1" ]; then no_imports="true"; fi
+	if [ "${CDD_NO_WRAPPING:-0}" = "1" ]; then no_wrapping="true"; fi
 
 	while [ "$#" -gt 0 ]; do
 		case "$1" in
@@ -38,7 +20,10 @@ handle_to_docs_json() {
 			input_file="$2"
 			shift 2
 			;;
-		-o | --output) shift 2 ;;
+		-o | --output)
+			output_file="$2"
+			shift 2
+			;;
 		--no-imports)
 			no_imports="true"
 			shift 1
@@ -63,9 +48,10 @@ handle_to_docs_json() {
 		exit 1
 	fi
 
-	jq -n --slurpfile spec "$input_file" \
+	res=$(jq -n -L "${LIBSCRIPT_ROOT_DIR}/lib/_common" --slurpfile spec "$input_file" \
 		--arg no_imports "$no_imports" \
 		--arg no_wrapping "$no_wrapping" '
+    include "openapi";
     {
       "endpoints": (
         if $spec[0].paths then
@@ -75,7 +61,7 @@ handle_to_docs_json() {
               select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers") |
               .key as $method |
               .value |
-              (if .operationId then .operationId else "\($method)_\($path | gsub("/"; "_") | gsub("[{}]"; "") | sub("^_"; ""))" end) as $opId |
+              get_docs_op_id($method; $path) as $opId |
               
               (
                 (if $no_imports == "false" then ". ./routes.sh\n\n" else "" end) +
@@ -96,5 +82,19 @@ handle_to_docs_json() {
         end
       )
     }
-  '
+  ')
+	if [ -n "$output_file" ]; then
+		printf "%s\n" "$res" >"$output_file"
+	else
+		printf "%s\n" "$res"
+	fi
+}
+
+# handle_emit_docsjson emits the documentation JSON from the current AST file.
+# @param $1: file_path - The destination path for the documentation JSON.
+handle_emit_docsjson() {
+	file_path="${1:-emitted_docsjson.json}"
+	ast="${CDD_AST_PATH:-${LIBSCRIPT_ROOT_DIR}/ast.json}"
+	if [ ! -f "${ast}" ]; then return 1; fi
+	handle_to_docs_json -i "${ast}" -o "${file_path}"
 }

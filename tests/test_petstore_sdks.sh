@@ -1,17 +1,8 @@
 #!/bin/sh
-set -eu
-# shellcheck disable=SC2296,SC3028,SC3040,SC3054
-if [ "${SCRIPT_NAME-}" ]; then
-	THIS_FILE="${SCRIPT_NAME}"
-elif [ "${BASH_SOURCE-}" ]; then
-	THIS_FILE="${BASH_SOURCE[0]}"
-	set -o pipefail
-elif [ "${ZSH_VERSION-}" ]; then
-	eval 'THIS_FILE="${(%):-%x}"'
-	set -o pipefail
-else
-	THIS_FILE="${0}"
-fi
+# @file tests/test_petstore_sdks.sh
+# @description End-to-end integration tests for Swagger 2.0 and OpenAPI 3.0 Petstore SDKs.
+# shellcheck disable=SC1091
+. "$(cd "$(dirname -- "$0")/.." && pwd)/lib/env.sh"
 
 export BASE_URL="http://localhost:8100/api"
 MOCK_PID=""
@@ -105,8 +96,8 @@ rm -rf temp-swagger-sdk temp-openapi-sdk
 . temp-swagger-sdk/src/routes.sh
 
 res=$(findPetsByStatus "available")
-if ! printf "%s" "$res" | grep -q "\[" && ! printf "%s" "$res" | grep -q "Not found"; then
-	echo "FAIL: Swagger SDK findPetsByStatus did not return expected array"
+if ! printf "%s\n" "$res" | jq -e 'type == "array"' >/dev/null 2>&1; then
+	echo "FAIL: Swagger SDK findPetsByStatus did not return expected array: $res"
 	exit 1
 fi
 echo "Swagger SDK test passed!"
@@ -117,8 +108,8 @@ echo "Testing OpenAPI SDK against $BASE_URL..."
 . temp-openapi-sdk/src/routes.sh
 
 res=$(findPetsByStatus "available")
-if ! printf "%s" "$res" | grep -q "\[" && ! printf "%s" "$res" | grep -q "Not found"; then
-	echo "FAIL: OpenAPI SDK findPetsByStatus did not return expected array"
+if ! printf "%s\n" "$res" | jq -e 'type == "array"' >/dev/null 2>&1; then
+	echo "FAIL: OpenAPI SDK findPetsByStatus did not return expected array: $res"
 	exit 1
 fi
 echo "OpenAPI SDK test passed!"

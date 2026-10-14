@@ -1,27 +1,11 @@
 #!/bin/sh
-# shellcheck disable=SC3054,SC3040,SC2059,SC2016
-
-set -feu
-if [ "${SCRIPT_NAME-}" ]; then
-	THIS_FILE="${SCRIPT_NAME}"
-elif [ "${BASH_SOURCE-}" ]; then
-	THIS_FILE="${BASH_SOURCE[0]}"
-	set -o pipefail
-elif [ "${ZSH_VERSION-}" ]; then
-	eval 'THIS_FILE="${(%):-%x}"'
-	set -o pipefail
-else
-	THIS_FILE="${0}"
-fi
-export STACK="${STACK:-}${THIS_FILE}:"
-DIR=$(CDPATH='' cd "$(dirname -- "${THIS_FILE}")" && pwd)
-LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(
-	d="${DIR}"
-	while [ ! -f "${d}/ROOT" ]; do d="$(dirname -- "${d}")"; done
-	printf '%s' "${d}"
-)}"
+# @file src/server/emit_models.sh
+# @description Emits individual model validation scripts for the generated server.
+# shellcheck disable=SC2016,SC1091
+. "${LIBSCRIPT_ROOT_DIR:-.}/lib/env.sh"
 
 # handle_emit_server_models generates individual model files for the server.
+# @param $1: out_dir - The output directory for model scripts (default: models).
 handle_emit_server_models() {
 	out_dir="${1:-models}"
 	ast="${CDD_AST_PATH:-${LIBSCRIPT_ROOT_DIR}/ast.json}"

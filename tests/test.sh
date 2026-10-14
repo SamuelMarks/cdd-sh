@@ -1,23 +1,8 @@
 #!/bin/sh
-set -eu
-# shellcheck disable=SC2296,SC3028,SC3040,SC3054
-if [ "${SCRIPT_NAME-}" ]; then
-	THIS_FILE="${SCRIPT_NAME}"
-elif [ "${BASH_SOURCE-}" ]; then
-	THIS_FILE="${BASH_SOURCE[0]}"
-	set -o pipefail
-elif [ "${ZSH_VERSION-}" ]; then
-	eval 'THIS_FILE="${(%):-%x}"'
-	set -o pipefail
-else
-	THIS_FILE="${0}"
-fi
-# shellcheck disable=SC1090
-
-# We need absolute paths or relative from ROOT
-DIR=$(CDPATH='' cd "$(dirname -- "$0")" && pwd)
-LIBSCRIPT_ROOT_DIR="$(dirname "${DIR}")"
-export LIBSCRIPT_ROOT_DIR
+# @file tests/test.sh
+# @description Core integration test suite for cdd-sh parsers and emitters.
+# shellcheck disable=SC1091
+. "$(cd "$(dirname -- "$0")/.." && pwd)/lib/env.sh"
 
 # 1. Start clean
 rm -f ast.json tests/emitted_*.sh tests/emitted_*.json tests/emitted_*.txt

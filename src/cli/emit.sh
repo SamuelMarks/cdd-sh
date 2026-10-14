@@ -1,29 +1,12 @@
 #!/bin/sh
-# shellcheck disable=SC3054,SC3040,SC2059,SC2016
-
-set -feu
-# shellcheck disable=SC2296,SC3028,SC3040,SC3054
-if [ "${SCRIPT_NAME-}" ]; then
-	THIS_FILE="${SCRIPT_NAME}"
-elif [ "${BASH_SOURCE-}" ]; then
-	THIS_FILE="${BASH_SOURCE[0]}"
-	set -o pipefail
-elif [ "${ZSH_VERSION-}" ]; then
-	eval 'THIS_FILE="${(%):-%x}"'
-	set -o pipefail
-else
-	THIS_FILE="${0}"
-fi
-case "${STACK+x}" in *':'"${THIS_FILE}"':'*) if (return 0 2>/dev/null); then return; else exit 0; fi ;; esac
-export STACK="${STACK:-}${THIS_FILE}"':'
-DIR=$(CDPATH='' cd "$(dirname -- "${THIS_FILE}")" && pwd)
-LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(
-	d="${DIR}"
-	while [ ! -f "${d}"'/ROOT' ]; do d="$(dirname -- "${d}")"; done
-	printf '%s' "${d}"
-)}"
+# @file src/cli/emit.sh
+# @description Emits the POSIX shell CLI and MCP stdio interface from the OpenAPI AST.
+# shellcheck disable=SC2016,SC1091
+. "${LIBSCRIPT_ROOT_DIR:-.}/lib/env.sh"
+. "${LIBSCRIPT_ROOT_DIR:-.}/lib/mcp_handler.sh"
 
 # handle_emit_cli generates the CLI application from the AST.
+# @param $1: output_file - The destination path for the generated CLI script.
 handle_emit_cli() {
 	output_file="$1"
 	ast="${CDD_AST_PATH:-${LIBSCRIPT_ROOT_DIR}/ast.json}"
@@ -49,6 +32,9 @@ handle_emit_cli() {
       "OPENAPI_JSON=\"" + (del(.openapi, .info, .paths, .jsonSchemaDialect, .servers) | @json) + "\"\n"
     ' "${ast}"
 
+		emit_mcp_handler_func
+		printf "\n"
+
 		printf "usage() {\n"
 		printf "  echo \"\$TITLE - \$VERSION\"\n"
 		printf "  echo \"\$SUMMARY\"\n"
@@ -58,11 +44,12 @@ handle_emit_cli() {
 		printf "  echo \"  --server <url|name>   Set base server URL\"\n"
 		printf "  echo \"Commands:\"\n"
 
-		jq -r '
+		jq -r -L "${LIBSCRIPT_ROOT_DIR}/lib/_common" '
+      include "openapi";
       . as $root |
       if .paths then
       .paths | to_entries[] | .key as $path | .value | to_entries[] | select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers") | .key as $method | .value |
-      (if .operationId then (.operationId | gsub("([a-z])([A-Z])"; "\(.captures[0].string)_\(.captures[1].string)") | ascii_downcase) else "\($method | ascii_upcase)_\($path | gsub("/"; "_") | gsub("[{}]"; ""))" end) as $opId |
+      get_op_id($method; $path) as $opId |
       (if .summary == null then "Call \($method | ascii_upcase) \($path)" else .summary end) as $desc |
       "  echo \"  \($opId) - \($desc)\""
       else empty end
@@ -70,119 +57,44 @@ handle_emit_cli() {
 
 		printf "}\n"
 
-		printf "if [ \"${1:-}\" = \"--help\" ] || [ \"${1:-}\" = \"-h\" ]; then usage; exit 0; fi\n"
-		printf "if [ \"${1:-}\" = \"--version\" ] || [ \"${1:-}\" = \"-v\" ]; then echo \"\$VERSION\"; exit 0; fi\n"
+		printf 'if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then usage; exit 0; fi\n'
+		printf 'if [ "${1:-}" = "--version" ] || [ "${1:-}" = "-v" ]; then echo "$VERSION"; exit 0; fi\n'
 
-		printf "SERVER_URL=\"\"\n"
-		printf "if [ \"${1:-}\" = \"--server\" ]; then SERVER_URL=\"\$2\"; shift 2; fi\n"
+		printf 'SERVER_URL=""\n'
+		printf 'if [ "${1:-}" = "--server" ]; then SERVER_URL="$2"; shift 2; fi\n'
 
-		printf "CMD=\"\${1:-}\"\n"
+		printf 'CMD="${1:-}"\n'
 		printf "[ -z \"\$CMD\" ] && usage && exit 1\n"
 		printf "shift\n"
 		printf "case \"\$CMD\" in\n"
-		cat <<'EOF'
-  mcp)
-    while read -r line || [ -n "$line" ]; do
-      if echo "$line" | grep -qi "^Content-Length:"; then
-        read -r empty_line
-        content_length=$(echo "$line" | awk '{print $2}' | tr -d '\r\n')
-        line=$(dd bs=1 count="$content_length" 2>/dev/null)
-      elif echo "$line" | grep -qi "^[A-Za-z-]\+: "; then
-        continue
-      elif [ -z "$(echo "$line" | tr -d '\r\n')" ]; then
-        continue
-      fi
-      method=$(echo "$line" | jq -r '.method // empty')
-      id=$(echo "$line" | jq -r '.id // null')
-      if [ "$method" = "initialize" ]; then
-        echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{\"tools\":{\"listChanged\":true},\"resources\":{\"listChanged\":true,\"subscribe\":true},\"logging\":{},\"prompts\":{\"listChanged\":true}},\"serverInfo\":{\"name\":\"$TITLE\",\"version\":\"$VERSION\"}}}"
-      elif [ "$method" = "notifications/initialized" ] || [ "$method" = "initialized" ]; then
-        : # Do nothing for initialized notification
-      elif [ "$method" = "notifications/tools/list_changed" ] || [ "$method" = "notifications/resources/list_changed" ] || [ "$method" = "notifications/prompts/list_changed" ] || [ "$method" = "notifications/roots/list_changed" ] || [ "$method" = "notifications/resources/updated" ]; then
-        : # Do nothing for list changed notifications
-      elif [ "$method" = "notifications/cancelled" ] || [ "$method" = "notifications/progress" ]; then
-        : # Do nothing for cancelled/progress notification
-      elif [ "$method" = "notifications/message" ]; then
-        level=$(echo "$line" | jq -r '.params.level // "info"')
-        msg=$(echo "$line" | jq -r '.params.data // ""')
-        echo "[$level] $msg" >&2
 
-      elif [ "$method" = "ping" ]; then
-        echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{}}"
-      elif [ "$method" = "roots/list" ]; then
-        echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{\"roots\":[{\"uri\":\"file://$(pwd)\",\"name\":\"Workspace\"}]}}" 
-      elif [ "$method" = "prompts/list" ]; then
-        echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{\"prompts\":[{\"name\":\"test_prompt\",\"description\":\"A test prompt\",\"arguments\":[{\"name\":\"arg1\",\"description\":\"An argument\",\"required\":true}]}]}}"
-      elif [ "$method" = "prompts/get" ]; then
-        prompt_name=$(echo "$line" | jq -r '.params.name // empty')
-        if [ "$prompt_name" = "test_prompt" ]; then
-          echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{\"description\":\"A test prompt\",\"messages\":[{\"role\":\"user\",\"content\":{\"type\":\"text\",\"text\":\"Please test this\"}}]}}"
-        else
-          echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"error\":{\"code\":-32602,\"message\":\"Invalid prompt\"}}"
-        fi
-      elif [ "$method" = "completion/complete" ]; then
-        echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{\"completion\":{\"values\":[],\"total\":0,\"hasMore\":false}}}"
-      elif [ "$method" = "sampling/createMessage" ]; then
-        echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{\"role\":\"assistant\",\"content\":{\"type\":\"text\",\"text\":\"Sampled message\"},\"model\":\"test-model\",\"stopReason\":\"endTurn\"}}"
-      elif [ "$method" = "logging/setLevel" ]; then
-        echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{}}"
-      elif [ "$method" = "resources/list" ]; then
-        cursor=$(echo "$line" | jq -r '.params.cursor // empty')
-        if [ "$cursor" = "next" ]; then
-          echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{\"resources\":[]}}"
-        else
-          echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{\"resources\":[{\"uri\":\"openapi://spec\",\"name\":\"OpenAPI Spec\",\"mimeType\":\"application/json\"}],\"nextCursor\":\"next\"}}"
-        fi
-      elif [ "$method" = "resources/templates/list" ]; then
-        echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{\"resourceTemplates\":[]}}"
-      elif [ "$method" = "resources/subscribe" ] || [ "$method" = "resources/unsubscribe" ]; then
-        echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{}}"  
-      elif [ "$method" = "resources/read" ]; then
-        uri=$(echo "$line" | jq -r '.params.uri')
-        if [ "$uri" = "openapi://spec" ]; then
-          spec_escaped=$(printf "%s" "$OPENAPI_JSON" | jq -R -s '.')
-          echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{\"contents\":[{\"uri\":\"openapi://spec\",\"mimeType\":\"application/json\",\"text\":$spec_escaped}]}}"
-        else
-          echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"error\":{\"code\":-32602,\"message\":\"Invalid URI\"}}"
-        fi
-      elif [ "$method" = "tools/list" ]; then
-EOF
-
-		# Generate the static JSON string for tools/list
-		tools_json=$(jq -c '
-		  if .paths then
-		    [
-		      .paths | to_entries[] | .key as $path | .value | to_entries[] | select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers") | .key as $method | .value |
-		      (if .operationId then (.operationId | gsub("([a-z])([A-Z])"; "\(.captures[0].string)_\(.captures[1].string)") | ascii_downcase) else "\($method | ascii_upcase)_\($path | gsub("/"; "_") | gsub("[{}]"; ""))" end) as $opId |
-		      {
-		        name: $opId,
-		        description: (.summary // "Call \($method) \($path)"),
-		        inputSchema: {
-		          type: "object",
-		          properties: (
-		            ((.parameters // []) | map({(.name): {type: (.schema.type // "string")}})) | add // {}
-		          ),
-		          required: (
-		            ((.parameters // []) | map(select(.required == true) | .name)) // []
-		          )
-		        }
-		      }
-		    ]
-		  else
-		    []
-		  end
-		' "${ast}")
+		tools_json_sh=$(jq -c -L "${LIBSCRIPT_ROOT_DIR}/lib/_common" 'include "openapi"; emit_mcp_tools' "${ast}" | jq -R -r '@sh')
 
 		cat <<EOF
-        tools_json='$(echo "$tools_json" | sed "s/'/'\\\\''/g")'
-        cursor=\$(echo "\$line" | jq -r '.params.cursor // empty'); if [ "\$cursor" = "next" ]; then echo "{\"jsonrpc\":\"2.0\",\"id\":\$id,\"result\":{\"tools\":[]}}"; else echo "{\"jsonrpc\":\"2.0\",\"id\":\$id,\"result\":{\"tools\":\$tools_json,\"nextCursor\":\"next\"}}"; fi
+  mcp)
+    tools_json=${tools_json_sh}
+    while read -r line || [ -n "\$line" ]; do
+      if echo "\$line" | grep -qi "^Content-Length:"; then
+        read -r _
+        content_length=\$(echo "\$line" | awk '{print \$2}' | tr -d '\r\n')
+        line=\$(dd bs=1 count="\$content_length" 2>/dev/null)
+      elif echo "\$line" | grep -qi "^[A-Za-z-]\+: "; then
+        continue
+      elif [ -z "\$(echo "\$line" | tr -d '\r\n')" ]; then
+        continue
+      fi
+      method=\$(echo "\$line" | jq -r '.method // empty')
+      id=\$(echo "\$line" | jq -r '.id // null')
+      if mcp_out=\$(mcp_handle_common "\$line" "\$TITLE" "\$VERSION" "openapi://spec" "OpenAPI Spec" "\$OPENAPI_JSON" "\$tools_json" "file://\$(pwd)"); then
+        if [ -n "\$mcp_out" ]; then
+          printf '%s\n' "\$mcp_out"
+        fi
       elif [ "\$method" = "tools/call" ]; then
         tool_name=\$(echo "\$line" | jq -r '.params.name')
         args=\$(echo "\$line" | jq -c '.params.arguments // {}')
         
-        eval_args=\$(echo "\$args" | jq -r 'to_entries | map("--\(.key) '\''\(.value)'\''") | join(" ")')
+        eval_args=\$(echo "\$args" | jq -r 'to_entries | map("--" + .key + " " + (.value | tostring | @sh)) | join(" ")')
         
-        # We capture the exit status
         set +e
         res=\$(eval "\$0 \$tool_name \$eval_args" 2>&1)
         exit_code=\$?
@@ -202,11 +114,12 @@ EOF
     done
     ;;
 EOF
-		jq -r '
+		jq -r -L "${LIBSCRIPT_ROOT_DIR}/lib/_common" '
+      include "openapi";
       . as $root |
       if .paths then
       .paths | to_entries[] | .key as $path | .value | to_entries[] | select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers") | .key as $method | .value |
-      (if .operationId then (.operationId | gsub("([a-z])([A-Z])"; "\(.captures[0].string)_\(.captures[1].string)") | ascii_downcase) else "\($method | ascii_upcase)_\($path | gsub("/"; "_") | gsub("[{}]"; ""))" end) as $opId |
+      get_op_id($method; $path) as $opId |
       ((.parameters // []) + ($root.paths[$path].parameters // []) | map(if ."$ref" then ($root.components.parameters[."$ref" | sub("^#/components/parameters/"; "")] // .) else . end)) as $params |
       "  \($opId))\n" +
       "    while [ $# -gt 0 ]; do\n" +

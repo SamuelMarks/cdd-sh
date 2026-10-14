@@ -139,7 +139,9 @@ func TestInputNextErrors(t *testing.T) {
 	if !ok || v != io.ErrUnexpectedEOF {
 		t.Errorf("expected error from readAllIter, got %v, %v", v, ok)
 	}
-	iter.Next() // To cover if i.err != nil
+	if v2, ok2 := iter.Next(); ok2 || v2 != nil {
+		t.Errorf("expected (nil, false) on subsequent Next, got (%v, %v)", v2, ok2)
+	}
 
 	// rawInputIter with error reader
 	iter2 := newRawInputIter(errReader{}, "test.txt")
@@ -147,21 +149,29 @@ func TestInputNextErrors(t *testing.T) {
 	if !ok || v != io.ErrUnexpectedEOF {
 		t.Errorf("expected error from rawInputIter, got %v, %v", v, ok)
 	}
-	iter2.Next() // To cover if i.err != nil
+	if v2, ok2 := iter2.Next(); ok2 || v2 != nil {
+		t.Errorf("expected (nil, false) on subsequent Next, got (%v, %v)", v2, ok2)
+	}
 
 	iter2Empty := newRawInputIter(strings.NewReader(""), "empty.txt")
-	iter2Empty.Next()
+	if v2, ok2 := iter2Empty.Next(); ok2 || v2 != nil {
+		t.Errorf("expected (nil, false) on empty rawInputIter, got (%v, %v)", v2, ok2)
+	}
 	// slurpRawInputIter
 	iter3 := newSlurpRawInputIter(newReadAllIter(errReader{}, "test.txt"))
 	v, ok = iter3.Next()
 	if !ok || v != io.ErrUnexpectedEOF {
 		t.Errorf("expected error from slurpRawInputIter, got %v, %v", v, ok)
 	}
-	iter3.Next()
+	if v2, ok2 := iter3.Next(); ok2 || v2 != nil {
+		t.Errorf("expected (nil, false) on subsequent Next, got (%v, %v)", v2, ok2)
+	}
 	// filesInputIter
 	iter4 := newFilesInputIter(newJSONInputIter, []string{"test.json"}, strings.NewReader(""))
 	iter4.(*filesInputIter).err = io.EOF
-	iter4.Next()
+	if v2, ok2 := iter4.Next(); ok2 || v2 != nil {
+		t.Errorf("expected (nil, false) when filesInputIter has EOF err, got (%v, %v)", v2, ok2)
+	}
 }
 
 type nonSeekReader struct{ io.Reader }
@@ -190,12 +200,18 @@ func (errSeekReader) Seek(offset int64, whence int) (int64, error) {
 func TestJsonInputIterBufLimit(t *testing.T) {
 	ir := newInputReader(nonSeekReader{strings.NewReader(strings.Repeat(" ", 20000) + "{}")})
 	iter := newJSONInputIter(ir, "test.json")
-	iter.Next()
+	v, ok := iter.Next()
+	if !ok || v == nil {
+		t.Errorf("expected non-nil map from Next(), got (%v, %v)", v, ok)
+	}
 }
 
 func TestGetContentsReadError(t *testing.T) {
 	ir := newInputReader(errSeekReader{})
 	var offset int64 = 30000
 	var line int = 1
-	ir.getContents(&offset, &line)
+	contents := ir.getContents(&offset, &line)
+	if contents != "" {
+		t.Errorf("expected empty contents from errSeekReader, got %q", contents)
+	}
 }

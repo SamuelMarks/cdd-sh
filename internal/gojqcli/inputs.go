@@ -1,3 +1,4 @@
+// Package gojqcli implements input readers and iterators for JSON, YAML, raw text, and slurped files.
 package gojqcli
 
 import (
@@ -15,14 +16,18 @@ import (
 	"github.com/itchyny/gojq"
 )
 
-// inputReader is a type
+// inputReader wraps an io.Reader to preserve read bytes or seek offsets for syntax error reporting.
 type inputReader struct {
 	io.Reader
 	rs  io.ReadSeeker
 	buf *bytes.Buffer
 }
 
-// newInputReader is a function
+// newInputReader creates an inputReader wrapping r, using io.ReadSeeker directly if supported or TeeReader otherwise.
+// Parameters:
+//   - r: The underlying input stream.
+//
+// Returns a pointer to the initialized inputReader.
 func newInputReader(r io.Reader) *inputReader {
 	if r, ok := r.(io.ReadSeeker); ok {
 		if _, err := r.Seek(0, io.SeekCurrent); err == nil {
@@ -33,7 +38,12 @@ func newInputReader(r io.Reader) *inputReader {
 	return &inputReader{io.TeeReader(r, &buf), nil, &buf}
 }
 
-// getContents is a function
+// getContents returns the buffered or seeked source text window around the given byte offset and updates line count.
+// Parameters:
+//   - offset: Optional pointer to the byte offset of the parse error.
+//   - line: Optional pointer to the accumulated line number.
+//
+// Returns the relevant source text slice as a string.
 func (ir *inputReader) getContents(offset *int64, line *int) string {
 	if buf := ir.buf; buf != nil {
 		return buf.String()
@@ -64,14 +74,14 @@ func (ir *inputReader) getContents(offset *int64, line *int) string {
 	return buf.String()
 }
 
-// inputIter is a type
+// inputIter extends gojq.Iter with io.Closer and source file name reporting.
 type inputIter interface {
 	gojq.Iter
 	io.Closer
 	Name() string
 }
 
-// jsonInputIter is a type
+// jsonInputIter decodes sequential JSON values from an inputReader.
 type jsonInputIter struct {
 	next   func() (any, error)
 	ir     *inputReader
@@ -81,7 +91,12 @@ type jsonInputIter struct {
 	err    error
 }
 
-// newJSONInputIter is a function
+// newJSONInputIter creates an inputIter that decodes standard JSON values from r.
+// Parameters:
+//   - r: The input stream to decode.
+//   - fname: The display name or file path of the input source.
+//
+// Returns the initialized inputIter.
 func newJSONInputIter(r io.Reader, fname string) inputIter {
 	ir := newInputReader(r)
 	dec := json.NewDecoder(ir)
@@ -90,7 +105,8 @@ func newJSONInputIter(r io.Reader, fname string) inputIter {
 	return &jsonInputIter{next: next, ir: ir, fname: fname}
 }
 
-// Next is a function
+// Next decodes and returns the next JSON value or a jsonParseError on invalid syntax.
+// Returns the decoded value (or error) and true if a value/error was produced.
 func (i *jsonInputIter) Next() (any, bool) {
 	if i.err != nil {
 		return nil, false
@@ -122,18 +138,23 @@ func (i *jsonInputIter) Next() (any, bool) {
 	return v, true
 }
 
-// Close is a function
+// Close marks the iterator as exhausted and releases resources.
 func (i *jsonInputIter) Close() error {
 	i.err = io.EOF
 	return nil
 }
 
-// Name is a function
+// Name returns the source file name associated with this iterator.
 func (i *jsonInputIter) Name() string {
 	return i.fname
 }
 
-// newStreamInputIter is a function
+// newStreamInputIter creates an inputIter that decodes JSON in streaming path-value mode (`--stream`).
+// Parameters:
+//   - r: The input stream to decode.
+//   - fname: The display name or file path of the input source.
+//
+// Returns the initialized streaming inputIter.
 func newStreamInputIter(r io.Reader, fname string) inputIter {
 	ir := newInputReader(r)
 	dec := json.NewDecoder(ir)
@@ -141,17 +162,17 @@ func newStreamInputIter(r io.Reader, fname string) inputIter {
 	return &jsonInputIter{next: newJSONStream(dec).next, ir: ir, fname: fname}
 }
 
-// nullInputIter is a type
+// nullInputIter yields a single nil value (`jq -n`).
 type nullInputIter struct {
 	err error
 }
 
-// newNullInputIter is a function
+// newNullInputIter creates an inputIter that yields a single null value.
 func newNullInputIter() inputIter {
 	return &nullInputIter{}
 }
 
-// Next is a function
+// Next yields nil on the first call and (nil, false) on subsequent calls.
 func (i *nullInputIter) Next() (any, bool) {
 	if i.err != nil {
 		return nil, false
@@ -160,18 +181,18 @@ func (i *nullInputIter) Next() (any, bool) {
 	return nil, true
 }
 
-// Close is a function
+// Close marks the nullInputIter as finished.
 func (i *nullInputIter) Close() error {
 	i.err = io.EOF
 	return nil
 }
 
-// Name is a function
+// Name returns an empty string for null input.
 func (*nullInputIter) Name() string {
 	return ""
 }
 
-// filesInputIter is a type
+// filesInputIter iterates sequentially across multiple named files or standard input.
 type filesInputIter struct {
 	newIter func(io.Reader, string) inputIter
 	fnames  []string
@@ -181,14 +202,20 @@ type filesInputIter struct {
 	err     error
 }
 
-// newFilesInputIter is a function
+// newFilesInputIter creates an inputIter that opens and iterates through each file in fnames.
+// Parameters:
+//   - newIter: Factory function to construct an inputIter for each opened file.
+//   - fnames: Slice of file paths (or "-" for stdin).
+//   - stdin: Standard input reader used when fname is "-".
+//
+// Returns the initialized filesInputIter.
 func newFilesInputIter(
 	newIter func(io.Reader, string) inputIter, fnames []string, stdin io.Reader,
 ) inputIter {
 	return &filesInputIter{newIter: newIter, fnames: fnames, stdin: stdin}
 }
 
-// Next is a function
+// Next advances to the next value in the current file or opens the next file in fnames.
 func (i *filesInputIter) Next() (any, bool) {
 	if i.err != nil {
 		return nil, false
@@ -244,7 +271,7 @@ func (i *filesInputIter) Next() (any, bool) {
 	}
 }
 
-// Close is a function
+// Close closes the currently open file handle if any.
 func (i *filesInputIter) Close() error {
 	if i.file != nil {
 		if r, ok := i.file.(io.Closer); ok && i.file != i.stdin {
@@ -256,7 +283,7 @@ func (i *filesInputIter) Close() error {
 	return nil
 }
 
-// Name is a function
+// Name returns the active file's display name.
 func (i *filesInputIter) Name() string {
 	if i.iter != nil {
 		return i.iter.Name()
@@ -264,19 +291,24 @@ func (i *filesInputIter) Name() string {
 	return ""
 }
 
-// rawInputIter is a type
+// rawInputIter reads input line-by-line as raw strings (`jq -R`).
 type rawInputIter struct {
 	r     *bufio.Reader
 	fname string
 	err   error
 }
 
-// newRawInputIter is a function
+// newRawInputIter creates an inputIter that reads raw lines from r.
+// Parameters:
+//   - r: The input stream to read.
+//   - fname: The display name of the input source.
+//
+// Returns the initialized rawInputIter.
 func newRawInputIter(r io.Reader, fname string) inputIter {
 	return &rawInputIter{r: bufio.NewReader(r), fname: fname}
 }
 
-// Next is a function
+// Next reads and returns the next line with any trailing newline removed.
 func (i *rawInputIter) Next() (any, bool) {
 	if i.err != nil {
 		return nil, false
@@ -294,18 +326,18 @@ func (i *rawInputIter) Next() (any, bool) {
 	return strings.TrimSuffix(line, "\n"), true
 }
 
-// Close is a function
+// Close marks the rawInputIter as exhausted.
 func (i *rawInputIter) Close() error {
 	i.err = io.EOF
 	return nil
 }
 
-// Name is a function
+// Name returns the source file name for this rawInputIter.
 func (i *rawInputIter) Name() string {
 	return i.fname
 }
 
-// yamlInputIter is a type
+// yamlInputIter decodes sequential YAML documents from an inputReader (`jq --yaml-input`).
 type yamlInputIter struct {
 	dec   *yaml.Decoder
 	ir    *inputReader
@@ -313,14 +345,19 @@ type yamlInputIter struct {
 	err   error
 }
 
-// newYAMLInputIter is a function
+// newYAMLInputIter creates an inputIter that decodes YAML documents from r.
+// Parameters:
+//   - r: The YAML input stream.
+//   - fname: The display name of the input source.
+//
+// Returns the initialized yamlInputIter.
 func newYAMLInputIter(r io.Reader, fname string) inputIter {
 	ir := newInputReader(r)
 	dec := yaml.NewDecoder(ir)
 	return &yamlInputIter{dec: dec, ir: ir, fname: fname}
 }
 
-// Next is a function
+// Next decodes and returns the next YAML document or a yamlParseError on failure.
 func (i *yamlInputIter) Next() (any, bool) {
 	if i.err != nil {
 		return nil, false
@@ -337,29 +374,33 @@ func (i *yamlInputIter) Next() (any, bool) {
 	return v, true
 }
 
-// Close is a function
+// Close marks the yamlInputIter as exhausted.
 func (i *yamlInputIter) Close() error {
 	i.err = io.EOF
 	return nil
 }
 
-// Name is a function
+// Name returns the source file name for this yamlInputIter.
 func (i *yamlInputIter) Name() string {
 	return i.fname
 }
 
-// slurpInputIter is a type
+// slurpInputIter collects all values from an underlying inputIter into a single slice (`jq -s`).
 type slurpInputIter struct {
 	iter inputIter
 	err  error
 }
 
-// newSlurpInputIter is a function
+// newSlurpInputIter wraps iter to slurp all yielded items into a single array.
+// Parameters:
+//   - iter: The underlying inputIter to slurp.
+//
+// Returns the initialized slurpInputIter.
 func newSlurpInputIter(iter inputIter) inputIter {
 	return &slurpInputIter{iter: iter}
 }
 
-// Next is a function
+// Next consumes all items from the underlying iterator and returns them as a single []any slice.
 func (i *slurpInputIter) Next() (any, bool) {
 	if i.err != nil {
 		return nil, false
@@ -380,7 +421,7 @@ func (i *slurpInputIter) Next() (any, bool) {
 	}
 }
 
-// Close is a function
+// Close closes the underlying iterator and marks slurpInputIter as finished.
 func (i *slurpInputIter) Close() error {
 	if i.iter != nil {
 		i.iter.Close()
@@ -390,24 +431,29 @@ func (i *slurpInputIter) Close() error {
 	return nil
 }
 
-// Name is a function
+// Name returns the source name from the underlying iterator.
 func (i *slurpInputIter) Name() string {
 	return i.iter.Name()
 }
 
-// readAllIter is a type
+// readAllIter reads the entire content of an io.Reader as a single raw string (`jq -Rs`).
 type readAllIter struct {
 	r     io.Reader
 	fname string
 	err   error
 }
 
-// newReadAllIter is a function
+// newReadAllIter creates an inputIter that reads the entire stream r into a single string.
+// Parameters:
+//   - r: The input stream to read completely.
+//   - fname: The display name of the input source.
+//
+// Returns the initialized readAllIter.
 func newReadAllIter(r io.Reader, fname string) inputIter {
 	return &readAllIter{r: r, fname: fname}
 }
 
-// Next is a function
+// Next reads all bytes from r and returns them as a single string.
 func (i *readAllIter) Next() (any, bool) {
 	if i.err != nil {
 		return nil, false
@@ -420,29 +466,33 @@ func (i *readAllIter) Next() (any, bool) {
 	return string(cnt), true
 }
 
-// Close is a function
+// Close marks the readAllIter as exhausted.
 func (i *readAllIter) Close() error {
 	i.err = io.EOF
 	return nil
 }
 
-// Name is a function
+// Name returns the source name for this readAllIter.
 func (i *readAllIter) Name() string {
 	return i.fname
 }
 
-// slurpRawInputIter is a type
+// slurpRawInputIter concatenates multiple raw string inputs into a single string (`jq -Rs` across files).
 type slurpRawInputIter struct {
 	iter inputIter
 	err  error
 }
 
-// newSlurpRawInputIter is a function
+// newSlurpRawInputIter wraps iter to concatenate all yielded raw strings into one string.
+// Parameters:
+//   - iter: The underlying raw input iterator.
+//
+// Returns the initialized slurpRawInputIter.
 func newSlurpRawInputIter(iter inputIter) inputIter {
 	return &slurpRawInputIter{iter: iter}
 }
 
-// Next is a function
+// Next reads all string values from the underlying iterator and joins them into a single string.
 func (i *slurpRawInputIter) Next() (any, bool) {
 	if i.err != nil {
 		return nil, false
@@ -463,7 +513,7 @@ func (i *slurpRawInputIter) Next() (any, bool) {
 	}
 }
 
-// Close is a function
+// Close closes the underlying iterator and marks slurpRawInputIter as finished.
 func (i *slurpRawInputIter) Close() error {
 	if i.iter != nil {
 		i.iter.Close()
@@ -473,7 +523,7 @@ func (i *slurpRawInputIter) Close() error {
 	return nil
 }
 
-// Name is a function
+// Name returns the source name from the underlying iterator.
 func (i *slurpRawInputIter) Name() string {
 	return i.iter.Name()
 }

@@ -1,23 +1,12 @@
 #!/bin/sh
+# @file cdd.sh
+# @description Main CLI entrypoint and subcommand router for cdd-sh (Compiler-Driven Development for POSIX Shell).
 # shellcheck disable=SC1091
-
-set -feu
-# shellcheck disable=SC2296,SC3028,SC3040,SC3054
-if [ "${SCRIPT_NAME-}" ]; then
-	THIS_FILE="${SCRIPT_NAME}"
-elif [ "${BASH_SOURCE-}" ]; then
-	THIS_FILE="${BASH_SOURCE[0]}"
-	set -o pipefail
-elif [ "${ZSH_VERSION-}" ]; then
-	eval 'THIS_FILE="${(%):-%x}"'
-	set -o pipefail
-else
-	THIS_FILE="${0}"
-fi
+. "${LIBSCRIPT_ROOT_DIR:-.}/lib/env.sh"
 
 VERSION="0.0.3"
 
-# print_help prints the CLI help message.
+# print_help prints the CLI help message and exits with status 1.
 print_help() {
 	printf "cdd-sh CLI\n"
 	printf "Usage:\n  cdd-sh [subcommand] [options]\n\n"
@@ -40,6 +29,7 @@ print_help() {
 	exit 1
 }
 
+# print_help_from_openapi prints usage instructions for the from_openapi subcommand and exits.
 print_help_from_openapi() {
 	printf "Usage:\n  cdd-sh from_openapi [subcmd] [options]\n\n"
 	printf "Subcommands:\n"
@@ -64,6 +54,7 @@ print_help_from_openapi() {
 	exit 1
 }
 
+# print_help_to_openapi prints usage instructions for the to_openapi subcommand and exits.
 print_help_to_openapi() {
 	printf "Usage:\n  cdd-sh to_openapi [options]\n\n"
 	printf "Options:\n"
@@ -73,6 +64,7 @@ print_help_to_openapi() {
 	exit 1
 }
 
+# print_help_to_docs_json prints usage instructions for the to_docs_json subcommand and exits.
 print_help_to_docs_json() {
 	printf "Usage:\n  cdd-sh to_docs_json [options]\n\n"
 	printf "Options:\n"
@@ -84,6 +76,7 @@ print_help_to_docs_json() {
 	exit 1
 }
 
+# print_help_serve_json_rpc prints usage instructions for the serve_json_rpc subcommand and exits.
 print_help_serve_json_rpc() {
 	printf "Usage:\n  cdd-sh serve_json_rpc [options]\n\n"
 	printf "Options:\n"
@@ -93,6 +86,7 @@ print_help_serve_json_rpc() {
 	exit 1
 }
 
+# print_help_mcp prints usage instructions for the mcp stdio server subcommand and exits.
 print_help_mcp() {
 	printf "Usage:\n  cdd-sh mcp [options]\n\n"
 	printf "Description:\n"
@@ -224,6 +218,8 @@ ensure_output_dir() {
 
 case "${CMD}" in
 mcp)
+	. "${LIBSCRIPT_ROOT_DIR:-.}/lib/mcp_handler.sh"
+	tools_json='[{"name":"to_openapi","description":"Generate OpenAPI spec from source","inputSchema":{"type":"object","properties":{"input":{"type":"string"},"output":{"type":"string"}},"required":["input","output"]}},{"name":"from_openapi","description":"Generate code from OpenAPI spec","inputSchema":{"type":"object","properties":{"subcmd":{"type":"string"},"input":{"type":"string"},"output":{"type":"string"},"tests":{"type":"boolean"}},"required":["subcmd","input","output"]}}]'
 	while read -r line || [ -n "$line" ]; do
 		if echo "$line" | grep -qi "^Content-Length:"; then
 			read -r _
@@ -236,70 +232,12 @@ mcp)
 		fi
 		method=$(echo "$line" | jq -r '.method // empty')
 		id=$(echo "$line" | jq -r '.id // null')
+		ast_content=$(cat "$CDD_AST_PATH" 2>/dev/null || echo "{}")
 
-		if [ "$method" = "initialize" ]; then
-			echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{\"tools\":{\"listChanged\":true},\"resources\":{\"listChanged\":true,\"subscribe\":true},\"logging\":{},\"prompts\":{\"listChanged\":true}},\"serverInfo\":{\"name\":\"cdd-sh\",\"version\":\"$VERSION\"}}}"
-		elif [ "$method" = "notifications/initialized" ] || [ "$method" = "initialized" ]; then
-			:
-		elif [ "$method" = "notifications/tools/list_changed" ] || [ "$method" = "notifications/resources/list_changed" ] || [ "$method" = "notifications/prompts/list_changed" ] || [ "$method" = "notifications/roots/list_changed" ] || [ "$method" = "notifications/resources/updated" ]; then
-			:
-		elif [ "$method" = "notifications/cancelled" ] || [ "$method" = "notifications/progress" ]; then
-			:
-		elif [ "$method" = "notifications/message" ]; then
-			level=$(echo "$line" | jq -r '.params.level // "info"')
-			msg=$(echo "$line" | jq -r '.params.data // ""')
-			echo "[$level] $msg" >&2
-
-		elif [ "$method" = "roots/list" ]; then
-			echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{\"roots\":[{\"uri\":\"file://$(pwd)\",\"name\":\"Workspace\"}]}}"
-
-		elif [ "$method" = "ping" ]; then
-			echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{}}"
-		elif [ "$method" = "prompts/list" ]; then
-			echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{\"prompts\":[{\"name\":\"test_prompt\",\"description\":\"A test prompt\",\"arguments\":[{\"name\":\"arg1\",\"description\":\"An argument\",\"required\":true}]}]}}"
-		elif [ "$method" = "prompts/get" ]; then
-			prompt_name=$(echo "$line" | jq -r '.params.name // empty')
-			if [ "$prompt_name" = "test_prompt" ]; then
-				echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{\"description\":\"A test prompt\",\"messages\":[{\"role\":\"user\",\"content\":{\"type\":\"text\",\"text\":\"Please test this\"}}]}}"
-			else
-				echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"error\":{\"code\":-32602,\"message\":\"Invalid prompt\"}}"
+		if mcp_out=$(mcp_handle_common "$line" "cdd-sh" "$VERSION" "cdd://ast" "AST" "$ast_content" "$tools_json" "file://$(pwd)"); then
+			if [ -n "$mcp_out" ]; then
+				printf '%s\n' "$mcp_out"
 			fi
-		elif [ "$method" = "completion/complete" ]; then
-			echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{\"completion\":{\"values\":[],\"total\":0,\"hasMore\":false}}}"
-		elif [ "$method" = "sampling/createMessage" ]; then
-			echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{\"role\":\"assistant\",\"content\":{\"type\":\"text\",\"text\":\"Sampled message\"}\",\"model\":\"test-model\",\"stopReason\":\"endTurn\"}}"
-		elif [ "$method" = "logging/setLevel" ]; then
-			echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{}}"
-		elif [ "$method" = "resources/list" ]; then
-			cursor=$(echo "$line" | jq -r '.params.cursor // empty')
-			if [ "$cursor" = "next" ]; then
-				res_json='[]'
-				echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{\"resources\":$res_json}}"
-			else
-				res_json='[{"uri":"cdd://ast","name":"AST","mimeType":"application/json"}]'
-				echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{\"resources\":$res_json,\"nextCursor\":\"next\"}}"
-			fi
-		elif [ "$method" = "resources/templates/list" ]; then
-			echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{\"resourceTemplates\":[]}}"
-		elif [ "$method" = "resources/subscribe" ] || [ "$method" = "resources/unsubscribe" ]; then
-			echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{}}"
-
-		elif [ "$method" = "resources/read" ]; then
-			uri=$(echo "$line" | jq -r '.params.uri')
-			if [ "$uri" = "cdd://ast" ]; then
-				ast_content=$(cat "$CDD_AST_PATH" 2>/dev/null || echo "{}")
-				ast_escaped=$(printf "%s" "$ast_content" | jq -R -s '.')
-				echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{\"contents\":[{\"uri\":\"cdd://ast\",\"mimeType\":\"application/json\",\"text\":$ast_escaped}]}}"
-			else
-				echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"error\":{\"code\":-32602,\"message\":\"Invalid URI\"}}"
-			fi
-		elif [ "$method" = "tools/list" ]; then
-			tools_json='[
-                                {"name":"to_openapi","description":"Generate OpenAPI spec from source","inputSchema":{"type":"object","properties":{"input":{"type":"string"},"output":{"type":"string"}},"required":["input","output"]}},
-                                {"name":"from_openapi","description":"Generate code from OpenAPI spec","inputSchema":{"type":"object","properties":{"subcmd":{"type":"string"},"input":{"type":"string"},"output":{"type":"string"},"tests":{"type":"boolean"}},"required":["subcmd","input","output"]}}
-                        ]'
-			cursor=$(echo "$line" | jq -r '.params.cursor // empty')
-			if [ "$cursor" = "next" ]; then echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{\"tools\":[]}}"; else echo "{\"jsonrpc\":\"2.0\",\"id\":$id,\"result\":{\"tools\":$tools_json,\"nextCursor\":\"next\"}}"; fi
 		elif [ "$method" = "tools/call" ]; then
 			tool_name=$(echo "$line" | jq -r '.params.name')
 			args=$(echo "$line" | jq -c '.params.arguments // {}')
@@ -381,7 +319,14 @@ serve_json_rpc)
 				to_openapi)
 					f_val=$(echo "$json_params" | jq -r '.file // ""')
 					o_val=$(echo "$json_params" | jq -r '.out // ""')
-					out=$(./bin/cdd-sh to_openapi -i "$f_val" -o "$o_val" 2>&1 || true)
+					case "$f_val" in
+					*.json)
+						out=$(./bin/cdd-sh parse openapi "$f_val" 2>&1 && ./bin/cdd-sh emit openapi "$o_val" 2>&1 || true)
+						;;
+					*)
+						out=$(./bin/cdd-sh to_openapi -i "$f_val" -o "$o_val" 2>&1 || true)
+						;;
+					esac
 					;;
 				from_openapi)
 					subcmd_val=$(echo "$json_params" | jq -r '.subcmd // "to_sdk"')
@@ -415,7 +360,11 @@ serve_json_rpc)
 					;;
 				esac
 
-				response_json=$(jq -n --arg id "$json_id" --arg out "$out" '{"jsonrpc": "2.0", "result": $out, "id": $id}')
+				if [ "$out" = "Unknown method" ]; then
+					response_json=$(jq -n --arg id "$json_id" '{"jsonrpc": "2.0", "error": {"code": -32601, "message": "Method not found"}, "id": $id}')
+				else
+					response_json=$(jq -n --arg id "$json_id" --arg out "$out" '{"jsonrpc": "2.0", "result": $out, "id": $id}')
+				fi
 
 				echo "HTTP/1.1 200 OK"
 				echo "Content-Type: application/json"
@@ -440,12 +389,63 @@ to_openapi)
 		echo "Error: -i <file> required" >&2
 		exit 1
 	fi
-	# if it's a directory, assume the file is routes.sh for now
 	if [ -d "$FILE" ]; then
-		FILE="$FILE/src/routes.sh"
+		if [ -f "$FILE/src/routes.sh" ]; then
+			. "${LIBSCRIPT_ROOT_DIR:-.}/src/routes/parse.sh"
+			handle_parse_routes "$FILE/src/routes.sh"
+		fi
+		if [ -f "$FILE/src/classes.sh" ]; then
+			. "${LIBSCRIPT_ROOT_DIR:-.}/src/classes/parse.sh"
+			handle_parse_classes "$FILE/src/classes.sh"
+		fi
+		if [ -f "$FILE/src/server.sh" ]; then
+			. "${LIBSCRIPT_ROOT_DIR:-.}/src/server/parse.sh"
+			handle_parse_server "$FILE/src/server.sh"
+		fi
+		if [ -f "$FILE/bin/sdk-cli" ]; then
+			. "${LIBSCRIPT_ROOT_DIR:-.}/src/cli/parse.sh"
+			handle_parse_cli "$FILE/bin/sdk-cli"
+		fi
+		if [ -f "$FILE/mocks/mocks.json" ]; then
+			. "${LIBSCRIPT_ROOT_DIR:-.}/src/mocks/parse.sh"
+			handle_parse_mocks "$FILE/mocks/mocks.json"
+		fi
+		if [ -f "$FILE/docs.md" ]; then
+			. "${LIBSCRIPT_ROOT_DIR:-.}/src/docstrings/parse.sh"
+			handle_parse_docstrings "$FILE/docs.md"
+		fi
+	else
+		case "$FILE" in
+		*server.sh)
+			. "${LIBSCRIPT_ROOT_DIR:-.}/src/server/parse.sh"
+			handle_parse_server "$FILE"
+			;;
+		*classes.sh)
+			. "${LIBSCRIPT_ROOT_DIR:-.}/src/classes/parse.sh"
+			handle_parse_classes "$FILE"
+			;;
+		*sdk-cli*)
+			. "${LIBSCRIPT_ROOT_DIR:-.}/src/cli/parse.sh"
+			handle_parse_cli "$FILE"
+			;;
+		*mocks.json)
+			. "${LIBSCRIPT_ROOT_DIR:-.}/src/mocks/parse.sh"
+			handle_parse_mocks "$FILE"
+			;;
+		*.md)
+			. "${LIBSCRIPT_ROOT_DIR:-.}/src/docstrings/parse.sh"
+			handle_parse_docstrings "$FILE"
+			;;
+		*.json)
+			. "${LIBSCRIPT_ROOT_DIR:-.}/src/openapi/parse.sh"
+			handle_parse_openapi "$FILE"
+			;;
+		*)
+			. "${LIBSCRIPT_ROOT_DIR:-.}/src/routes/parse.sh"
+			handle_parse_routes "$FILE"
+			;;
+		esac
 	fi
-	. "${LIBSCRIPT_ROOT_DIR:-.}/src/routes/parse.sh"
-	handle_parse_routes "$FILE"
 	. "${LIBSCRIPT_ROOT_DIR:-.}/src/openapi/emit.sh"
 	handle_emit_openapi "$OUT"
 	echo "Generated OpenAPI spec in $OUT"
@@ -568,10 +568,22 @@ from_openapi)
 		;;
 	to_openapi)
 		if [ -d "$IN" ]; then
-			IN="$IN/src/routes.sh"
+			if [ -f "$IN/src/routes.sh" ]; then
+				. "${LIBSCRIPT_ROOT_DIR:-.}/src/routes/parse.sh"
+				handle_parse_routes "$IN/src/routes.sh"
+			fi
+			if [ -f "$IN/src/classes.sh" ]; then
+				. "${LIBSCRIPT_ROOT_DIR:-.}/src/classes/parse.sh"
+				handle_parse_classes "$IN/src/classes.sh"
+			fi
+			if [ -f "$IN/src/server.sh" ]; then
+				. "${LIBSCRIPT_ROOT_DIR:-.}/src/server/parse.sh"
+				handle_parse_server "$IN/src/server.sh"
+			fi
+		else
+			. "${LIBSCRIPT_ROOT_DIR:-.}/src/routes/parse.sh"
+			handle_parse_routes "${IN:-}"
 		fi
-		. "${LIBSCRIPT_ROOT_DIR:-.}/src/routes/parse.sh"
-		handle_parse_routes "${IN:-}"
 		. "${LIBSCRIPT_ROOT_DIR:-.}/src/openapi/emit.sh"
 		handle_emit_openapi "$OUT/spec.json"
 		;;
@@ -608,6 +620,11 @@ parse | emit | sync)
 
 	if [ "${CMD}" = "sync" ]; then
 		"handle_parse_${TYPE}" "${FILE}"
+		out_prefix=""
+		if [ -n "${CDD_OUTPUT:-}" ]; then
+			mkdir -p "${CDD_OUTPUT}"
+			out_prefix="${CDD_OUTPUT}/"
+		fi
 		for t in openapi routes classes docstrings tests mocks docsjson; do
 			h="${LIBSCRIPT_ROOT_DIR:-.}/src/${t}/emit.sh"
 			if [ -f "$h" ]; then
@@ -617,7 +634,7 @@ parse | emit | sync)
 				if [ "$t" = "openapi" ] || [ "$t" = "mocks" ] || [ "$t" = "docsjson" ]; then ext="json"; fi
 				if [ "$t" = "docstrings" ]; then ext="md"; fi
 				if type "handle_emit_${t}" >/dev/null 2>&1; then
-					"handle_emit_${t}" "emitted_${t}.${ext}"
+					"handle_emit_${t}" "${out_prefix}emitted_${t}.${ext}"
 				fi
 			fi
 		done

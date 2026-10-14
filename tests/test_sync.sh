@@ -12,17 +12,21 @@ mkdir -p temp-sync
 # Reverse gen
 ./bin/cdd-sh to_openapi -i temp-sync/server/src/server.sh -o temp-sync/spec.json
 
-# Check if spec is generated
-if [ ! -f temp-sync/spec.json ]; then
-	echo "FAIL: Reverse sync did not output spec.json"
+# Check if spec is generated and contains paths
+if [ ! -f temp-sync/spec.json ] || ! jq -e '(.paths | length) > 0' temp-sync/spec.json >/dev/null; then
+	echo "FAIL: Reverse sync did not output valid non-empty paths in spec.json"
 	exit 1
 fi
 
 # Assert sync
-./bin/cdd-sh sync --truth server -i temp-sync/server/src/server.sh
+./bin/cdd-sh sync --truth server -i temp-sync/server/src/server.sh -o temp-sync/synced
 
-if [ ! -f emitted_openapi.json ]; then
-	echo "FAIL: Sync did not emit openapi.json"
+if [ ! -f temp-sync/synced/emitted_openapi.json ] || ! jq -e '(.paths | length) > 0' temp-sync/synced/emitted_openapi.json >/dev/null; then
+	echo "FAIL: Sync did not emit valid non-empty openapi.json"
+	exit 1
+fi
+if [ ! -f temp-sync/synced/emitted_docsjson.json ]; then
+	echo "FAIL: Sync did not emit emitted_docsjson.json"
 	exit 1
 fi
 

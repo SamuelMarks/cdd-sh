@@ -38,7 +38,6 @@ func runMwScript(t *testing.T, mw func(interp.ExecHandlerFunc) interp.ExecHandle
 }
 
 func TestResolvePath(t *testing.T) {
-	cwd, _ := os.Getwd()
 	tests := []struct {
 		base     string
 		p        string
@@ -46,7 +45,7 @@ func TestResolvePath(t *testing.T) {
 	}{
 		{"/base", "rel", filepath.Join("/base", "rel")},
 		{"/base", "/abs", "/abs"},
-		{"", "rel", resolvePath("", "rel")},
+		{"", "rel", "rel"},
 	}
 
 	for _, tt := range tests {
@@ -57,7 +56,6 @@ func TestResolvePath(t *testing.T) {
 			}
 		})
 	}
-	_ = cwd
 }
 
 func TestFsMiddleware_Mkdir(t *testing.T) {
@@ -386,7 +384,10 @@ func TestMainFallback(t *testing.T) {
 	// redirect os.Exit
 	oldOsExit := osExit
 	defer func() { osExit = oldOsExit }()
-	osExit = func(code int) {}
+	var codes []int
+	osExit = func(code int) {
+		codes = append(codes, code)
+	}
 
 	// Mock os.Args
 	oldArgs := os.Args
@@ -394,23 +395,35 @@ func TestMainFallback(t *testing.T) {
 	os.Args = []string{"cdd-sh", "help"}
 
 	main()
+	if len(codes) != 1 || codes[0] != 1 {
+		t.Errorf("expected exit code 1 for 'cdd-sh help', got %v", codes)
+	}
 
 	os.Args = []string{"cdd-sh"}
 	main()
+	if len(codes) != 2 || codes[1] != 1 {
+		t.Errorf("expected exit code 1 for 'cdd-sh', got %v", codes)
+	}
 }
 
 func TestFsMiddleware_EmptyDir(t *testing.T) {
+	defer os.RemoveAll("test_empty_dir_for_cov")
 	_, _, err := runMwScript(t, fsMiddleware, "", "mkdir -p test_empty_dir_for_cov")
 	if err != nil {
-		t.Logf("mkdir in empty dir: %v", err)
+		t.Fatalf("mkdir in empty dir failed: %v", err)
 	}
-	os.RemoveAll("test_empty_dir_for_cov")
+	info, statErr := os.Stat("test_empty_dir_for_cov")
+	if statErr != nil || !info.IsDir() {
+		t.Errorf("expected test_empty_dir_for_cov directory to exist, statErr=%v", statErr)
+	}
 }
 
 func TestRunMain_MoreErrors(t *testing.T) {
 	exitCode := -1
-	runMain("echo ${a:b}", nil, func(code int) { exitCode = code })
-	t.Logf("exitCode for invalid expansion: %d", exitCode)
+	runMain("set -u; echo $UNSET_VAR_FOR_TEST_12345", nil, func(code int) { exitCode = code })
+	if exitCode == -1 || exitCode == 0 {
+		t.Errorf("expected non-zero exitCode for unset variable expansion under set -u, got %d", exitCode)
+	}
 }
 func TestFsMiddleware_Errors(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "fsmw_errs")
@@ -585,6 +598,19 @@ func TestFsMiddleware_Cat(t *testing.T) {
 	if !strings.Contains(stderr, "cat:") {
 		t.Errorf("expected stderr to contain 'cat:', got %q", stderr)
 	}
+
+	// Test cat directory (triggers io.Copy read error on opened fd)
+	subDir := filepath.Join(tempDir, "subdir")
+	if err := os.MkdirAll(subDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	_, stderr, err = runMwScript(t, fsMiddleware, tempDir, "cat subdir")
+	if err == nil {
+		t.Errorf("expected error when calling cat on a directory")
+	}
+	if !strings.Contains(stderr, "cat:") {
+		t.Errorf("expected stderr to contain 'cat:', got %q", stderr)
+	}
 }
 
 func TestFsMiddleware_Dirname(t *testing.T) {
@@ -629,25 +655,26 @@ func TestCpOther(t *testing.T) {
 	file1 := filepath.Join(tempDir, "file1.txt")
 	os.WriteFile(file1, []byte("test"), 0644)
 
-	// Create a dir without w to make WriteFile fail
-	readonly := filepath.Join(tempDir, "readonly")
-	os.Mkdir(readonly, 0555)
-	defer os.Chmod(readonly, 0755) // clean up
-
-	_, _, err = runMwScript(t, fsMiddleware, tempDir, "cp file1.txt readonly/dst")
-	// error not checked as it may succeed if root
+	// Copying a file onto a path whose parent is a regular file deterministically fails WriteFile on all platforms.
+	_, stderr, err := runMwScript(t, fsMiddleware, tempDir, "cp file1.txt file1.txt/dst")
+	if err == nil {
+		t.Errorf("expected error when copying to invalid destination path, got nil")
+	}
+	if !strings.Contains(stderr, "cp:") {
+		t.Errorf("expected stderr to contain 'cp:', got %q", stderr)
+	}
 }
 
 func TestRunMain_Errors(t *testing.T) {
-	// cover interp.New returning an error by passing a nil handler
-	// Actually, interp.New options that fail:
-	// none really, but syntax error does fail at f, err := syntax.NewParser().Parse...
-
 	called := false
-	runMain("echo test", []string{"--invalid-flag-that-causes-interp-to-fail"}, func(code int) {
+	exitCode := -1
+	runMain("unknown_command_xyz_123", nil, func(code int) {
 		called = true
+		exitCode = code
 	})
-	_ = called // Might be called if run fails
+	if !called || exitCode != 127 {
+		t.Errorf("expected exitFunc(127) to be called for unknown command, got called=%v, code=%d", called, exitCode)
+	}
 }
 
 func TestMvCoverage(t *testing.T) {
@@ -707,8 +734,16 @@ func TestRunMain_BadRedirect(t *testing.T) {
 	}
 }
 func TestRunMain_FatalError(t *testing.T) {
+	oldCallHandler := activeCallHandler
+	defer func() { activeCallHandler = oldCallHandler }()
+	activeCallHandler = func(ctx context.Context, args []string) ([]string, error) {
+		_ = ctx
+		_ = args
+		return nil, os.ErrInvalid
+	}
+
 	called := false
-	runMain("TRIGGER_FATAL_ERROR", nil, func(c int) {
+	runMain("echo test", nil, func(c int) {
 		if c == 1 {
 			called = true
 		}
@@ -793,9 +828,63 @@ func TestResolvePathWorkaround(t *testing.T) {
 }
 
 func TestGoAwkCliResolvePath(t *testing.T) {
-	oldResolve := goawkcli.ResolvePath
-	defer func() { goawkcli.ResolvePath = oldResolve }()
-	goawkcli.ResolvePath = nil
+	tempDir := t.TempDir()
+	scriptPath := filepath.Join(tempDir, "test.awk")
+	if err := os.WriteFile(scriptPath, []byte("BEGIN { print \"resolved_ok\" }\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
-	// Now it should return the path directly (we can just test it indirectly if possible, but resolveAwkPath is not exported, we need a test in goawkcli)
+	stdout, stderr, err := runMwScript(t, awkMiddleware, tempDir, "awk -f test.awk")
+	if err != nil {
+		t.Fatalf("awkMiddleware failed to resolve relative script in dir: %v (stderr: %s)", err, stderr)
+	}
+	if strings.TrimSpace(stdout) != "resolved_ok" {
+		t.Errorf("expected 'resolved_ok', got %q", stdout)
+	}
+
+	jsonPath := filepath.Join(tempDir, "data.json")
+	if err := os.WriteFile(jsonPath, []byte("{\"val\":42}"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	jqOut, jqErr, err := runMwScript(t, jqMiddleware, tempDir, "jq -r '.val' data.json")
+	if err != nil {
+		t.Fatalf("jqMiddleware failed to resolve relative file in dir: %v (stderr: %s)", err, jqErr)
+	}
+	if strings.TrimSpace(jqOut) != "42" {
+		t.Errorf("expected '42', got %q", jqOut)
+	}
+}
+
+func TestFsMiddleware_ChmodAndTouch(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// touch missing operand
+	if _, _, err := runMwScript(t, fsMiddleware, tempDir, "touch"); err == nil {
+		t.Errorf("expected touch without args to fail")
+	}
+
+	// touch success
+	if _, _, err := runMwScript(t, fsMiddleware, tempDir, "touch touched.txt"); err != nil {
+		t.Fatalf("touch failed: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(tempDir, "touched.txt")); err != nil {
+		t.Errorf("expected touched.txt to exist: %v", err)
+	}
+
+	// touch invalid path (parent is file)
+	if _, _, err := runMwScript(t, fsMiddleware, tempDir, "touch touched.txt/sub"); err == nil {
+		t.Errorf("expected touch on invalid path to fail")
+	}
+
+	// chmod missing operand
+	if _, _, err := runMwScript(t, fsMiddleware, tempDir, "chmod +x"); err == nil {
+		t.Errorf("expected chmod with < 3 args to fail")
+	}
+
+	// chmod success via hostCommandValidator + fsMiddleware
+	if _, _, err := runMwScript(t, func(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
+		return fsMiddleware(hostCommandValidator(next))
+	}, tempDir, "chmod +x touched.txt && touch touched.txt"); err != nil {
+		t.Fatalf("chmod/touch failed: %v", err)
+	}
 }

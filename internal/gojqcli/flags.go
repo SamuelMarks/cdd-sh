@@ -1,3 +1,4 @@
+// Package gojqcli implements reflection-based CLI flag parsing and help formatting.
 package gojqcli
 
 import (
@@ -7,8 +8,13 @@ import (
 	"strings"
 )
 
-// parseFlags is a function
-func parseFlags(args []string, opts any) ([]string, error) {
+// parseFlags parses command-line arguments into the struct pointed to by opts based on struct tags.
+// Parameters:
+//   - args: The slice of CLI arguments to parse.
+//   - opts: Pointer to the options struct annotated with `short`, `long`, and `positional` tags.
+//
+// Returns the remaining non-flag positional arguments and any flag parsing error.
+func parseFlags[T any](args []string, opts *T) ([]string, error) {
 	rest := make([]string, 0, len(args))
 	val := reflect.ValueOf(opts).Elem()
 	typ := val.Type()
@@ -47,7 +53,7 @@ func parseFlags(args []string, opts any) ([]string, error) {
 				if j := strings.IndexByte(arg, '='); j >= 0 {
 					if val, ok = longToValue[arg[2:j]]; ok {
 						if val.Kind() == reflect.Bool {
-							return nil, fmt.Errorf("boolean flag `%s' cannot have an argument", arg[:j])
+							return nil, newCliError(ErrKindFlagParse, exitCodeFlagParseErr, fmt.Sprintf("boolean flag `%s' cannot have an argument", arg[:j]))
 						}
 						args[i] = arg[j+1:]
 						arg = arg[:j]
@@ -55,7 +61,7 @@ func parseFlags(args []string, opts any) ([]string, error) {
 					}
 				}
 				if !ok {
-					return nil, fmt.Errorf("unknown flag `%s'", arg)
+					return nil, newCliError(ErrKindFlagParse, exitCodeFlagParseErr, fmt.Sprintf("unknown flag `%s'", arg))
 				}
 			}
 		case len(arg) > 1 && arg[0] == '-':
@@ -90,17 +96,17 @@ func parseFlags(args []string, opts any) ([]string, error) {
 			val.SetBool(true)
 		case reflect.String:
 			if i++; i >= len(args) {
-				return nil, fmt.Errorf("expected argument for flag `%s'", arg)
+				return nil, newCliError(ErrKindFlagParse, exitCodeFlagParseErr, fmt.Sprintf("expected argument for flag `%s'", arg))
 			}
 			val.SetString(args[i])
 		case reflect.Pointer:
 			if val.Type().Elem().Kind() == reflect.Int {
 				if i++; i >= len(args) {
-					return nil, fmt.Errorf("expected argument for flag `%s'", arg)
+					return nil, newCliError(ErrKindFlagParse, exitCodeFlagParseErr, fmt.Sprintf("expected argument for flag `%s'", arg))
 				}
 				v, err := strconv.Atoi(args[i])
 				if err != nil {
-					return nil, fmt.Errorf("invalid argument for flag `%s': %w", arg, err)
+					return nil, newCliError(ErrKindFlagParse, exitCodeFlagParseErr, fmt.Sprintf("invalid argument for flag `%s': %v", arg, err))
 				}
 				val.Set(reflect.New(val.Type().Elem()))
 				val.Elem().SetInt(int64(v))
@@ -115,13 +121,13 @@ func parseFlags(args []string, opts any) ([]string, error) {
 				positionalVal = val
 			} else {
 				if i++; i >= len(args) {
-					return nil, fmt.Errorf("expected argument for flag `%s'", arg)
+					return nil, newCliError(ErrKindFlagParse, exitCodeFlagParseErr, fmt.Sprintf("expected argument for flag `%s'", arg))
 				}
 				val.Set(reflect.Append(val, reflect.ValueOf(args[i])))
 			}
 		case reflect.Map:
 			if i += 2; i >= len(args) {
-				return nil, fmt.Errorf("expected 2 arguments for flag `%s'", arg)
+				return nil, newCliError(ErrKindFlagParse, exitCodeFlagParseErr, fmt.Sprintf("expected 2 arguments for flag `%s'", arg))
 			}
 			if val.IsNil() {
 				val.Set(reflect.MakeMap(val.Type()))
@@ -136,7 +142,7 @@ func parseFlags(args []string, opts any) ([]string, error) {
 		if shortopts != "" {
 			opt := shortopts[:1]
 			if val, ok = shortToValue[opt]; !ok {
-				return nil, fmt.Errorf("unknown flag `%s'", opt)
+				return nil, newCliError(ErrKindFlagParse, exitCodeFlagParseErr, fmt.Sprintf("unknown flag `%s'", opt))
 			}
 			if val.Kind() != reflect.Bool && len(shortopts) > 1 {
 				if shortopts[1] == '=' {
@@ -156,8 +162,12 @@ func parseFlags(args []string, opts any) ([]string, error) {
 	return rest, nil
 }
 
-// formatFlags is a function
-func formatFlags(opts any) string {
+// formatFlags generates a formatted help string describing all fields of the options struct.
+// Parameters:
+//   - opts: Pointer to the options struct containing `short`, `long`, `args`, and `description` tags.
+//
+// Returns the formatted command options help text.
+func formatFlags[T any](opts *T) string {
 	val := reflect.ValueOf(opts).Elem()
 	typ := val.Type()
 	var sb strings.Builder

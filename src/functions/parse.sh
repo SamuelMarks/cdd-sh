@@ -1,34 +1,68 @@
 #!/bin/sh
-# shellcheck disable=SC3054,SC3040,SC2059,SC2016
+# @file src/functions/parse.sh
+# @description Parses standalone utility functions from a shell script into x-functions in the AST.
+# shellcheck disable=SC2016,SC1091
+. "${LIBSCRIPT_ROOT_DIR:-.}/lib/env.sh"
 
-set -feu
-# shellcheck disable=SC2296,SC3028,SC3040,SC3054,SC3043,SC2129
-# shellcheck disable=SC2296,SC3028,SC3040,SC3054
-if [ "${SCRIPT_NAME-}" ]; then
-	THIS_FILE="${SCRIPT_NAME}"
-elif [ "${BASH_SOURCE-}" ]; then
-	THIS_FILE="${BASH_SOURCE[0]}"
-	set -o pipefail
-elif [ "${ZSH_VERSION-}" ]; then
-	eval 'THIS_FILE="${(%):-%x}"'
-	set -o pipefail
-else
-	THIS_FILE="${0}"
-fi
-case "${STACK+x}" in
-*':'"${THIS_FILE}"':'*) if (return 0 2>/dev/null); then return; else exit 0; fi ;;
-esac
-export STACK="${STACK:-}${THIS_FILE}"':'
-DIR=$(CDPATH='' cd "$(dirname -- "${THIS_FILE}")" && pwd)
-LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(
-	d="${DIR}"
-	while [ ! -f "${d}"'/ROOT' ]; do d="$(dirname -- "${d}")"; done
-	printf '%s' "${d}"
-)}"
-
-# handle_parse_functions parses functions into the AST.
+# handle_parse_functions parses annotated functions into x-functions in the AST.
+# @param $1: file_path - The input shell script path (default: functions.sh).
 handle_parse_functions() {
 	file_path="${1:-functions.sh}"
 	if [ ! -f "${file_path}" ]; then return 1; fi
-	echo "Functions parsing... Not mapped directly to core OpenAPI spec."
+	ast="${CDD_AST_PATH:-${LIBSCRIPT_ROOT_DIR}/ast.json}"
+	if [ ! -f "${ast}" ]; then echo '{"openapi": "3.2.0"}' >"${ast}"; fi
+
+	funcs_json=$(awk -v dq='"' '
+      BEGIN {
+          printf "{"
+          first = 1
+          fname = ""
+          desc = ""
+          in_body = 0
+          body = ""
+      }
+      /^# @function / {
+          fname = $3
+          desc = ""
+          body = ""
+          next
+      }
+      /^# @description / {
+          desc = substr($0, 16)
+          next
+      }
+      /^[a-zA-Z0-9_]+\(\) \{/ {
+          if (fname != "") {
+              in_body = 1
+              next
+          }
+      }
+      in_body == 1 {
+          if ($0 ~ /^}/) {
+              in_body = 0
+              gsub(/\\/, "\\\\", body)
+              gsub(/"/, "\\\"", body)
+              gsub(/\n/, "\\n", body)
+              gsub(/"/, "\\\"", desc)
+              if (!first) printf ","
+              first = 0
+              printf "%s%s%s:{%sdescription%s:%s%s%s,%sbody%s:%s%s%s}", dq, fname, dq, dq, dq, dq, desc, dq, dq, dq, dq, body, dq
+              fname = ""
+              desc = ""
+              body = ""
+          } else {
+              line = $0
+              sub(/^[ \t]+/, "", line)
+              if (body != "") body = body "\n" line
+              else body = line
+          }
+      }
+      END {
+          printf "}\n"
+      }
+    ' "${file_path}")
+
+	if [ "$funcs_json" != "{}" ]; then
+		jq --argjson funcs "$funcs_json" '."x-functions" = ((."x-functions" // {}) * $funcs)' "${ast}" >"${ast}.tmp" && mv "${ast}.tmp" "${ast}"
+	fi
 }

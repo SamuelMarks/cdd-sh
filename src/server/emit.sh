@@ -1,29 +1,12 @@
 #!/bin/sh
-# shellcheck disable=SC3054,SC3040,SC2059,SC2016
-
-set -feu
-# shellcheck disable=SC2296,SC3028,SC3040,SC3054
-if [ "${SCRIPT_NAME-}" ]; then
-	THIS_FILE="${SCRIPT_NAME}"
-elif [ "${BASH_SOURCE-}" ]; then
-	THIS_FILE="${BASH_SOURCE[0]}"
-	set -o pipefail
-elif [ "${ZSH_VERSION-}" ]; then
-	eval 'THIS_FILE="${(%):-%x}"'
-	set -o pipefail
-else
-	THIS_FILE="${0}"
-fi
-case "${STACK+x}" in *':'"${THIS_FILE}"':'*) if (return 0 2>/dev/null); then return; else exit 0; fi ;; esac
-export STACK="${STACK:-}${THIS_FILE}"':'
-DIR=$(CDPATH='' cd "$(dirname -- "${THIS_FILE}")" && pwd)
-LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(
-	d="${DIR}"
-	while [ ! -f "${d}"'/ROOT' ]; do d="$(dirname -- "${d}")"; done
-	printf '%s' "${d}"
-)}"
+# @file src/server/emit.sh
+# @description Emits the HTTP and MCP SSE server entrypoint script from the OpenAPI AST.
+# shellcheck disable=SC2016,SC1091
+. "${LIBSCRIPT_ROOT_DIR:-.}/lib/env.sh"
+. "${LIBSCRIPT_ROOT_DIR:-.}/lib/mcp_handler.sh"
 
 # handle_emit_server generates the SSE server application from the AST.
+# @param $1: output_file - The destination path for the generated server script.
 handle_emit_server() {
 	output_file="$1"
 	ast="${CDD_AST_PATH:-${LIBSCRIPT_ROOT_DIR}/ast.json}"
@@ -32,6 +15,8 @@ handle_emit_server() {
 	{
 		printf "#!/bin/sh\n"
 		printf "# @openapi_server_start\n"
+		emit_mcp_handler_func
+		printf "\n"
 
 		cat <<'INNER_EOF'
 PORT="${PORT:-8080}"
@@ -87,27 +72,9 @@ if [ "$SEED" = "true" ] && [ "$ACTIVE_DAO" = "concrete" ]; then
   # Documentation: The seeder module is responsible for initializing the Faker library
   # and batch inserting fake data to maintain referential integrity in the ephemeral DB.
   cat << 'FAKER_EOF' > /tmp/faker_$$.awk
-# fake_name generates a random human name
-function fake_name() {
-    names[1]="Alice"; names[2]="Bob"; names[3]="Charlie"; names[4]="David"; names[5]="Eve"
-    return names[int(rand()*5)+1]
-}
-# fake_email generates a random email address
-function fake_email() {
-    domains[1]="example.com"; domains[2]="test.org"; domains[3]="demo.net"
-    return tolower(fake_name()) "@" domains[int(rand()*3)+1]
-}
-# fake_phone generates a random phone number string
-function fake_phone() {
-    return sprintf("555-%04d", int(rand()*10000))
-}
-# fake_uuid generates a pseudo-UUID v4
-function fake_uuid() {
-    return sprintf("%04x%04x-%04x-%04x-%04x-%04x%04x%04x",
-        rand()*65535, rand()*65535, rand()*65535,
-        rand()*65535, rand()*65535, rand()*65535,
-        rand()*65535, rand()*65535)
-}
+INNER_EOF
+			cat "${LIBSCRIPT_ROOT_DIR}/src/server/seeder/faker.awk"
+			cat <<'INNER_EOF'
 BEGIN {
     srand()
     for(i=0; i<10; i++) {
@@ -218,118 +185,40 @@ fi
 
 if [ "$path" = "/mcp/message" ] && [ "$method" = "POST" ]; then
   if [ -n "$auth_header" ]; then
-    if echo "$auth_header" | grep -qi "^Bearer "; then
-      export OAUTH_TOKEN=$(echo "$auth_header" | sed -i.bak -e 's/^[Bb]earer *//' 2>/dev/null || echo "$auth_header" | sed 's/^[Bb]earer *//')
-    elif echo "$auth_header" | grep -qi "^Basic "; then
-      export BASIC_AUTH=$(echo "$auth_header" | sed -i.bak -e 's/^[Bb]asic *//' 2>/dev/null || echo "$auth_header" | sed 's/^[Bb]asic *//')
-    else
-      export API_KEY="$auth_header"
-    fi
+    case "$auth_header" in
+      [Bb]earer\ *)
+        export OAUTH_TOKEN="${auth_header#[Bb]earer }"
+        ;;
+      [Bb]asic\ *)
+        export BASIC_AUTH="${auth_header#[Bb]asic }"
+        ;;
+      *)
+        export API_KEY="$auth_header"
+        ;;
+    esac
   fi
 
 
 
   json_method=$(echo "$body" | jq -r '.method // empty')
   json_id=$(echo "$body" | jq -r '.id // null')
-
-  if [ "$json_method" = "initialize" ]; then
-    out="{\"protocolVersion\":\"2024-11-05\",\"capabilities\":{\"tools\":{\"listChanged\":true},\"resources\":{\"listChanged\":true,\"subscribe\":true},\"logging\":{},\"prompts\":{\"listChanged\":true}},\"serverInfo\":{\"name\":\"SSE Server\",\"version\":\"0.0.3\"}}"
-    response_json=$(jq -n --arg id "$json_id" --argjson out "$out" '{"jsonrpc": "2.0", "result": $out, "id": $id}')
-  elif [ "$json_method" = "notifications/initialized" ] || [ "$json_method" = "initialized" ] || [ "$json_method" = "notifications/tools/list_changed" ] || [ "$json_method" = "notifications/resources/list_changed" ] || [ "$json_method" = "notifications/prompts/list_changed" ] || [ "$json_method" = "notifications/roots/list_changed" ] || [ "$json_method" = "notifications/cancelled" ] || [ "$json_method" = "notifications/progress" ] || [ "$json_method" = "notifications/resources/updated" ]; then
-    response_json=""
-  elif [ "$json_method" = "notifications/message" ]; then
-    level=$(echo "$body" | jq -r '.params.level // "info"')
-    msg=$(echo "$body" | jq -r '.params.data // ""')
-    echo "[$level] $msg" >&2
-    response_json=""
-  elif [ "$json_method" = "completion/complete" ]; then
-    response_json=$(jq -n --arg id "$json_id" '{"jsonrpc":"2.0","id":$id,"result":{"completion":{"values":[],"total":0,"hasMore":false}}}')
-  elif [ "$json_method" = "sampling/createMessage" ]; then
-    response_json=$(jq -n --arg id "$json_id" '{"jsonrpc":"2.0","id":$id,"result":{"role":"assistant","content":{"type":"text","text":"Sampled message"},"model":"test-model","stopReason":"endTurn"}}')
-  elif [ "$json_method" = "ping" ]; then
-    response_json=$(jq -n --arg id "$json_id" '{"jsonrpc":"2.0","id":$id,"result":{}}')
-  elif [ "$json_method" = "roots/list" ]; then
-    response_json=$(jq -n --arg id "$json_id" '{"jsonrpc":"2.0","id":$id,"result":{"roots":[{"uri":"file:///" ,"name":"Workspace"}]}}')
-  elif [ "$json_method" = "resources/list" ]; then
-    response_json=$(jq -n --arg id "$json_id" '{"jsonrpc":"2.0","id":$id,"result":{"resources":[{"uri":"openapi://spec","name":"OpenAPI Spec","mimeType":"application/json"}]}}')
-  elif [ "$json_method" = "prompts/list" ]; then
-    response_json=$(jq -n --arg id "$json_id" '{"jsonrpc":"2.0","id":$id,"result":{"prompts":[{"name":"test_prompt","description":"A test prompt","arguments":[{"name":"arg1","description":"An argument","required":true}]}]}}')
-  elif [ "$json_method" = "prompts/get" ]; then
-    prompt_name=$(echo "$body" | jq -r '.params.name // empty')
-    if [ "$prompt_name" = "test_prompt" ]; then
-      response_json=$(jq -n --arg id "$json_id" '{"jsonrpc":"2.0","id":$id,"result":{"description":"A test prompt","messages":[{"role":"user","content":{"type":"text","text":"Please test this"}}]}}')
-    else
-      response_json=$(jq -n --arg id "$json_id" '{"jsonrpc":"2.0","error":{"code":-32602,"message":"Invalid prompt"},"id":$id}')
-    fi
-  elif [ "$json_method" = "logging/setLevel" ]; then
-    response_json=$(jq -n --arg id "$json_id" '{"jsonrpc":"2.0","id":$id,"result":{}}')
-  elif [ "$json_method" = "resources/templates/list" ]; then
-    response_json=$(jq -n --arg id "$json_id" '{"jsonrpc":"2.0","id":$id,"result":{"resourceTemplates":[]}}')
-  elif [ "$json_method" = "resources/subscribe" ] || [ "$json_method" = "resources/unsubscribe" ]; then
-    response_json=$(jq -n --arg id "$json_id" '{"jsonrpc":"2.0","id":$id,"result":{}}')
-  elif [ "$json_method" = "resources/read" ]; then
-    uri=$(echo "$body" | jq -r '.params.uri // empty')
-    if [ "$uri" = "openapi://spec" ]; then
-      # Assume spec is available or return empty
-      response_json=$(jq -n --arg id "$json_id" '{"jsonrpc":"2.0","id":$id,"result":{"contents":[{"uri":"openapi://spec","mimeType":"application/json","text":"{}"}]}}')
-    else
-      response_json=$(jq -n --arg id "$json_id" '{"jsonrpc":"2.0","error":{"code":-32602,"message":"Invalid URI"},"id":$id}')
-    fi
-  elif [ "$json_method" = "tools/list" ]; then
 INNER_EOF
 
-		# Generate the static JSON string for tools/list at EMIT TIME
-		tools_json=$(jq -c '
-		  if .paths then
-		    [
-		      .paths | to_entries[] | .key as $path | .value | to_entries[] | select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers") | .key as $method | .value |
-		      (if .operationId then (.operationId | split("") | map(if test("[A-Z]") then "_" + ascii_downcase else . end) | join("")) else "\($method | ascii_upcase)_\($path | gsub("/"; "_") | gsub("[{}]"; ""))" end) as $opId |
-		      {
-		        name: $opId,
-		        description: (.summary // "Call \($method) \($path)"),
-		        inputSchema: {
-		          type: "object",
-		          properties: (
-		            ((.parameters // []) | map({(.name): {type: (.schema.type // "string")}})) | add // {}
-		          ),
-		          required: (
-		            ((.parameters // []) | map(select(.required == true) | .name)) // []
-		          )
-		        }
-		      }
-		    ]
-		  else
-		    []
-		  end
-		' "${ast}")
-		tools_json=$(echo "$tools_json" | sed "s/'/'\\\\''/g")
+		tools_json_sh=$(jq -c -L "${LIBSCRIPT_ROOT_DIR}/lib/_common" 'include "openapi"; emit_mcp_tools' "${ast}" | jq -R -r '@sh')
 
 		cat <<INNER_EOF
-        tools_json='${tools_json}'
-        cursor=\$(echo "\$body" | jq -r '.params.cursor // empty')
-        if [ "\$cursor" = "next" ]; then
-          res_tools="[]"
-          next_cursor=""
-        else
-          res_tools="\$tools_json"
-          next_cursor=",\"nextCursor\":\"next\""
-        fi
-        if [ "\$json_id" = "null" ]; then
-          response_json="{\"jsonrpc\":\"2.0\",\"id\":null,\"result\":{\"tools\":\${res_tools}\${next_cursor}}}"
-        elif echo "\$json_id" | grep -q "^[0-9]*\$"; then
-          response_json="{\"jsonrpc\":\"2.0\",\"id\":\$json_id,\"result\":{\"tools\":\${res_tools}\${next_cursor}}}"
-        else
-          response_json="{\"jsonrpc\":\"2.0\",\"id\":\"\$json_id\",\"result\":{\"tools\":\${res_tools}\${next_cursor}}}"
-        fi
-      elif [ "\$json_method" = "tools/call" ]; then
+  tools_json=${tools_json_sh}
+  if response_json=\$(mcp_handle_common "\$body" "SSE Server" "0.0.3" "openapi://spec" "OpenAPI Spec" "{}" "\$tools_json" "file:///"); then
+    :
+  elif [ "\$json_method" = "tools/call" ]; then
         tool_name=\$(echo "\$body" | jq -r '.params.name')
         args=\$(echo "\$body" | jq -c '.params.arguments // {}')
         
-        eval_args=\$(echo "\$args" | jq -r 'to_entries | map("--\(.key) '\''\(.value)'\''") | join(" ")')
+        eval_args=\$(echo "\$args" | jq -r 'to_entries | map("--" + .key + " " + (.value | tostring | @sh)) | join(" ")')
         
         set +e
         if type "dao_\${ACTIVE_DAO}_\${tool_name}" >/dev/null 2>&1; then
-          res=\$(eval "dao_\${ACTIVE_DAO}_\${tool_name}")
+          res=\$(eval "dao_\${ACTIVE_DAO}_\${tool_name} \$eval_args")
           exit_code=\$?
         else
           res="{\"error\": \"Tool \$tool_name not implemented in DAO\"}"
@@ -393,15 +282,37 @@ INNER_EOF
         fi
       fi
       if [ "$found" = "true" ] && ( [ "$STRICT_VALIDATION" = "true" ] || [ "$STRICT_VALIDATION" = "1" ] ) && ! echo "$path" | grep -q "^/auth/" && ! echo "$path" | grep -q "^/_mock/"; then
-        if [ "$method" = "POST" ] && [ "${content_length:-0}" -lt 10 ]; then
-             response_json="{\"error\": \"400 Bad Request: missing fields\"}"
-             found="validation_failed"
+        if [ "$method" = "POST" ] || [ "$method" = "PUT" ]; then
+          if [ -z "$body" ] || [ "$body" = "{}" ] || ! printf "%s" "$body" | jq -e 'type == "object" and (keys | length) > 0' >/dev/null 2>&1; then
+            response_json="{\"error\": \"400 Bad Request: missing fields\"}"
+            found="validation_failed"
+          else
+            for _model_file in "$(dirname "$0")"/models/model_*.sh; do
+              if [ -f "$_model_file" ]; then
+                _mname=$(basename "$_model_file" .sh)
+                _mname="${_mname#model_}"
+                if type "validate_${_mname}" >/dev/null 2>&1; then
+                  if ! "validate_${_mname}" "$body" >/dev/null 2>&1; then
+                    response_json="{\"error\": \"400 Bad Request: validation failed for ${_mname}\"}"
+                    found="validation_failed"
+                    break
+                  fi
+                fi
+              fi
+            done
+          fi
         fi
       fi
 
       if [ "$found" = "true" ] || [ "$found" = "auth_failed" ] || [ "$found" = "validation_failed" ]; then
-        res_len=$(printf "%s" "$response_json" | wc -c | tr -d ' ')
-        printf "HTTP/1.1 200 OK\r\n"
+        res_len=${#response_json}
+        if [ "$found" = "auth_failed" ]; then
+          printf "HTTP/1.1 401 Unauthorized\r\n"
+        elif [ "$found" = "validation_failed" ]; then
+          printf "HTTP/1.1 400 Bad Request\r\n"
+        else
+          printf "HTTP/1.1 200 OK\r\n"
+        fi
         printf "Access-Control-Allow-Origin: *\r\n"
         printf "Access-Control-Allow-Methods: *\r\n"
         printf "Access-Control-Allow-Headers: *\r\n"

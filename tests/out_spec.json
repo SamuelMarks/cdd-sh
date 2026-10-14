@@ -9,9 +9,16 @@
       "url": "https://api.test.com"
     }
   ],
-  "paths": {},
-  "components": {
-    "callbacks": {}
-  },
-  "webhooks": {}
+  "paths": {
+    "/users": {
+      "get": {
+        "operationId": "getUsers",
+        "summary": "Get all users"
+      },
+      "post": {
+        "operationId": "createUser",
+        "summary": "Create a user"
+      }
+    }
+  }
 }

@@ -19,14 +19,14 @@ install_deps:
 	done
 
 test: build
-	go test -coverprofile=coverage.out $$(go list ./... | grep -v /scripts)
-	./test.sh
+	go test -coverprofile=coverage.out ./...
 	./tests/test.sh
 
 build:
 	mkdir -p bin
 	cp cdd.sh bin/cdd-sh
 	chmod +x bin/cdd-sh
+	go build -o bin/cdd-sh-runner main.go
 
 build_wasm:
 	mkdir -p wasm_build

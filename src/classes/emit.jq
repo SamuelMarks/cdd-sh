@@ -1,3 +1,5 @@
+# @file src/classes/emit.jq
+# @description Emits POSIX shell data model definitions and validate_<Class> functions from OpenAPI components.schemas.
 if .components and .components.schemas then
   .components.schemas | to_entries[] | .key as $className | .value as $schema |
   

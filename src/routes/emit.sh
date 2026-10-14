@@ -1,29 +1,11 @@
 #!/bin/sh
-# shellcheck disable=SC3054,SC3040,SC2059,SC2016
-
-set -feu
-# shellcheck disable=SC2296,SC3028,SC3040,SC3054
-if [ "${SCRIPT_NAME-}" ]; then
-	THIS_FILE="${SCRIPT_NAME}"
-elif [ "${BASH_SOURCE-}" ]; then
-	THIS_FILE="${BASH_SOURCE[0]}"
-	set -o pipefail
-elif [ "${ZSH_VERSION-}" ]; then
-	eval 'THIS_FILE="${(%):-%x}"'
-	set -o pipefail
-else
-	THIS_FILE="${0}"
-fi
-case "${STACK+x}" in *':'"${THIS_FILE}"':'*) if (return 0 2>/dev/null); then return; else exit 0; fi ;; esac
-export STACK="${STACK:-}${THIS_FILE}"':'
-DIR=$(CDPATH='' cd "$(dirname -- "${THIS_FILE}")" && pwd)
-LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(
-	d="${DIR}"
-	while [ ! -f "${d}"'/ROOT' ]; do d="$(dirname -- "${d}")"; done
-	printf '%s' "${d}"
-)}"
+# @file src/routes/emit.sh
+# @description Emits client HTTP route functions, webhook stubs, and OAuth2 helpers from the OpenAPI AST.
+# shellcheck disable=SC2016,SC1091
+. "${LIBSCRIPT_ROOT_DIR:-.}/lib/env.sh"
 
 # handle_emit_routes generates network routes from the AST.
+# @param $1: file_path - The destination routes script path (default: routes.sh).
 handle_emit_routes() {
 	file_path="${1:-routes.sh}"
 	ast="${CDD_AST_PATH:-${LIBSCRIPT_ROOT_DIR}/ast.json}"
@@ -34,6 +16,7 @@ handle_emit_routes() {
 		BASE_URL=$(jq -r '.servers[0] | if .variables then reduce (.variables | to_entries[]) as $var (.url; gsub("\\{" + $var.key + "\\}"; $var.value.default)) else .url end // ""' "${ast}")
 		printf "BASE_URL=\"\${BASE_URL:-%s}\"\nOAUTH_TOKEN=\"\${OAUTH_TOKEN:-}\"\nAPI_KEY=\"\${API_KEY:-}\"\n\n" "${BASE_URL}"
 		printf "# urlencode \n_urlencode() {\n  printf '%%s' \"\$1\" | jq -s -R -r '@uri'\n}\n\n"
+		printf "# quote_sh safely escapes a string for eval.\n_quote_sh() {\n  printf '%%s' \"\$1\" | jq -s -R -r '@sh'\n}\n\n"
 
 		printf "# serialize matrix\n_serialize_matrix() {\n  if [ \"\$3\" = \"true\" ]; then\n    printf \"%%s\" \"\$2\" | awk -F, -v n=\"\$1\" '{for(i=1;i<=NF;i++) printf \";\"n\"=\"\$i}'\n  else\n    printf \";%%s=%%s\" \"\$1\" \"\$2\"\n  fi\n}\n\n"
 
@@ -69,14 +52,15 @@ handle_emit_routes() {
       else empty end
     ' "${ast}"
 
-		jq -r '
+		jq -r -L "${LIBSCRIPT_ROOT_DIR}/lib/_common" '
+      include "openapi";
       . as $root |
       if .paths then
         .paths | to_entries[] | .key as $path | .value | (.parameters // []) as $pathParams | to_entries[] | select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers") | .key as $method | .value |
         (if .summary == null then "Call \($method | ascii_upcase) \($path)" else .summary end) as $desc |
         ((.parameters // []) + $pathParams | map(if ."$ref" then ($root.components.parameters[."$ref" | sub("^#/components/parameters/"; "")] // .) else . end)) as $params |
         (.security // $root.security // []) as $secReqs |
-        (if .operationId then .operationId else "\($method | ascii_upcase)_\($path | gsub("/"; "_") | gsub("[{}]"; ""))" end) as $opId |
+        get_raw_op_id($method; $path) as $opId |
         
         ([
           range(0; $params | length) as $i |
@@ -93,8 +77,6 @@ handle_emit_routes() {
             "# @param $\(($params | length) + 1): requestBody (application/octet-stream)"
           elif .requestBody.content and .requestBody.content["application/x-www-form-urlencoded"] then
             "# @param $\(($params | length) + 1): requestBody (application/x-www-form-urlencoded)"
-          elif .requestBody.content and .requestBody.content["application/json"] then
-            "# @param $\(($params | length) + 1): requestBody (application/json)"
           else
             "# @param $\(($params | length) + 1): requestBody (application/json)"
           end)
@@ -135,11 +117,11 @@ handle_emit_routes() {
             if $style == "form" and $explode == true then
               "    qs=\"${qs}&\(.name)=$(_urlencode \"${\($varname)}\")\""
             elif $style == "form" and $explode == false then
-              "    qs=\"${qs}&\(.name)=$(_urlencode \"${\($varname)}\")\""
+              "    qs=\"${qs}&\(.name)=$(printf \"%s\" \"${\($varname)}\" | jq -s -R -r '\''split(\",\") | map(@uri) | join(\",\")'\'')\""
             elif $style == "spaceDelimited" then
-              "    qs=\"${qs}&\(.name)=$(printf \"%s\" \"${\($varname)}\" | sed '\''s/ /%20/g'\'')\""
+              "    qs=\"${qs}&\(.name)=$(printf \"%s\" \"${\($varname)}\" | jq -s -R -r '\''gsub(\" \"; \"%20\")'\'')\""
             elif $style == "pipeDelimited" then
-              "    qs=\"${qs}&\(.name)=$(printf \"%s\" \"${\($varname)}\" | sed '\''s/|/%7C/g'\'')\""
+              "    qs=\"${qs}&\(.name)=$(printf \"%s\" \"${\($varname)}\" | jq -s -R -r '\''gsub(\"\\\\|\"; \"%7C\")'\'')\""
             else
               "    qs=\"${qs}&\(.name)=$(_urlencode \"${\($varname)}\")\""
             end
@@ -149,13 +131,13 @@ handle_emit_routes() {
         ([
           $params[] | select(.in == "header") |
           (.name | gsub("-"; "_")) as $varname |
-          "  [ -n \"${\($varname)}\" ] && curl_args=\"${curl_args} -H \\\"\(.name): ${\($varname)}\\\"\""
+          "  [ -n \"${\($varname)}\" ] && curl_args=\"${curl_args} -H $(_quote_sh \"\(.name): ${\($varname)}\")\""
         ] | join("\n")) as $headerBuild |
         
         ([
           $params[] | select(.in == "cookie") |
           (.name | gsub("-"; "_")) as $varname |
-          "  [ -n \"${\($varname)}\" ] && curl_args=\"${curl_args} -b \\\"\(.name)=${\($varname)}\\\"\""
+          "  [ -n \"${\($varname)}\" ] && curl_args=\"${curl_args} -b $(_quote_sh \"\(.name)=${\($varname)}\")\""
         ] | join("\n")) as $cookieBuild |
         
         (if ($secReqs | length > 0) and $root.components and $root.components.securitySchemes then
@@ -163,11 +145,11 @@ handle_emit_routes() {
           ([
             $schemes[] | $root.components.securitySchemes[.] | select(. != null) |
             if .type == "oauth2" or (.type == "http" and (.scheme | ascii_downcase) == "bearer") then
-              "  if [ -n \"${OAUTH_TOKEN:-}\" ]; then\n    curl_args=\"${curl_args} -H \\\"Authorization: Bearer ${OAUTH_TOKEN}\\\"\"\n  fi"
+              "  if [ -n \"${OAUTH_TOKEN:-}\" ]; then\n    curl_args=\"${curl_args} -H $(_quote_sh \"Authorization: Bearer ${OAUTH_TOKEN}\")\"\n  fi"
             elif .type == "http" and (.scheme | ascii_downcase) == "basic" then
-              "  if [ -n \"${BASIC_AUTH:-}\" ]; then\n    curl_args=\"${curl_args} -u \\\"${BASIC_AUTH}\\\"\"\n  fi"
+              "  if [ -n \"${BASIC_AUTH:-}\" ]; then\n    curl_args=\"${curl_args} -u $(_quote_sh \"${BASIC_AUTH}\")\"\n  fi"
             elif .type == "apiKey" and .in == "header" then
-              "  if [ -n \"${API_KEY:-}\" ]; then\n    curl_args=\"${curl_args} -H \\\"\(.name): ${API_KEY}\\\"\"\n  fi"
+              "  if [ -n \"${API_KEY:-}\" ]; then\n    curl_args=\"${curl_args} -H $(_quote_sh \"\(.name): ${API_KEY}\")\"\n  fi"
             elif .type == "apiKey" and .in == "query" then
               "  if [ -n \"${API_KEY:-}\" ]; then\n    qs=\"${qs}&\(.name)=$(_urlencode \"${API_KEY}\")\"\n  fi"
             else empty end
@@ -176,15 +158,15 @@ handle_emit_routes() {
         
         (if .requestBody then 
           (if .requestBody.content and .requestBody.content["application/json"] then
-            "  [ -n \"${requestBody}\" ] && curl_args=\"${curl_args} -H \\\"Content-Type: application/json\\\" -d \u0027${requestBody}\u0027\""
+            "  [ -n \"${requestBody}\" ] && curl_args=\"${curl_args} -H '\''Content-Type: application/json'\'' -d $(_quote_sh \"${requestBody}\")\""
           elif .requestBody.content and .requestBody.content["application/x-www-form-urlencoded"] then
-            "  if [ -n \"${requestBody}\" ]; then\n    curl_args=\"${curl_args} -H \\\"Content-Type: application/x-www-form-urlencoded\\\" -d \\\"${requestBody}\\\"\"\n  fi"
+            "  if [ -n \"${requestBody}\" ]; then\n    curl_args=\"${curl_args} -H '\''Content-Type: application/x-www-form-urlencoded'\'' -d $(_quote_sh \"${requestBody}\")\"\n  fi"
           elif .requestBody.content and .requestBody.content["multipart/form-data"] then
-            "  if [ -n \"${requestBody}\" ]; then\n    curl_args=\"${curl_args} -F \\\"file=@${requestBody}\\\"\"\n  fi"
+            "  if [ -n \"${requestBody}\" ]; then\n    curl_args=\"${curl_args} -F $(_quote_sh \"file=@${requestBody}\")\"\n  fi"
           elif .requestBody.content and .requestBody.content["application/octet-stream"] then
-            "  if [ -n \"${requestBody}\" ]; then\n    curl_args=\"${curl_args} -H \\\"Content-Type: application/octet-stream\\\" --data-binary \\\"@${requestBody}\\\"\"\n  fi"
+            "  if [ -n \"${requestBody}\" ]; then\n    curl_args=\"${curl_args} -H '\''Content-Type: application/octet-stream'\'' --data-binary $(_quote_sh \"@${requestBody}\")\"\n  fi"
           else
-            "  [ -n \"${requestBody}\" ] && curl_args=\"${curl_args} -H \\\"Content-Type: application/json\\\" -d \u0027${requestBody}\u0027\""
+            "  [ -n \"${requestBody}\" ] && curl_args=\"${curl_args} -H '\''Content-Type: application/json'\'' -d $(_quote_sh \"${requestBody}\")\""
           end)
         else "" end) as $bodyBuild |
         
@@ -205,7 +187,7 @@ handle_emit_routes() {
         (if $cookieBuild != "" then $cookieBuild + "\n" else "" end) +
         (if $bodyBuild != "" then $bodyBuild + "\n" else "" end) +
         "  # shellcheck disable=SC2086\n" +
-        "  eval curl -s -X \($method | ascii_upcase) ${curl_args} \\\"${url}\\\"\n}\n\n"
+        "  eval curl -s -X \($method | ascii_upcase) ${curl_args} \"$(_quote_sh \"${url}\")\"\n}\n\n"
       else empty end
     ' "${ast}"
 

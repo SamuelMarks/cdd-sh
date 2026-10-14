@@ -1,15 +1,5 @@
 #!/bin/sh
-set -feu
-# shellcheck disable=SC2296,SC3028,SC3040,SC3054
-if [ "${SCRIPT_NAME-}" ]; then
-	THIS_FILE="${SCRIPT_NAME}"
-elif [ "${BASH_SOURCE-}" ]; then
-	THIS_FILE="${BASH_SOURCE[0]}"
-	set -o pipefail
-elif [ "${ZSH_VERSION-}" ]; then
-	eval 'THIS_FILE="${(%):-%x}"'
-	set -o pipefail
-else
-	THIS_FILE="${0}"
-fi
-export STACK="${STACK:-}${THIS_FILE:-pkg_mgr.sh}:"
+# @file lib/_common/pkg_mgr.sh
+# @description Package manager helper stub for cdd-sh environment initialization.
+# shellcheck disable=SC1091
+. "${LIBSCRIPT_ROOT_DIR:-.}/lib/env.sh"

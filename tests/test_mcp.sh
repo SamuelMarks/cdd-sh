@@ -1,17 +1,8 @@
 #!/bin/sh
-set -eu
-# shellcheck disable=SC2296,SC3028,SC3040,SC3054
-if [ "${SCRIPT_NAME-}" ]; then
-	THIS_FILE="${SCRIPT_NAME}"
-elif [ "${BASH_SOURCE-}" ]; then
-	THIS_FILE="${BASH_SOURCE[0]}"
-	set -o pipefail
-elif [ "${ZSH_VERSION-}" ]; then
-	eval 'THIS_FILE="${(%):-%x}"'
-	set -o pipefail
-else
-	THIS_FILE="${0}"
-fi
+# @file tests/test_mcp.sh
+# @description Integration tests for the Model Context Protocol (MCP) stdio servers.
+# shellcheck disable=SC1091
+. "$(cd "$(dirname -- "$0")/.." && pwd)/lib/env.sh"
 
 # Generate the CLI
 rm -rf tests/out
@@ -37,7 +28,7 @@ if ! printf "%s\n" "$res" | grep -q '"tools":'; then
 fi
 
 # tools/call
-echo '{"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "genull_nullsers", "arguments": {}}}' >tests/out/mcp_in.txt
+echo '{"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "get_users", "arguments": {}}}' >tests/out/mcp_in.txt
 res=$(tests/out/bin/sdk-cli mcp <tests/out/mcp_in.txt)
 if ! printf "%s\n" "$res" | grep -q '"content"'; then
 	echo "FAIL: tools/call"

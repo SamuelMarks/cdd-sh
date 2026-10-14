@@ -1,36 +1,18 @@
 #!/bin/sh
-# shellcheck disable=SC3054,SC3040,SC2059,SC2016
-
-set -feu
-# shellcheck disable=SC2296,SC3028,SC3040,SC3054
-if [ "${SCRIPT_NAME-}" ]; then
-	THIS_FILE="${SCRIPT_NAME}"
-elif [ "${BASH_SOURCE-}" ]; then
-	THIS_FILE="${BASH_SOURCE[0]}"
-	set -o pipefail
-elif [ "${ZSH_VERSION-}" ]; then
-	eval 'THIS_FILE="${(%):-%x}"'
-	set -o pipefail
-else
-	THIS_FILE="${0}"
-fi
-case "${STACK+x}" in *':'"${THIS_FILE}"':'*) if (return 0 2>/dev/null); then return; else exit 0; fi ;; esac
-export STACK="${STACK:-}${THIS_FILE}"':'
-DIR=$(CDPATH='' cd "$(dirname -- "${THIS_FILE}")" && pwd)
-LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(
-	d="${DIR}"
-	while [ ! -f "${d}"'/ROOT' ]; do d="$(dirname -- "${d}")"; done
-	printf '%s' "${d}"
-)}"
+# @file src/docstrings/parse.sh
+# @description Parses Markdown documentation descriptions back into the OpenAPI AST.
+# shellcheck disable=SC2016,SC1091
+. "${LIBSCRIPT_ROOT_DIR:-.}/lib/env.sh"
 
 # handle_parse_docstrings parses docstrings into the AST.
+# @param $1: file_path - The input Markdown file path (default: docs.md).
 handle_parse_docstrings() {
 	file_path="${1:-docs.md}"
 	ast="${CDD_AST_PATH:-${LIBSCRIPT_ROOT_DIR}/ast.json}"
 	if [ ! -f "${ast}" ]; then echo '{"openapi":"3.2.0"}' >"${ast}"; fi
 	if [ ! -f "${file_path}" ]; then return 0; fi
 
-	awk '
+	all_raw=$(awk '
 	BEGIN { op = ""; desc = ""; info_desc = ""; in_info = 0 }
 	/^# / {
 	title_ver = substr($0, 3)
@@ -66,24 +48,22 @@ handle_parse_docstrings() {
 	}
 	printf "}\n"
 	}
-	' <"${file_path}" >all_temp.txt
+	' <"${file_path}")
 
-	awk '/^INFO:/ { print substr($0, 6) }' <all_temp.txt >docs_info.json || true
-	awk '/^OPS:/ { print substr($0, 5) }' <all_temp.txt >docs_ops.json || true
-	rm -f all_temp.txt
-	if [ -f "docs_info.json" ]; then
-		jq --slurpfile info docs_info.json --slurpfile ops docs_ops.json '
-      .info = ((.info // {}) * $info[0]) |
+	docs_info=$(printf '%s\n' "$all_raw" | awk '/^INFO:/ { print substr($0, 6) }')
+	docs_ops=$(printf '%s\n' "$all_raw" | awk '/^OPS:/ { print substr($0, 5) }')
+	if [ -n "$docs_info" ]; then
+		jq --argjson info "$docs_info" --argjson ops "$docs_ops" '
+      .info = ((.info // {}) * $info) |
       (
         if .paths then
           .paths |= with_entries(.value |= with_entries(
-            if .value.operationId and $ops[0][.value.operationId] then
-              .value.description = $ops[0][.value.operationId]
+            if .value.operationId and $ops[.value.operationId] then
+              .value.description = $ops[.value.operationId]
             else . end
           ))
         else . end
       )
     ' "${ast}" >"${ast}.tmp" && mv "${ast}.tmp" "${ast}"
-		rm -f docs_info.json docs_ops.json
 	fi
 }

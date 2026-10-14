@@ -1,34 +1,16 @@
 #!/bin/sh
-# shellcheck disable=SC3054,SC3040,SC2059,SC2016
-
-set -feu
-# shellcheck disable=SC2296,SC3028,SC3040,SC3054
-if [ "${SCRIPT_NAME-}" ]; then
-	THIS_FILE="${SCRIPT_NAME}"
-elif [ "${BASH_SOURCE-}" ]; then
-	THIS_FILE="${BASH_SOURCE[0]}"
-	set -o pipefail
-elif [ "${ZSH_VERSION-}" ]; then
-	eval 'THIS_FILE="${(%):-%x}"'
-	set -o pipefail
-else
-	THIS_FILE="${0}"
-fi
-case "${STACK+x}" in *':'"${THIS_FILE}"':'*) if (return 0 2>/dev/null); then return; else exit 0; fi ;; esac
-export STACK="${STACK:-}${THIS_FILE}"':'
-DIR=$(CDPATH='' cd "$(dirname -- "${THIS_FILE}")" && pwd)
-LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(
-	d="${DIR}"
-	while [ ! -f "${d}"'/ROOT' ]; do d="$(dirname -- "${d}")"; done
-	printf '%s' "${d}"
-)}"
+# @file src/routes/parse.sh
+# @description Parses client HTTP route functions, webhooks, and callbacks into the OpenAPI AST.
+# shellcheck disable=SC2016,SC1091
+. "${LIBSCRIPT_ROOT_DIR:-.}/lib/env.sh"
 
 # handle_parse_routes parses network routes into the AST.
+# @param $1: file_path - The input routes script path (default: routes.sh).
 handle_parse_routes() {
 	file_path="${1:-routes.sh}"
 	if [ ! -f "${file_path}" ]; then return 1; fi
 
-	awk '
+	all_raw=$(awk '
     BEGIN { in_func = 0; in_webhook = 0; in_callback = 0 }
     /^# @callback / { callbackName = $3; method = ""; summary = ""; in_callback = 1; in_func = 0 }
     /^# @method / { if (in_callback||in_webhook) method = tolower($3) }
@@ -76,18 +58,12 @@ handle_parse_routes() {
         in_func = 0
       }
     }
-  ' <"${file_path}" >all_temp.txt
-
-	awk '/^CALLBACK:/ { print substr($0, 10) }' <all_temp.txt >callbacks_temp.jsonl || true
-	awk '/^WEBHOOK:/ { print substr($0, 9) }' <all_temp.txt >webhooks_temp.jsonl || true
-	awk '/^OP:/ { print substr($0, 4) }' <all_temp.txt >ops_temp.jsonl || true
-	rm -f all_temp.txt
+  ' <"${file_path}")
 
 	ast="${CDD_AST_PATH:-${LIBSCRIPT_ROOT_DIR}/ast.json}"
 	if [ ! -f "${ast}" ]; then echo '{"openapi": "3.2.0", "info": {"title": "Parsed API", "version": "0.0.3"}}' >"${ast}"; fi
 
-	if [ -f "ops_temp.jsonl" ]; then
-		jq -s '
+	parsed_paths=$(printf '%s\n' "$all_raw" | awk '/^OP:/ { print substr($0, 4) }' | jq -s '
       group_by(.path) | map({
         path: .[0].path,
         ops: (map({
@@ -101,20 +77,19 @@ handle_parse_routes() {
           } | with_entries(select(.value != null)) | (. * (.openapi_json // {})))
         }) | from_entries)
       }) | reduce .[] as $item ({}; .[$item.path] = $item.ops)
-    ' "ops_temp.jsonl" >parsed_paths.json
-		jq --slurpfile newpaths parsed_paths.json '.paths = $newpaths[0]' "${ast}" >"${ast}.tmp" && mv "${ast}.tmp" "${ast}"
-		rm -f ops_temp.jsonl parsed_paths.json
-	fi
+    ')
 
-	if [ -f "callbacks_temp.jsonl" ]; then
-		jq -s 'reduce .[] as $cb ({}; .[$cb.name] = {"{url}": {($cb.method): {summary: $cb.summary}}})' "callbacks_temp.jsonl" >parsed_callbacks.json
-		jq --slurpfile newcallbacks parsed_callbacks.json '.components.callbacks = $newcallbacks[0]' "${ast}" >"${ast}.tmp" && mv "${ast}.tmp" "${ast}"
-		rm -f callbacks_temp.jsonl parsed_callbacks.json
-	fi
+	parsed_callbacks=$(printf '%s\n' "$all_raw" | awk '/^CALLBACK:/ { print substr($0, 10) }' | jq -s '
+      reduce .[] as $cb ({}; .[$cb.name] = {"{url}": {($cb.method): {summary: $cb.summary}}})
+    ')
 
-	if [ -f "webhooks_temp.jsonl" ]; then
-		jq -s 'reduce .[] as $wh ({}; .[$wh.name] = {($wh.method): {summary: $wh.summary}})' "webhooks_temp.jsonl" >parsed_webhooks.json
-		jq --slurpfile newwebhooks parsed_webhooks.json '.webhooks = $newwebhooks[0]' "${ast}" >"${ast}.tmp" && mv "${ast}.tmp" "${ast}"
-		rm -f webhooks_temp.jsonl parsed_webhooks.json
-	fi
+	parsed_webhooks=$(printf '%s\n' "$all_raw" | awk '/^WEBHOOK:/ { print substr($0, 9) }' | jq -s '
+      reduce .[] as $wh ({}; .[$wh.name] = {($wh.method): {summary: $wh.summary}})
+    ')
+
+	jq --argjson newpaths "$parsed_paths" --argjson newcallbacks "$parsed_callbacks" --argjson newwebhooks "$parsed_webhooks" '
+      .paths = $newpaths |
+      .components.callbacks = $newcallbacks |
+      .webhooks = $newwebhooks
+    ' "${ast}" >"${ast}.tmp" && mv "${ast}.tmp" "${ast}"
 }

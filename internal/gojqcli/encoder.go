@@ -1,3 +1,4 @@
+// Package gojqcli implements custom JSON encoding and pretty-printing with optional ANSI colorization.
 package gojqcli
 
 import (
@@ -13,36 +14,52 @@ import (
 	"unicode/utf8"
 )
 
-// encoder is a type
+// encoder formats and buffers JSON values with configurable indentation and ANSI colors.
 type encoder struct {
 	out    io.Writer
 	w      *bytes.Buffer
+	err    error
 	tab    bool
 	indent int
 	depth  int
 	buf    [64]byte
 }
 
-// newEncoder is a function
+// newEncoder creates a new encoder with the specified tab and indentation settings.
+// Parameters:
+//   - tab: Whether to indent using tab characters instead of spaces.
+//   - indent: Indentation level per nesting depth (-1 for compact output).
+//
+// Returns a pointer to the initialized encoder.
 func newEncoder(tab bool, indent int) *encoder {
 	// reuse the buffer in multiple calls of marshal
 	return &encoder{w: new(bytes.Buffer), tab: tab, indent: indent}
 }
 
-// flush is a function
+// flush writes all buffered bytes to the underlying output writer and resets the internal buffer.
+// Returns any error encountered while writing to e.out.
 func (e *encoder) flush() error {
 	_, err := e.out.Write(e.w.Bytes())
 	e.w.Reset()
-	return err
+	return cmp.Or(e.err, err)
 }
 
-// marshal is a function
+// marshal encodes v as JSON and flushes the output to w.
+// Parameters:
+//   - v: The value to encode.
+//   - w: The destination writer.
+//
+// Returns the first error encountered during encoding or flushing.
 func (e *encoder) marshal(v any, w io.Writer) error {
 	e.out = w
 	return cmp.Or(e.encode(v), e.flush())
 }
 
-// encode is a function
+// encode recursively serializes a single JSON value into the internal buffer.
+// Parameters:
+//   - v: The value to serialize.
+//
+// Returns any error encountered when flushing large buffers.
 func (e *encoder) encode(v any) error {
 	switch v := v.(type) {
 	case nil:
@@ -80,7 +97,9 @@ func (e *encoder) encode(v any) error {
 	return nil
 }
 
-// ref: floatEncoder in encoding/json
+// encodeFloat64 formats a float64 value into JSON numeric representation.
+// Parameters:
+//   - f: The floating-point number to encode.
 func (e *encoder) encodeFloat64(f float64) {
 	if math.IsNaN(f) {
 		e.write([]byte("null"), nullColor)
@@ -102,7 +121,10 @@ func (e *encoder) encodeFloat64(f float64) {
 	e.write(buf, numberColor)
 }
 
-// ref: encodeState#string in encoding/json
+// encodeString writes a JSON-escaped and quoted string with optional ANSI color codes.
+// Parameters:
+//   - s: The string to escape and write.
+//   - color: Optional ANSI escape sequence bytes for coloring.
 func (e *encoder) encodeString(s string, color []byte) {
 	if color != nil {
 		setColor(e.w, color)
@@ -164,7 +186,11 @@ func (e *encoder) encodeString(s string, color []byte) {
 	}
 }
 
-// encodeArray is a function
+// encodeArray serializes a slice of values as a JSON array.
+// Parameters:
+//   - vs: The slice of elements to encode.
+//
+// Returns any encoding or flush error.
 func (e *encoder) encodeArray(vs []any) error {
 	e.writeByte('[', arrayColor)
 	e.depth += e.indent
@@ -187,7 +213,11 @@ func (e *encoder) encodeArray(vs []any) error {
 	return nil
 }
 
-// encodeObject is a function
+// encodeObject serializes a string-keyed map as a sorted JSON object.
+// Parameters:
+//   - vs: The map of key-value pairs to encode.
+//
+// Returns any encoding or flush error.
 func (e *encoder) encodeObject(vs map[string]any) error {
 	e.writeByte('{', objectColor)
 	e.depth += e.indent
@@ -228,7 +258,7 @@ func (e *encoder) encodeObject(vs map[string]any) error {
 	return nil
 }
 
-// writeIndent is a function
+// writeIndent writes a newline followed by indentation whitespace for the current nesting depth.
 func (e *encoder) writeIndent() {
 	e.w.WriteByte('\n')
 	if n := e.depth; n > 0 {
@@ -240,39 +270,53 @@ func (e *encoder) writeIndent() {
 	}
 }
 
-// writeIndentInternal is a function
+// writeIndentInternal writes n indentation characters using spaces as a repeating template.
+// Parameters:
+//   - n: Number of indentation characters to write.
+//   - spaces: Template whitespace string.
 func (e *encoder) writeIndentInternal(n int, spaces string) {
 	if l := len(spaces); n <= l {
-		e.w.WriteString(spaces[:n])
+		_, err := e.w.WriteString(spaces[:n])
+		e.err = cmp.Or(e.err, err)
 	} else {
-		e.w.WriteString(spaces)
+		_, err := e.w.WriteString(spaces)
+		e.err = cmp.Or(e.err, err)
 		for n -= l; n > 0; n, l = n-l, l*2 {
 			if n < l {
 				l = n
 			}
-			e.w.Write(e.w.Bytes()[e.w.Len()-l:])
+			_, werr := e.w.Write(e.w.Bytes()[e.w.Len()-l:])
+			e.err = cmp.Or(e.err, werr)
 		}
 	}
 }
 
-// writeByte is a function
+// writeByte writes a single byte to the internal buffer wrapped in optional ANSI color codes.
+// Parameters:
+//   - b: The byte to write.
+//   - color: Optional ANSI color escape sequence bytes.
 func (e *encoder) writeByte(b byte, color []byte) {
 	if color == nil {
-		e.w.WriteByte(b)
+		e.err = cmp.Or(e.err, e.w.WriteByte(b))
 	} else {
 		setColor(e.w, color)
-		e.w.WriteByte(b)
+		e.err = cmp.Or(e.err, e.w.WriteByte(b))
 		setColor(e.w, resetColor)
 	}
 }
 
-// write is a function
+// write writes a byte slice to the internal buffer wrapped in optional ANSI color codes.
+// Parameters:
+//   - bs: The byte slice to write.
+//   - color: Optional ANSI color escape sequence bytes.
 func (e *encoder) write(bs, color []byte) {
 	if color == nil {
-		e.w.Write(bs)
+		_, err := e.w.Write(bs)
+		e.err = cmp.Or(e.err, err)
 	} else {
 		setColor(e.w, color)
-		e.w.Write(bs)
+		_, err := e.w.Write(bs)
+		e.err = cmp.Or(e.err, err)
 		setColor(e.w, resetColor)
 	}
 }

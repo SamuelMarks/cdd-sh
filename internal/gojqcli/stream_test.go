@@ -51,10 +51,19 @@ func TestJSONStream(t *testing.T) {
 				{[]any{1}},
 			},
 		},
+		{
+			`123`,
+			[][]any{
+				{[]any{}, json.Number("123")},
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		dec := json.NewDecoder(bytes.NewReader([]byte(tt.input)))
+		if tt.input == "123" {
+			dec.UseNumber()
+		}
 
 		s := newJSONStream(dec)
 		var got [][]any
@@ -69,5 +78,11 @@ func TestJSONStream(t *testing.T) {
 		if !reflect.DeepEqual(got, tt.want) {
 			t.Errorf("for input %q,\nwant: %#v\ngot:  %#v", tt.input, tt.want, got)
 		}
+	}
+
+	truncDec := json.NewDecoder(bytes.NewReader([]byte(`[ `)))
+	truncStream := newJSONStream(truncDec)
+	if _, err := truncStream.next(); err == nil {
+		t.Errorf("expected error for truncated JSON stream, got nil")
 	}
 }

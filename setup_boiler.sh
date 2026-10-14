@@ -1,41 +1,13 @@
 #!/bin/sh
+# @file setup_boiler.sh
+# @description Scaffolds parser and emitter boilerplate scripts in src/.
 # shellcheck disable=SC2016,SC2129
 
 set -eu
 
 PRELUDE='#!/bin/sh
-
-set -feu
-# shellcheck disable=SC2296,SC3028,SC3040,SC3054
-if [ "${SCRIPT_NAME-}" ]; then
-  THIS_FILE="${SCRIPT_NAME}"
-elif [ "${BASH_SOURCE-}" ]; then
-  THIS_FILE="${BASH_SOURCE[0]}"
-  set -o pipefail
-elif [ "${ZSH_VERSION-}" ]; then
-  eval '"'"'THIS_FILE="${(%):-%x}"'"'"'
-  set -o pipefail
-else
-  THIS_FILE="${0}"
-fi
-
-case "${STACK+x}" in
-  *":"${THIS_FILE}":"*)
-    printf "[STOP]     processing \"%s\"\n" "${THIS_FILE}" >&2
-    if (return 0 2>/dev/null); then return; else exit 0; fi ;;
-  *) printf "[CONTINUE] processing \"%s\"\n" "${THIS_FILE}" >&2 ;;
-esac
-export STACK="${STACK:-}${THIS_FILE}:"
-
-DIR=$(CDPATH="" cd "$(dirname -- "${THIS_FILE}")" && pwd)
-LIBSCRIPT_ROOT_DIR="${LIBSCRIPT_ROOT_DIR:-$(d="${DIR}"; while [ ! -f "${d}/ROOT" ]; do d="$(dirname -- "${d}")"; done; printf "%s" "${d}")}"
-
-for lib in "lib/env.sh" "lib/_common/pkg_mgr.sh"; do
-  SCRIPT_NAME="${LIBSCRIPT_ROOT_DIR}/${lib}"
-  export SCRIPT_NAME
-  # shellcheck disable=SC1090
-  . "${SCRIPT_NAME}"
-done'
+# shellcheck disable=SC1091
+. "${LIBSCRIPT_ROOT_DIR:-.}/lib/env.sh"'
 
 for type in classes docstrings functions mocks openapi routes tests; do
 	for cmd in parse emit; do
@@ -43,11 +15,13 @@ for type in classes docstrings functions mocks openapi routes tests; do
 		echo "$PRELUDE" >"$f"
 		echo "" >>"$f"
 		if [ "$cmd" = "parse" ]; then
+			echo "# handle_${cmd}_${type} parses ${type} definitions into the AST." >>"$f"
 			echo "handle_${cmd}_${type}() {" >>"$f"
 			echo '  file_path="${1}"' >>"$f"
 			echo "  # Implement parse for ${type}" >>"$f"
 			echo "}" >>"$f"
 		else
+			echo "# handle_${cmd}_${type} emits ${type} artifacts from the AST." >>"$f"
 			echo "handle_${cmd}_${type}() {" >>"$f"
 			echo '  file_path="${1}"' >>"$f"
 			echo "  # Implement emit for ${type}" >>"$f"

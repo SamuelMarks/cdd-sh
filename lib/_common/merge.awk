@@ -1,3 +1,6 @@
+# @file lib/_common/merge.awk
+# @description Merges newly generated annotated shell blocks (@function, @class, @webhook)
+# into an existing shell script while preserving custom user functions and edits.
 BEGIN {
   while ((getline < new_file) > 0) {
     if ($0 ~ /^# @(function|class|webhook) /) {
@@ -8,15 +11,9 @@ BEGIN {
       new_blocks[block_name] = new_blocks[block_name] $0 "\n"
       if ($0 ~ /^}$/) {
         in_new = 0
+      } else if ($0 == "" && block_name ~ /^[A-Z]/) {
+        in_new = 0
       }
-      if ($0 ~ /^# @required / || $0 ~ /^# @property / || $0 ~ /^# @description / || $0 ~ /^# @method /) {
-      } else if ($0 == "" || $0 ~ /^$/) {
-        if (block_name ~ /^[A-Z]/ || $0 ~ /^handle_webhook_/) {
-          in_new = 0
-        }
-      }
-    } else {
-      new_header = new_header $0 "\n"
     }
   }
 }
@@ -24,19 +21,17 @@ BEGIN {
   if ($0 ~ /^# @(function|class|webhook) /) {
     block_name = $3
     in_old = 1
-    deleted = 0
     if (block_name in new_blocks) {
       replaced[block_name] = 1
       printf "%s", new_blocks[block_name]
     } else {
-      deleted = 0
       print $0
     }
   } else if (in_old) {
-    if (!deleted && !(block_name in replaced)) {
+    if (!(block_name in replaced)) {
       print $0
     }
-    if ($0 ~ /^}$/ || $0 ~ /^$/) { 
+    if ($0 ~ /^}$/ || $0 ~ /^$/) {
       in_old = 0
     }
   } else {

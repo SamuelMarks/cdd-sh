@@ -1,3 +1,4 @@
+// Package gojqcli implements the internal gojq command-line interface and JSON streaming utilities.
 package gojqcli
 
 import (
@@ -5,14 +6,18 @@ import (
 	"io"
 )
 
-// jsonStream is a type
+// jsonStream maintains state for streaming JSON token parsing (`jq --stream`).
 type jsonStream struct {
 	dec    *json.Decoder
 	path   []any
 	states []int
 }
 
-// newJSONStream is a function
+// newJSONStream initializes a new jsonStream wrapping the given json.Decoder.
+// Parameters:
+//   - dec: The underlying JSON token decoder.
+//
+// Returns a pointer to the initialized jsonStream.
 func newJSONStream(dec *json.Decoder) *jsonStream {
 	return &jsonStream{dec: dec, states: []int{jsonStateTopValue}, path: []any{}}
 }
@@ -30,7 +35,8 @@ const (
 	jsonStateObjectEmptyEnd
 )
 
-// next is a function
+// next advances the JSON stream and returns the next path-value tuple or path-end tuple.
+// Returns the stream tuple (`[]any`) and any decoding error.
 func (s *jsonStream) next() (any, error) {
 	switch s.states[len(s.states)-1] {
 	case jsonStateArrayEnd, jsonStateObjectEnd:
@@ -107,7 +113,7 @@ func (s *jsonStream) next() (any, error) {
 	}
 }
 
-// copyPath is a function
+// copyPath returns a shallow copy of the current JSON path slice.
 func (s *jsonStream) copyPath() []any {
 	path := make([]any, len(s.path))
 	copy(path, s.path)
