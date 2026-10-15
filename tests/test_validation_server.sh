@@ -1,5 +1,8 @@
 #!/bin/sh
-set -eu
+# @file tests/test_validation_server.sh
+# @description Tests strict request validation, authentication enforcement, and webhook triggers on the generated server.
+# shellcheck disable=SC1091
+. "$(cd "$(dirname -- "$0")/.." && pwd)/lib/env.sh"
 
 echo "Testing Request Validation & Auth Mocks..."
 

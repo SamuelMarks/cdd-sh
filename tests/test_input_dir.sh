@@ -1,5 +1,8 @@
 #!/bin/sh
-set -e
+# @file tests/test_input_dir.sh
+# @description Tests multi-file OpenAPI specification ingestion via the --input-dir flag.
+# shellcheck disable=SC1091
+. "$(cd "$(dirname -- "$0")/.." && pwd)/lib/env.sh"
 echo "Testing --input-dir..."
 mkdir -p tests/tmp_input_dir
 echo '{"openapi":"3.2.0","info":{"title":"A"},"paths":{"/a":{"get":{"operationId":"getA"}}}}' >tests/tmp_input_dir/1.json

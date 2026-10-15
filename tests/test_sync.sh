@@ -1,5 +1,8 @@
 #!/bin/sh
-set -eu
+# @file tests/test_sync.sh
+# @description Tests bidirectional synchronization using a generated server.sh as the source of truth.
+# shellcheck disable=SC1091
+. "$(cd "$(dirname -- "$0")/.." && pwd)/lib/env.sh"
 
 echo "Testing Sync with server.sh as source of truth..."
 

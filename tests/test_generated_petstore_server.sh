@@ -1,5 +1,8 @@
 #!/bin/sh
-set -eu
+# @file tests/test_generated_petstore_server.sh
+# @description Generates and validates composable Petstore servers and SDKs for Swagger 2.0 and OpenAPI 3.x.
+# shellcheck disable=SC1091
+. "$(cd "$(dirname -- "$0")/.." && pwd)/lib/env.sh"
 
 TYPE="$1"
 SPEC="$2"

@@ -1,2 +1,4 @@
 #!/bin/sh
+# @file .bin_mock/curl
+# @description Mock curl binary that echoes received arguments for offline route testing.
 echo "[MOCK CURL] $*"

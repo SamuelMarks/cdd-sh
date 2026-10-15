@@ -1,5 +1,8 @@
 #!/bin/sh
-set -eu
+# @file tests/test_cors.sh
+# @description Tests HTTP OPTIONS preflight CORS headers on the generated server.
+# shellcheck disable=SC1091
+. "$(cd "$(dirname -- "$0")/.." && pwd)/lib/env.sh"
 
 echo "Testing Server CORS functionality..."
 
