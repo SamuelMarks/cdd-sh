@@ -4,16 +4,19 @@
 # shellcheck disable=SC1091
 . "${LIBSCRIPT_ROOT_DIR:-.}/lib/env.sh"
 
-VERSION="0.0.3"
+VERSION="0.0.4"
 
 # print_help prints the CLI help message and exits with status 1.
+# @param none
 print_help() {
 	printf "cdd-sh CLI\n"
 	printf "Usage:\n  cdd-sh [subcommand] [options]\n\n"
 	printf "Subcommands:\n"
 	printf "  from_openapi    Generate code from an OpenAPI specification.\n"
 	printf "  to_openapi      Generate an OpenAPI specification from source code.\n"
-	printf "  to_docs_json    Generate JSON documentation with code snippets for an OpenAPI specification.\n"
+	printf "  from_arazzo     Generate workflow SDK, CLI, or Server from an Arazzo 1.1.0 specification.\n"
+	printf "  to_arazzo       Generate an Arazzo 1.1.0 specification from source code or tests.\n"
+	printf "  to_docs_json    Generate JSON documentation with code snippets for an OpenAPI/Arazzo specification.\n"
 	printf "  serve_json_rpc  Expose CLI interface as a JSON-RPC server.\n"
 	printf "  mcp             Run as an MCP server over stdio.\n\n"
 	printf "Options:\n"
@@ -21,15 +24,17 @@ print_help() {
 	printf "  --version, -v   Show version information\n\n"
 	printf "Examples:\n"
 	printf "  cdd-sh to_openapi -i <code_file_or_dir> -o <spec.json>\n"
+	printf "  cdd-sh to_arazzo -i <code_file_or_dir> -o <arazzo.json>\n"
 	printf "  cdd-sh serve_json_rpc [-p|--port <port>] [-l|--listen <ip>]\n"
 	printf "  cdd-sh to_docs_json [--no-imports] [--no-wrapping] -i <spec.json> -o <docs.json>\n"
 	printf "  cdd-sh from_openapi [subcmd] -i <spec.json> -o <target_dir> [--no-github-actions] [--no-installable-package] [--tests]\n"
-	printf "  cdd-sh from_openapi [subcmd] --input-dir <specs_dir> -o <target_dir> [--no-github-actions] [--no-installable-package] [--tests]\n\n"
+	printf "  cdd-sh from_arazzo [subcmd] -i <arazzo.json> -o <target_dir> [--no-github-actions] [--no-installable-package] [--tests]\n\n"
 	printf "Note: All options can be passed via environment variables (e.g., CDD_PORT=8082 cdd-sh serve_json_rpc)\n"
 	exit 1
 }
 
 # print_help_from_openapi prints usage instructions for the from_openapi subcommand and exits.
+# @param none
 print_help_from_openapi() {
 	printf "Usage:\n  cdd-sh from_openapi [subcmd] [options]\n\n"
 	printf "Subcommands:\n"
@@ -55,6 +60,7 @@ print_help_from_openapi() {
 }
 
 # print_help_to_openapi prints usage instructions for the to_openapi subcommand and exits.
+# @param none
 print_help_to_openapi() {
 	printf "Usage:\n  cdd-sh to_openapi [options]\n\n"
 	printf "Options:\n"
@@ -64,11 +70,44 @@ print_help_to_openapi() {
 	exit 1
 }
 
+# print_help_from_arazzo prints usage instructions for the from_arazzo subcommand and exits.
+# @param none
+print_help_from_arazzo() {
+	printf "Usage:\n  cdd-sh from_arazzo [subcmd] [options]\n\n"
+	printf "Subcommands:\n"
+	printf "  to_sdk          Generate a client workflow SDK (src/workflows.sh + linked routes/classes).\n"
+	printf "  to_sdk_cli      Generate a client workflow SDK and CLI runner (bin/sdk-cli).\n"
+	printf "  to_server       Generate server with stateful workflow mocks and E2E workflow tests.\n"
+	printf "  to_arazzo       Extract Arazzo 1.1.0 spec from an existing codebase.\n"
+	printf "  to_docs_json    Extract documentation data structure with workflow snippets.\n\n"
+	printf "Options:\n"
+	printf "  -i, --input <arazzo.json>      Path to the Arazzo 1.1.0 specification file.\n"
+	printf "  --input-dir <dir>              Path to a directory containing Arazzo and OpenAPI specification files.\n"
+	printf "  -o, --output <target_dir>      Destination path for generation.\n"
+	printf "  --no-github-actions            Skip generating GitHub Actions CI workflow.\n"
+	printf "  --no-installable-package       Skip generating package definitions.\n"
+	printf "  --tests                        Generate E2E workflow tests alongside the code.\n"
+	printf "  --help, -h                     Show this help message.\n"
+	exit 1
+}
+
+# print_help_to_arazzo prints usage instructions for the to_arazzo subcommand and exits.
+# @param none
+print_help_to_arazzo() {
+	printf "Usage:\n  cdd-sh to_arazzo [options]\n\n"
+	printf "Options:\n"
+	printf "  -i, --input <code_file_or_dir> Path to the workflow script, CLI, server, or directory to parse.\n"
+	printf "  -o, --output <arazzo.json>     Destination path for the generated Arazzo 1.1.0 spec.\n"
+	printf "  --help, -h                     Show this help message.\n"
+	exit 1
+}
+
 # print_help_to_docs_json prints usage instructions for the to_docs_json subcommand and exits.
+# @param none
 print_help_to_docs_json() {
 	printf "Usage:\n  cdd-sh to_docs_json [options]\n\n"
 	printf "Options:\n"
-	printf "  -i, --input <spec.json>        Path to the OpenAPI specification file.\n"
+	printf "  -i, --input <spec.json>        Path to the OpenAPI or Arazzo specification file.\n"
 	printf "  -o, --output <docs.json>       Destination path for the documentation data.\n"
 	printf "  --no-imports                   Do not include import statements in generated snippets.\n"
 	printf "  --no-wrapping                  Do not wrap the output in a top-level documentation object.\n"
@@ -77,6 +116,7 @@ print_help_to_docs_json() {
 }
 
 # print_help_serve_json_rpc prints usage instructions for the serve_json_rpc subcommand and exits.
+# @param none
 print_help_serve_json_rpc() {
 	printf "Usage:\n  cdd-sh serve_json_rpc [options]\n\n"
 	printf "Options:\n"
@@ -87,6 +127,7 @@ print_help_serve_json_rpc() {
 }
 
 # print_help_mcp prints usage instructions for the mcp stdio server subcommand and exits.
+# @param none
 print_help_mcp() {
 	printf "Usage:\n  cdd-sh mcp [options]\n\n"
 	printf "Description:\n"
@@ -109,16 +150,20 @@ fi
 
 has_help=0
 for arg in "$@"; do
-	if [ "$arg" = "--help" ] || [ "$arg" = "-help" ] || [ "$arg" = "-h" ]; then
+	case "$arg" in
+	--help | -help | -h)
 		has_help=1
 		break
-	fi
+		;;
+	esac
 done
 
 if [ "$has_help" -eq 1 ]; then
 	case "${CMD}" in
 	from_openapi) print_help_from_openapi ;;
 	to_openapi) print_help_to_openapi ;;
+	from_arazzo) print_help_from_arazzo ;;
+	to_arazzo) print_help_to_arazzo ;;
 	to_docs_json) print_help_to_docs_json ;;
 	serve_json_rpc) print_help_serve_json_rpc ;;
 	mcp) print_help_mcp ;;
@@ -134,6 +179,7 @@ fi
 export CDD_AST_PATH="${CDD_AST_PATH:-ast.json}"
 
 # parse_global_args parses the global arguments passed to the CLI.
+# @param $@: Command-line arguments.
 parse_global_args() {
 	while [ $# -gt 0 ]; do
 		case "$1" in
@@ -209,7 +255,8 @@ parse_global_args() {
 	done
 }
 
-# ensure_output_dir creates the output directory if it does not exist.
+# ensure_output_dir sets CDD_OUTPUT to the current working directory if not already defined.
+# @param none
 ensure_output_dir() {
 	if [ -z "${CDD_OUTPUT:-}" ]; then
 		CDD_OUTPUT="$(pwd)"
@@ -219,7 +266,7 @@ ensure_output_dir() {
 case "${CMD}" in
 mcp)
 	. "${LIBSCRIPT_ROOT_DIR:-.}/lib/mcp_handler.sh"
-	tools_json='[{"name":"to_openapi","description":"Generate OpenAPI spec from source","inputSchema":{"type":"object","properties":{"input":{"type":"string"},"output":{"type":"string"}},"required":["input","output"]}},{"name":"from_openapi","description":"Generate code from OpenAPI spec","inputSchema":{"type":"object","properties":{"subcmd":{"type":"string"},"input":{"type":"string"},"output":{"type":"string"},"tests":{"type":"boolean"}},"required":["subcmd","input","output"]}}]'
+	tools_json='[{"name":"to_openapi","description":"Generate OpenAPI spec from source","inputSchema":{"type":"object","properties":{"input":{"type":"string"},"output":{"type":"string"}},"required":["input","output"]}},{"name":"from_openapi","description":"Generate code from OpenAPI spec","inputSchema":{"type":"object","properties":{"subcmd":{"type":"string"},"input":{"type":"string"},"output":{"type":"string"},"tests":{"type":"boolean"}},"required":["subcmd","input","output"]}},{"name":"to_arazzo","description":"Generate Arazzo 1.1.0 spec from source","inputSchema":{"type":"object","properties":{"input":{"type":"string"},"output":{"type":"string"}},"required":["input","output"]}},{"name":"from_arazzo","description":"Generate code from Arazzo 1.1.0 spec","inputSchema":{"type":"object","properties":{"subcmd":{"type":"string"},"input":{"type":"string"},"output":{"type":"string"},"tests":{"type":"boolean"}},"required":["subcmd","input","output"]}}]'
 	while read -r line || [ -n "$line" ]; do
 		if echo "$line" | grep -qi "^Content-Length:"; then
 			read -r _
@@ -247,6 +294,7 @@ mcp)
 				input=$(echo "$args" | jq -r '.input')
 				output=$(echo "$args" | jq -r '.output')
 				res=$(./bin/cdd-sh to_openapi -i "$input" -o "$output" 2>&1)
+				exit_code=$?
 			elif [ "$tool_name" = "from_openapi" ]; then
 				subcmd=$(echo "$args" | jq -r '.subcmd')
 				input=$(echo "$args" | jq -r '.input')
@@ -256,11 +304,26 @@ mcp)
 				else
 					res=$(./bin/cdd-sh from_openapi "$subcmd" -i "$input" -o "$output" 2>&1)
 				fi
+				exit_code=$?
+			elif [ "$tool_name" = "to_arazzo" ]; then
+				input=$(echo "$args" | jq -r '.input')
+				output=$(echo "$args" | jq -r '.output')
+				res=$(./bin/cdd-sh to_arazzo -i "$input" -o "$output" 2>&1)
+				exit_code=$?
+			elif [ "$tool_name" = "from_arazzo" ]; then
+				subcmd=$(echo "$args" | jq -r '.subcmd')
+				input=$(echo "$args" | jq -r '.input')
+				output=$(echo "$args" | jq -r '.output')
+				if [ "$(echo "$args" | jq -r '.tests // false')" = "true" ]; then
+					res=$(./bin/cdd-sh from_arazzo "$subcmd" -i "$input" -o "$output" --tests 2>&1)
+				else
+					res=$(./bin/cdd-sh from_arazzo "$subcmd" -i "$input" -o "$output" 2>&1)
+				fi
+				exit_code=$?
 			else
 				res="Unknown tool: $tool_name"
 				exit_code=1
 			fi
-			exit_code=$?
 			set -e
 
 			res_escaped=$(printf "%s" "$res" | jq -R -s '.')
@@ -346,6 +409,22 @@ serve_json_rpc)
 
 					# shellcheck disable=SC2086
 					out=$(./bin/cdd-sh from_openapi "$subcmd_val" -i "$i_val" -o "$o_val" $opts 2>&1 || true)
+					;;
+				to_arazzo)
+					f_val=$(echo "$json_params" | jq -r '.file // .input // ""')
+					o_val=$(echo "$json_params" | jq -r '.out // .output // ""')
+					out=$(./bin/cdd-sh to_arazzo -i "$f_val" -o "$o_val" 2>&1 || true)
+					;;
+				from_arazzo)
+					subcmd_val=$(echo "$json_params" | jq -r '.subcmd // "to_sdk"')
+					i_val=$(echo "$json_params" | jq -r '.spec // .input // ""')
+					o_val=$(echo "$json_params" | jq -r '.out // .output // ""')
+					opts=""
+					if [ "$(echo "$json_params" | jq -r '.tests // false')" = "true" ]; then
+						opts="$opts --tests"
+					fi
+					# shellcheck disable=SC2086
+					out=$(./bin/cdd-sh from_arazzo "$subcmd_val" -i "$i_val" -o "$o_val" $opts 2>&1 || true)
 					;;
 				to_docs_json)
 					i_val=$(echo "$json_params" | jq -r '.spec // ""')
@@ -449,6 +528,61 @@ to_openapi)
 	. "${LIBSCRIPT_ROOT_DIR:-.}/src/openapi/emit.sh"
 	handle_emit_openapi "$OUT"
 	echo "Generated OpenAPI spec in $OUT"
+	;;
+to_arazzo)
+	parse_global_args "$@"
+	FILE="${CDD_INPUT:-}"
+	OUT="${CDD_OUTPUT:-arazzo.json}"
+	if [ -z "$FILE" ]; then
+		echo "Error: -i <file> required" >&2
+		exit 1
+	fi
+	. "${LIBSCRIPT_ROOT_DIR:-.}/src/workflows/parse.sh"
+	if [ -d "$FILE" ]; then
+		if [ -f "$FILE/src/workflows.sh" ]; then
+			handle_parse_workflows "$FILE/src/workflows.sh"
+		fi
+		if [ -f "$FILE/bin/sdk-cli" ]; then
+			. "${LIBSCRIPT_ROOT_DIR:-.}/src/cli/parse.sh"
+			handle_parse_cli "$FILE/bin/sdk-cli"
+		fi
+		if [ -f "$FILE/src/server.sh" ]; then
+			. "${LIBSCRIPT_ROOT_DIR:-.}/src/server/parse.sh"
+			handle_parse_server "$FILE/src/server.sh"
+		fi
+		if [ -f "$FILE/tests/test_routes.sh" ]; then
+			. "${LIBSCRIPT_ROOT_DIR:-.}/src/tests/parse.sh"
+			handle_parse_tests "$FILE/tests/test_routes.sh"
+		fi
+	else
+		case "$FILE" in
+		*workflows.sh)
+			handle_parse_workflows "$FILE"
+			;;
+		*sdk-cli*)
+			. "${LIBSCRIPT_ROOT_DIR:-.}/src/cli/parse.sh"
+			handle_parse_cli "$FILE"
+			;;
+		*server.sh)
+			. "${LIBSCRIPT_ROOT_DIR:-.}/src/server/parse.sh"
+			handle_parse_server "$FILE"
+			;;
+		test_*.sh | */test_*.sh)
+			. "${LIBSCRIPT_ROOT_DIR:-.}/src/tests/parse.sh"
+			handle_parse_tests "$FILE"
+			;;
+		*.json)
+			. "${LIBSCRIPT_ROOT_DIR:-.}/src/arazzo/parse.sh"
+			handle_parse_arazzo "$FILE"
+			;;
+		*)
+			handle_parse_workflows "$FILE"
+			;;
+		esac
+	fi
+	. "${LIBSCRIPT_ROOT_DIR:-.}/src/arazzo/emit.sh"
+	handle_emit_arazzo "$OUT"
+	echo "Generated Arazzo spec in $OUT"
 	;;
 to_docs_json)
 	parse_global_args "$@"
@@ -562,8 +696,6 @@ from_openapi)
 		;;
 	to_docs_json)
 		. "${LIBSCRIPT_ROOT_DIR:-.}/src/docsjson/emit.sh"
-		# The WASM SDK will read from OUT. If it prints to stdout, we need to capture it to a file if OUT is provided.
-		# But wait, CddWasmSdk expects the files to be in `/out`.
 		handle_to_docs_json "$@" >"$OUT/docs.json"
 		;;
 	to_openapi)
@@ -589,6 +721,106 @@ from_openapi)
 		;;
 	*)
 		echo "Unknown from_openapi subcmd: $SUBCMD" >&2
+		exit 1
+		;;
+	esac
+	;;
+from_arazzo)
+	if [ "$#" -eq 0 ]; then print_help_from_arazzo; fi
+	SUBCMD="to_sdk"
+	if [ "$1" != "-i" ] && [ "$1" != "--input-dir" ] && [ "$1" != "-o" ] && [ "$1" != "--no-github-actions" ] && [ "$1" != "--no-installable-package" ] && [ "$1" != "--tests" ]; then
+		SUBCMD="$1"
+		shift
+	fi
+	parse_global_args "$@"
+	ensure_output_dir
+	IN="${CDD_INPUT:-}"
+	IN_DIR="${CDD_INPUT_DIR:-}"
+	OUT="${CDD_OUTPUT}"
+
+	if [ -z "$IN" ] && [ -z "$IN_DIR" ]; then
+		echo "Error: -i or --input-dir required" >&2
+		exit 1
+	fi
+
+	mkdir -p "$OUT"
+
+	if [ "$SUBCMD" != "to_docs_json" ] && [ "$SUBCMD" != "to_arazzo" ]; then
+		if [ "${CDD_NO_GITHUB_ACTIONS:-0}" != "1" ]; then
+			mkdir -p "$OUT/.github/workflows"
+			printf 'name: CI\non: [push, pull_request]\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - run: echo "Tests..."\n' >"$OUT/.github/workflows/ci.yml"
+		fi
+	fi
+
+	. "${LIBSCRIPT_ROOT_DIR:-.}/src/arazzo/parse.sh"
+	if [ -n "$IN" ]; then
+		handle_parse_arazzo "$IN"
+	else
+		handle_parse_arazzo_dir "$IN_DIR"
+	fi
+
+	case "$SUBCMD" in
+	to_sdk)
+		mkdir -p "$OUT/src"
+		if jq -e '.paths != null' "$CDD_AST_PATH" >/dev/null 2>&1; then
+			. "${LIBSCRIPT_ROOT_DIR:-.}/src/routes/emit.sh"
+			handle_emit_routes "$OUT/src/routes.sh" "sdk"
+			. "${LIBSCRIPT_ROOT_DIR:-.}/src/classes/emit.sh"
+			handle_emit_classes "$OUT/src/classes.sh"
+			. "${LIBSCRIPT_ROOT_DIR:-.}/src/sdk/emit.sh"
+			handle_emit_sdk "$OUT/src/sdk.sh"
+		fi
+		. "${LIBSCRIPT_ROOT_DIR:-.}/src/workflows/emit.sh"
+		handle_emit_workflows "$OUT/src/workflows.sh"
+		if [ "${CDD_TESTS:-0}" = "1" ]; then
+			mkdir -p "$OUT/tests"
+			. "${LIBSCRIPT_ROOT_DIR:-.}/src/server/emit_workflows.sh"
+			handle_emit_server_workflows "$OUT/tests"
+		fi
+		echo "Generated Arazzo SDK in $OUT"
+		;;
+	to_sdk_cli)
+		mkdir -p "$OUT/src" "$OUT/bin"
+		if jq -e '.paths != null' "$CDD_AST_PATH" >/dev/null 2>&1; then
+			. "${LIBSCRIPT_ROOT_DIR:-.}/src/routes/emit.sh"
+			handle_emit_routes "$OUT/src/routes.sh" "sdk"
+		fi
+		. "${LIBSCRIPT_ROOT_DIR:-.}/src/workflows/emit.sh"
+		handle_emit_workflows "$OUT/src/workflows.sh"
+		. "${LIBSCRIPT_ROOT_DIR:-.}/src/cli/emit.sh"
+		handle_emit_cli "$OUT/bin/sdk-cli" "$OUT"
+		echo "Generated Arazzo SDK CLI in $OUT"
+		;;
+	to_server)
+		mkdir -p "$OUT/src" "$OUT/tests"
+		if jq -e '.paths != null' "$CDD_AST_PATH" >/dev/null 2>&1; then
+			. "${LIBSCRIPT_ROOT_DIR:-.}/src/server/emit_models.sh"
+			handle_emit_server_models "$OUT/src/models"
+			. "${LIBSCRIPT_ROOT_DIR:-.}/src/server/emit_daos.sh"
+			handle_emit_server_daos "$OUT/src/mocks"
+			. "${LIBSCRIPT_ROOT_DIR:-.}/src/server/emit_routes.sh"
+			handle_emit_server_routes "$OUT/src/routes"
+			. "${LIBSCRIPT_ROOT_DIR:-.}/src/server/emit_tests.sh"
+			handle_emit_server_tests "$OUT/tests"
+		fi
+		. "${LIBSCRIPT_ROOT_DIR:-.}/src/workflows/emit.sh"
+		handle_emit_workflows "$OUT/src/workflows.sh"
+		. "${LIBSCRIPT_ROOT_DIR:-.}/src/server/emit.sh"
+		handle_emit_server "$OUT/src/server.sh" "server"
+		. "${LIBSCRIPT_ROOT_DIR:-.}/src/server/emit_workflows.sh"
+		handle_emit_server_workflows "$OUT/tests"
+		echo "Generated Arazzo Server in $OUT"
+		;;
+	to_arazzo)
+		. "${LIBSCRIPT_ROOT_DIR:-.}/src/arazzo/emit.sh"
+		handle_emit_arazzo "$OUT/arazzo.json"
+		;;
+	to_docs_json)
+		. "${LIBSCRIPT_ROOT_DIR:-.}/src/docsjson/emit.sh"
+		handle_emit_docsjson "$OUT/docs.json"
+		;;
+	*)
+		echo "Unknown from_arazzo subcmd: $SUBCMD" >&2
 		exit 1
 		;;
 	esac
@@ -625,13 +857,13 @@ parse | emit | sync)
 			mkdir -p "${CDD_OUTPUT}"
 			out_prefix="${CDD_OUTPUT}/"
 		fi
-		for t in openapi routes classes docstrings tests mocks docsjson; do
+		for t in openapi arazzo routes classes workflows docstrings tests mocks docsjson; do
 			h="${LIBSCRIPT_ROOT_DIR:-.}/src/${t}/emit.sh"
 			if [ -f "$h" ]; then
 				# shellcheck disable=SC1090
 				. "$h"
 				ext="sh"
-				if [ "$t" = "openapi" ] || [ "$t" = "mocks" ] || [ "$t" = "docsjson" ]; then ext="json"; fi
+				if [ "$t" = "openapi" ] || [ "$t" = "arazzo" ] || [ "$t" = "mocks" ] || [ "$t" = "docsjson" ]; then ext="json"; fi
 				if [ "$t" = "docstrings" ]; then ext="md"; fi
 				if type "handle_emit_${t}" >/dev/null 2>&1; then
 					"handle_emit_${t}" "${out_prefix}emitted_${t}.${ext}"

@@ -11,7 +11,7 @@ handle_parse_server() {
 	if [ ! -f "${file_path}" ]; then return 1; fi
 
 	ast="${CDD_AST_PATH:-${LIBSCRIPT_ROOT_DIR}/ast.json}"
-	if [ ! -f "${ast}" ]; then echo '{"openapi": "3.2.0", "info": {"title": "Parsed API", "version": "0.0.3"}}' >"${ast}"; fi
+	if [ ! -f "${ast}" ]; then echo '{"openapi": "3.2.0", "info": {"title": "Parsed API", "version": "0.0.4"}}' >"${ast}"; fi
 
 	tools_json_raw=$(awk -v sq="'" '
       BEGIN { in_tools = 0; tools_data = "" }
@@ -110,8 +110,7 @@ handle_parse_server() {
       }
     ' "$router_file")
 
-	parsed_paths=$(printf '%s
-' "$tools_json_raw" | jq --argjson routes "$routes_json_raw" '
+	parsed_paths=$(printf '%s\n' "$tools_json_raw" | jq --argjson routes "$routes_json_raw" '
       . as $tools |
       if ($routes | length) > 0 then
         reduce $routes[] as $route (
@@ -167,4 +166,22 @@ handle_parse_server() {
     ')
 
 	jq --argjson newpaths "$parsed_paths" '.paths = ((.paths // {}) * ($newpaths.paths // {}))' "${ast}" >"${ast}.tmp" && mv "${ast}.tmp" "${ast}"
+
+	arazzo_srv_raw=$(awk -v sq="'" '
+		/^ARAZZO_SERVER_JSON=/ {
+			aj = substr($0, 20)
+			if (substr(aj, 1, 1) == sq) aj = substr(aj, 2)
+			if (substr(aj, length(aj), 1) == sq) aj = substr(aj, 1, length(aj) - 1)
+			gsub(sq "\\\\" sq sq, sq, aj)
+			gsub(sq "\\" sq sq, sq, aj)
+			if (aj != "\"\"") print aj
+		}
+	' "$file_path")
+
+	if [ -n "$arazzo_srv_raw" ] && printf '%s' "$arazzo_srv_raw" | jq -e '.' >/dev/null 2>&1; then
+		norm_arz=$(printf '%s' "$arazzo_srv_raw" | jq -L "${LIBSCRIPT_ROOT_DIR}/lib/_common" 'include "arazzo"; normalize_arazzo_root')
+		jq --argjson arz "$norm_arz" '. * $arz' "${ast}" >"${ast}.tmp" && mv "${ast}.tmp" "${ast}"
+	elif [ -f "${server_dir}/workflows.sh" ] && type handle_parse_workflows >/dev/null 2>&1; then
+		handle_parse_workflows "${server_dir}/workflows.sh"
+	fi
 }

@@ -888,3 +888,34 @@ func TestFsMiddleware_ChmodAndTouch(t *testing.T) {
 		t.Fatalf("chmod/touch failed: %v", err)
 	}
 }
+
+func TestRunMain_ArazzoRoundTrip(t *testing.T) {
+	tempDir := t.TempDir()
+	sdkOut := filepath.Join(tempDir, "sdk_out")
+	roundtripOut := filepath.Join(tempDir, "roundtrip.arazzo.json")
+	astPath := filepath.Join(tempDir, "ast.json")
+	t.Setenv("CDD_AST_PATH", astPath)
+
+	var exitCode int
+	exitFn := func(c int) { exitCode = c }
+
+	runMain(script, []string{"from_arazzo", "to_sdk", "-i", "tests/test_arazzo.json", "-o", sdkOut, "--no-github-actions"}, exitFn)
+	if exitCode != 0 {
+		t.Fatalf("expected exitCode 0 for from_arazzo to_sdk, got %d", exitCode)
+	}
+	if _, err := os.Stat(filepath.Join(sdkOut, "src", "workflows.sh")); err != nil {
+		t.Fatalf("expected generated workflows.sh to exist: %v", err)
+	}
+
+	runMain(script, []string{"to_arazzo", "-i", filepath.Join(sdkOut, "src", "workflows.sh"), "-o", roundtripOut}, exitFn)
+	if exitCode != 0 {
+		t.Fatalf("expected exitCode 0 for to_arazzo, got %d", exitCode)
+	}
+	data, err := os.ReadFile(roundtripOut)
+	if err != nil {
+		t.Fatalf("failed to read roundtrip.arazzo.json: %v", err)
+	}
+	if !strings.Contains(string(data), "\"orderCheckoutFlow\"") {
+		t.Errorf("expected roundtrip.arazzo.json to contain orderCheckoutFlow, got %s", string(data))
+	}
+}

@@ -61,7 +61,7 @@ handle_parse_routes() {
   ' <"${file_path}")
 
 	ast="${CDD_AST_PATH:-${LIBSCRIPT_ROOT_DIR}/ast.json}"
-	if [ ! -f "${ast}" ]; then echo '{"openapi": "3.2.0", "info": {"title": "Parsed API", "version": "0.0.3"}}' >"${ast}"; fi
+	if [ ! -f "${ast}" ]; then echo '{"openapi": "3.2.0", "info": {"title": "Parsed API", "version": "0.0.4"}}' >"${ast}"; fi
 
 	parsed_paths=$(printf '%s\n' "$all_raw" | awk '/^OP:/ { print substr($0, 4) }' | jq -s '
       group_by(.path) | map({

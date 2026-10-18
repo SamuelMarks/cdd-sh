@@ -59,13 +59,14 @@ graph TD
 The Frontend's responsibility is to read an input source and translate it into the universal CDD Intermediate Representation (IR).
 
 * **Static Analysis (AST-Driven)**: For `Shell` source code, the tool **does not** use dynamic reflection or execute the code. Instead, it reads the source files, generates an Abstract Syntax Tree (AST), and navigates the tree to extract classes, structs, functions, type signatures, API client definitions, server routes, and docstrings.
-* **OpenAPI Parsing**: For OpenAPI and JSON Schema inputs, the parser normalizes the structure, resolving internal `$ref`s and extracting properties, endpoints (client or server perspectives), and metadata into the IR.
+* **OpenAPI & Arazzo Parsing**: For OpenAPI, JSON Schema, and Arazzo 1.1.0 workflow inputs, the parser normalizes the structure, resolving internal `$ref`s and `sourceDescriptions`, and extracting properties, endpoints, multi-step workflow DAGs, runtime expressions, and metadata into the IR.
 
 ### 2. Intermediate Representation (IR)
 
-The Intermediate Representation is the crucial "glue" of the architecture. It is a normalized, language-agnostic data structure that represents concepts like:
+The Intermediate Representation is the crucial "glue" of the architecture. It is a normalized, language-agnostic data structure (`ast.json`) that represents concepts like:
 * **Models**: Entities containing typed properties, required fields, defaults, and descriptions.
 * **Endpoints / Operations**: HTTP verbs, paths, path/query/body parameters, and responses. In the IR, an operation is an abstract concept that can represent *either* a Server Route receiving a request *or* an API Client dispatching a request.
+* **Workflows (Arazzo 1.1.0)**: Multi-step API orchestration graphs (`workflows[]`, `steps[]`, `dependsOn`, `inputs`, `outputs`, `successCriteria`, `onSuccess`, `onFailure`, and `sourceDescriptions`) cross-linked to OpenAPI operations.
 * **Metadata**: Tooling hints, docstrings, and validations.
 
 By standardizing on a single IR (heavily inspired by OpenAPI / JSON Schema primitives), the system guarantees that parsing logic and emitting logic remain completely decoupled.

@@ -1,6 +1,6 @@
 #!/bin/sh
 # @file src/docsjson/emit.sh
-# @description Emits JSON documentation with shell code snippets from an OpenAPI specification.
+# @description Emits JSON documentation with shell code snippets from an OpenAPI or Arazzo specification.
 # shellcheck disable=SC2016,SC1091
 . "${LIBSCRIPT_ROOT_DIR:-.}/lib/env.sh"
 
@@ -52,6 +52,7 @@ handle_to_docs_json() {
 		--arg no_imports "$no_imports" \
 		--arg no_wrapping "$no_wrapping" '
     include "openapi";
+    include "arazzo";
     {
       "endpoints": (
         if $spec[0].paths then
@@ -81,7 +82,27 @@ handle_to_docs_json() {
           {}
         end
       )
-    }
+    } + (
+      if $spec[0].workflows and ($spec[0].workflows | length) > 0 then
+        {
+          "workflows": (
+            $spec[0].workflows | map(
+              .workflowId as $wfId |
+              get_workflow_fn_name($wfId) as $fnName |
+              (
+                (if $no_imports == "false" then ". ./workflows.sh\n\n" else "" end) +
+                (if $no_wrapping == "false" then "main() {\n" else "" end) +
+                "  " + $fnName + " \"{}\"\n" +
+                (if $no_wrapping == "false" then "}\n\nmain \"$@\"\n" else "" end)
+              ) as $wfCode |
+              { "key": $wfId, "value": $wfCode }
+            ) | from_entries
+          )
+        }
+      else
+        {}
+      end
+    )
   ')
 	if [ -n "$output_file" ]; then
 		printf "%s\n" "$res" >"$output_file"

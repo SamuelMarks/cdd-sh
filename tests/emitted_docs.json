@@ -1,0 +1,8 @@
+{
+  "endpoints": {
+    "/users": {
+      "get": "  getUsers\n",
+      "post": "  createUser\n"
+    }
+  }
+}

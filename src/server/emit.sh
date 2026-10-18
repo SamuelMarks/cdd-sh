@@ -14,6 +14,7 @@ handle_emit_server() {
 
 	{
 		printf "#!/bin/sh\n"
+		printf "# shellcheck disable=SC2016,SC1090,SC1091,SC2235\n"
 		printf "# @openapi_server_start\n"
 		emit_mcp_handler_func
 		printf "\n"
@@ -104,7 +105,22 @@ done
 for _route_file in "$(dirname "$0")"/routes/*.sh; do
   [ -f "$_route_file" ] && . "$_route_file"
 done
+
+# Load generated Arazzo workflows if present
+if [ -f "$(dirname "$0")/workflows.sh" ]; then
+  # shellcheck disable=SC1091
+  . "$(dirname "$0")/workflows.sh"
+fi
 INNER_EOF
+
+		jq -r -L "${LIBSCRIPT_ROOT_DIR}/lib/_common" '
+      include "arazzo";
+      if (.workflows and (.workflows | length) > 0) or .arazzo then
+        "ARAZZO_SERVER_JSON=" + (extract_arazzo_spec | tojson | @sh) + "\n"
+      else
+        "ARAZZO_SERVER_JSON=\"\"\n"
+      end
+    ' "${ast}"
 
 		cat <<'INNER_EOF'
 # Use socat or nc as a reliable router. It will just execute this script with a special mode.
@@ -204,11 +220,11 @@ if [ "$path" = "/mcp/message" ] && [ "$method" = "POST" ]; then
   json_id=$(echo "$body" | jq -r '.id // null')
 INNER_EOF
 
-		tools_json_sh=$(jq -c -L "${LIBSCRIPT_ROOT_DIR}/lib/_common" 'include "openapi"; emit_mcp_tools' "${ast}" | jq -R -r '@sh')
+		tools_json_sh=$(jq -c -L "${LIBSCRIPT_ROOT_DIR}/lib/_common" 'include "openapi"; include "arazzo"; (emit_mcp_tools + emit_mcp_workflow_tools)' "${ast}" | jq -R -r '@sh')
 
 		cat <<INNER_EOF
   tools_json=${tools_json_sh}
-  if response_json=\$(mcp_handle_common "\$body" "SSE Server" "0.0.3" "openapi://spec" "OpenAPI Spec" "{}" "\$tools_json" "file:///"); then
+  if response_json=\$(mcp_handle_common "\$body" "SSE Server" "0.0.4" "openapi://spec" "OpenAPI Spec" "{}" "\$tools_json" "file:///"); then
     :
   elif [ "\$json_method" = "tools/call" ]; then
         tool_name=\$(echo "\$body" | jq -r '.params.name')
@@ -219,6 +235,9 @@ INNER_EOF
         set +e
         if type "dao_\${ACTIVE_DAO}_\${tool_name}" >/dev/null 2>&1; then
           res=\$(eval "dao_\${ACTIVE_DAO}_\${tool_name} \$eval_args")
+          exit_code=\$?
+        elif type "\${tool_name}" >/dev/null 2>&1; then
+          res=\$("\${tool_name}" "\$args")
           exit_code=\$?
         else
           res="{\"error\": \"Tool \$tool_name not implemented in DAO\"}"
@@ -265,6 +284,22 @@ elif echo "$path" | grep -q "^/_mock/trigger-webhook/" && [ "$method" = "POST" ]
   found="true"
   webhook_name=$(echo "$path" | sed 's|^/_mock/trigger-webhook/||')
   response_json="{\"status\": \"dispatched\", \"webhook\": \"$webhook_name\"}"
+elif [ "$path" = "/_mock/workflows" ] && [ "$method" = "GET" ]; then
+  found="true"
+  if [ -n "${ARAZZO_SERVER_JSON:-}" ]; then
+    response_json=$(printf '%s' "${ARAZZO_SERVER_JSON}" | jq -c '{workflows: [.workflows[]? | {workflowId: .workflowId, summary: (.summary // ""), dependsOn: (.dependsOn // [])}]}')
+  else
+    response_json="{\"workflows\":[]}"
+  fi
+elif echo "$path" | grep -q "^/_mock/workflows/" && [ "$method" = "POST" ]; then
+  found="true"
+  _mock_wf_id=$(echo "$path" | sed 's|^/_mock/workflows/||')
+  _mock_wf_fn="workflow_$(printf '%s' "${_mock_wf_id}" | sed 's/\([a-z0-9]\)\([A-Z]\)/\1_\2/g' | tr '[:upper:]' '[:lower:]' | sed 's/[^a-zA-Z0-9_]/_/g')"
+  if type "${_mock_wf_fn}" >/dev/null 2>&1; then
+    response_json=$("${_mock_wf_fn}" "${body:-{}}")
+  else
+    response_json="{\"status\": \"executed\", \"workflowId\": \"${_mock_wf_id}\"}"
+  fi
 INNER_EOF
 
 		cat <<'INNER_EOF'

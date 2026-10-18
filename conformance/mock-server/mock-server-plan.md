@@ -6,14 +6,14 @@ This document provides a granular, step-by-step checklist to implement an orthog
 
 ## Phase 1: Dependencies & Project Setup
 - [x] Review the package manifest (`package.json`, `Cargo.toml`, `requirements.txt`, `go.mod`, etc.) for the target language.
-- [x] Identify the idiomatic Faker library (awk) (e.g., `@faker-js/faker`, `fake`, `faker`, `gofakeit`).
-- [x] Identify the idiomatic DB ORM / Query Builder (jq + fs) (e.g., `Prisma`/`Drizzle`, `SeaORM`/`Diesel`, `SQLAlchemy`, `GORM`).
-- [x] Add the Faker library as a dependency (src/server/seeder/faker.awk).
-- [x] Add the ORM / Query Builder as a dependency (jq scripts).
+- [ ] Identify the idiomatic Faker library (e.g., `@faker-js/faker`, `fake`, `faker`, `gofakeit`).
+- [ ] Identify the idiomatic DB ORM / Query Builder (e.g., `Prisma`/`Drizzle`, `SeaORM`/`Diesel`, `SQLAlchemy`, `GORM`).
+- [ ] Add the Faker library as a dependency.
+- [ ] Add the ORM / Query Builder as a dependency.
 - [x] Add the appropriate database drivers:
-  - [x] Standard driver (filesystem) (e.g., PostgreSQL).
-  - [x] Ephemeral provisioning driver if required (/tmp dirs) (e.g., SQLite for flexible ORMs, or testcontainer utilities for strict ORMs like `diesel`).
-- [x] Update dependency lockfiles. (N/A for shell)
+  - [ ] Standard driver (e.g., PostgreSQL).
+  - [ ] Ephemeral provisioning driver if required (e.g., SQLite for flexible ORMs, or testcontainer utilities for strict ORMs like `diesel`).
+- [ ] Update dependency lockfiles.
 
 ## Phase 2: Architectural Scaffolding & DAO Abstraction
 - [x] Create a `repository` or `dao` module/namespace to isolate data access logic.
@@ -21,7 +21,7 @@ This document provides a granular, step-by-step checklist to implement an orthog
 - [x] **100% Doc Coverage:** Write docstrings for all DAO interfaces, explaining the input, output, and behavior of every data access method.
 - [x] **Stub DAOs (Traditional Scaffold):**
   - [x] Implement "Stub" versions of the DAOs.
-  - [x] Fill these with traditional scaffold bodies: they should return empty responses, static defaults, or explicitly raise `NotImplementedError` (or `unimplemented!()`, `panic!("Not implemented")` depending on the language).
+  - [x] Fill these with traditional scaffold bodies — they should return empty responses, static defaults, or explicitly raise `NotImplementedError` (or `unimplemented!()`, `panic!("Not implemented")` depending on the language).
 - [x] **Concrete DAOs (Actual Data Stuff):**
   - [x] Implement the DB-backed DAOs using the chosen ORM/Query Builder.
   - [x] **100% Doc Coverage:** Document the concrete and stub DAO implementations.
@@ -46,7 +46,7 @@ This document provides a granular, step-by-step checklist to implement an orthog
 - [x] Initialize the Faker library instance and configure it with the appropriate locale.
 - [x] Create mapping functions/factories for domain entities (emails, names, phone numbers).
 - [x] **100% Doc Coverage:** Document every mapping function.
-- [x] **Relational Data - [x] **Relational Data & Dependency Graph Generation:** Dependency Graph Generation:**
+- [ ] **Relational Data & Dependency Graph Generation:**
   - [x] Map out the topological sort order of the CDD domain models (e.g., `User` -> `Post` -> `Comment`).
   - [x] Implement an `Entity Pool` to cache the IDs of successfully generated records in memory.
   - [x] Program the factories to randomly select valid foreign keys from the parent's `Entity Pool` to maintain referential integrity.
@@ -57,8 +57,8 @@ This document provides a granular, step-by-step checklist to implement an orthog
 ## Phase 5: CLI & Server Entrypoint Integration (Orthogonal Options)
 - [x] Open the main server entrypoint and CLI parser configuration.
 - [x] Register **two independent boolean flags** for the server CLI command:
-  - [x] `--ephemeral`: Triggers the Concrete DAOs and overrides `DATABASE_URL` with a throwaway database.
-  - [x] `--seed`: Runs the fake data seeder on startup (requires a concrete DB connection).
+  - [x] `--ephemeral` — Triggers the Concrete DAOs and overrides `DATABASE_URL` with a throwaway database.
+  - [x] `--seed` — Runs the fake data seeder on startup (requires a concrete DB connection).
 - [x] **100% Doc Coverage:** Add help-text documentation to both `--ephemeral` and `--seed` flags within the CLI parser.
 - [x] Modify the startup lifecycle to handle the resulting multi-tier states orthogonally:
   1. **Resolve DAOs:** Determine if the server should use Stub DAOs or Concrete DAOs.
@@ -77,7 +77,7 @@ This document provides a granular, step-by-step checklist to implement an orthog
   - [x] Run the native documentation linter (e.g., `rustdoc`, `typedoc`, `pydocstyle`) against the *generated output* to verify zero missing docstrings.
   - [x] **100% Test Coverage:** The generated server suite must include the comprehensive category tests (Phase 7). Run the native test coverage tool (e.g., `tarpaulin`, `jest --coverage`, `pytest --cov`) against the *generated output* and verify line and branch coverage is strictly at 100%.
 - [x] **Strict Error Handling:** Ensure the generator emits code where all DB and seeder operations return managed errors.
-  - [x] *(Rust-specific)* The generator must emit a single Error Enum with `derive_more`. The generator must NEVER emit `.unwrap()`, `.expect()`, `panic!()`, or `anyhow`. (Note: `unimplemented!()` is acceptable *only* inside the emitted Stub DAOs).
+  - [x] *(Rust-specific)* The generator must emit a single Error Enum with `derive_more`. The generator must NEVER emit `.unwrap()`, `.expect()`, `panic!()`, or `anyhow`. (Note — `unimplemented!()` is acceptable *only* inside the emitted Stub DAOs).
 - [x] Ensure the generator emits configuration to run code linters on the strictest settings against the generated code and resolves all warnings.
 
 ## Phase 7: Test Categories & Topologically Sorted Execution
@@ -86,7 +86,7 @@ This document provides a granular, step-by-step checklist to implement an orthog
   - [x] **Category 2: Stub Tests:** Run against `start` (no DB). Verify the server safely yields `NotImplementedError` or 501 HTTP status codes for all endpoints.
   - [x] **Category 3: Stateful Ephemeral Tests:** Run against `start --ephemeral`. Verifies writing to a clean slate.
   - [x] **Category 4: Seeded Mock Tests:** Run against `start --ephemeral --seed`. Verifies reading and traversing pre-populated relational graphs.
-- [x] **Topologically Sorted Integration Testing - [x] **Topologically Sorted Integration Testing & Teardown:** Teardown:**
+- [ ] **Topologically Sorted Integration Testing & Teardown:**
   - [x] When writing tests for the empty Stateful Ephemeral mode, structure the test execution order (or setup fixtures) topologically to prevent cascading false-negative failures.
   - [x] *Creation Tier 1 (Independent):* Test `User` CRUD endpoints first.
   - [x] *Creation Tier 2 (Dependent):* Use the client SDK to successfully create `User`s, then test `Post` CRUD endpoints.
@@ -97,7 +97,7 @@ This document provides a granular, step-by-step checklist to implement an orthog
   - [x] **Clean State Validation:** Implement a final sanity check at the end of the test suite (e.g., asserting `COUNT(*) == 0` for all involved tables, or confirming that the ephemeral tables have been fully dropped) to guarantee isolation between runs.
 - [x] Open the integration tests inside the `client-sdk` directory.
   - [x] Implement a setup/teardown fixture that spawns the server subprocess based on the requested Test Category.
-- [x] **100% Test Coverage:** Ensure the SDK tests comprehensively cover all 4 categories (Stub, Ephemeral, Seeded, Unit).
+  - [x] **100% Test Coverage:** Ensure the SDK tests comprehensively cover all 4 categories (Stub, Ephemeral, Seeded, Unit).
 - [x] Open the integration tests inside the `client-cli` directory.
   - [x] Write E2E CLI tests asserting the Client CLI accurately handles 501s from the Stub server.
   - [x] Write E2E CLI tests asserting the Client CLI can query and format the rich relational graph exposed by the `--ephemeral --seed` server.
@@ -112,7 +112,7 @@ This document provides a granular, step-by-step checklist to implement an orthog
 ## Phase 9: Contract Conformance & Bi-Directional Synchronization
 - [x] **Unified CLI Toolset:**
   - [x] Expose a CLI entrypoint (e.g., `cdd` or `cdd-lang`) that supports standard subcommands common to `cdd-go`, `cdd-php`, and `cdd-python`.
-  - [x] Implement `from_openapi` with sub-targets for generating specific artifacts: `to_sdk`, `to_sdk_cli`, and `to_server`.
+  - [x] Implement `from_openapi` with sub-targets for generating specific artifacts — `to_sdk`, `to_sdk_cli`, and `to_server`.
   - [x] Implement utility subcommands such as `to_docs_json`, `serve_json_rpc`, and `mcp`.
 - [x] **Reverse Generation (`to_openapi`):**
   - [x] Implement `to_openapi` to dynamically emit the actual runtime OpenAPI/MCP specification, derived directly from the generated source code (route handlers, DAOs, classes, and models).
@@ -130,7 +130,7 @@ This document provides a granular, step-by-step checklist to implement an orthog
 
 ### CORS Configuration
 - [x] Implement a global CORS middleware.
-- [x] Default to permissive configuration (e.g., `Access-Control-Allow-Origin: *`, allow all standard methods and headers) to facilitate frictionless local UI development.
+- [x] Default to permissive configuration (e.g., `Access-Control-Allow-Origin — *`, allow all standard methods and headers) to facilitate frictionless local UI development.
 - [x] **100% Test Coverage:** Write a test verifying that preflight `OPTIONS` requests and standard cross-origin requests succeed.
 
 ### Request Validation & Logging

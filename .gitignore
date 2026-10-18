@@ -88,6 +88,8 @@ missing_*.txt
 
 # Explicitly track tests directory and root test files to prevent accidental ignores
 !/tests/test_*.sh
+!/tests/emitted_*
+!/tests/mocks.sh
 !/test_array_validation.sh
 !/test_*.go
 \n.bin_mock/\n
@@ -114,7 +116,7 @@ temp-sh-*
 temp-petstore.json
 
 cdd-sh-native
-mocks.sh
+/mocks.sh
 out_dir/
 tmp_out*/
 tmp_sdk_test*/

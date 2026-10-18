@@ -10,13 +10,13 @@ repos:
     hooks:
       - id: shfmt
         args: ["-w", "-s", "-ln", "bash"]
-        exclude: '.*_out\.sh$|^emitted_.*\.sh$'
+        exclude: '.*_out\.sh$|(^|/)emitted_.*\.sh$|(^|/)mocks\.sh$'
 
   - repo: https://github.com/shellcheck-py/shellcheck-py
     rev: v0.11.0.1
     hooks:
       - id: shellcheck
-        exclude: '.*_out\.sh$|^emitted_.*\.sh$'
+        exclude: '.*_out\.sh$|(^|/)emitted_.*\.sh$|(^|/)mocks\.sh$'
 
   - repo: local
     hooks:
@@ -63,6 +63,19 @@ repos:
         entry: bash -c 'if [ "${RUN_SLOW_TESTS:-0}" = "1" ]; then sh tests/test_generated_petstore_server.sh openapi ../petstore_oas3.json; else echo "Skipped due to RUN_SLOW_TESTS"; fi'
         language: system
         pass_filenames: false
+
+      - id: arazzo-conformance
+        name: Arazzo 1.1.0 Conformance & Bidirectional Workflow Test
+        entry: sh tests/test_arazzo.sh
+        language: system
+        pass_filenames: false
+
+      - id: ml-framework-snapshots-grounding
+        name: Explicit Grounding via ../ml-framework-snapshots
+        entry: sh tests/test_ml_framework_snapshots.sh
+        language: system
+        pass_filenames: false
+
       - id: make-build-wasm
         name: Build WASM
         entry: make build_wasm

@@ -197,6 +197,8 @@ sh tests/test_mcp.sh
 sh tests/test_server.sh
 sh tests/test_sdk.sh
 sh tests/test_serve_rpc.sh
+sh tests/test_arazzo.sh
+sh tests/test_ml_framework_snapshots.sh
 
 if [ "${RUN_SLOW_TESTS:-0}" = "1" ]; then
 	sh tests/test_petstore_sdks.sh

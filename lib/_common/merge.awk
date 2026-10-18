@@ -3,7 +3,7 @@
 # into an existing shell script while preserving custom user functions and edits.
 BEGIN {
   while ((getline < new_file) > 0) {
-    if ($0 ~ /^# @(function|class|webhook) /) {
+    if ($0 ~ /^# @(function|class|webhook|workflow) /) {
       block_name = $3
       in_new = 1
       new_blocks[block_name] = $0 "\n"
@@ -18,7 +18,7 @@ BEGIN {
   }
 }
 {
-  if ($0 ~ /^# @(function|class|webhook) /) {
+  if ($0 ~ /^# @(function|class|webhook|workflow) /) {
     block_name = $3
     in_old = 1
     if (block_name in new_blocks) {

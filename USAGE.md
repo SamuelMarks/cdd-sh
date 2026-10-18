@@ -11,8 +11,14 @@
   - Required: `-i <spec.json>` or `--input-dir <dir>`
   - Optional: `-o <output_dir>`, `--no-github-actions`, `--no-installable-package`, `--tests`
 - `to_openapi`: Reverse-engineer source code to OpenAPI
-  - Options: `-f <code_file.sh>`, `-o <out.json>`
-- `to_docs_json`: Emit documentation data structure for rendering API catalogs.
+  - Options: `-i <code_file_or_dir>`, `-o <out.json>`
+- `from_arazzo`: Target workflow code generation (SDK, CLI, Server, Docs) from Arazzo 1.1.0
+  - Targets: `to_sdk`, `to_sdk_cli`, `to_server`, `to_arazzo`, `to_docs_json`
+  - Required: `-i <arazzo.json>` or `--input-dir <dir>`
+  - Optional: `-o <output_dir>`, `--no-github-actions`, `--no-installable-package`, `--tests`
+- `to_arazzo`: Reverse-engineer source code (`workflows.sh`, `sdk-cli`, `server.sh`, `test_routes.sh`) to Arazzo 1.1.0
+  - Options: `-i <code_file_or_dir>`, `-o <arazzo.json>`
+- `to_docs_json`: Emit documentation data structure for rendering API and workflow catalogs.
   - Options: `-i <spec.json>`, `-o <docs.json>`, `--no-imports`, `--no-wrapping`
 
 ## Env Vars

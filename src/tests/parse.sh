@@ -55,6 +55,22 @@ handle_parse_tests() {
             else . end
           )
         )
+      else . end |
+      if (.workflows == null or (.workflows | length) == 0) then
+        .arazzo = (.arazzo // "1.1.0") |
+        .workflows = [
+          {
+            workflowId: "testSuiteWorkflow",
+            summary: "Synthesized workflow from test suite invocations",
+            steps: (
+              $tests | to_entries | map({
+                stepId: ("step_" + .key),
+                operationId: .key,
+                successCriteria: [{"condition": "$statusCode == 200"}]
+              })
+            )
+          }
+        ]
       else . end
     ' "${ast}" >"${ast}.tmp" && mv "${ast}.tmp" "${ast}"
 	fi

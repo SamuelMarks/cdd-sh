@@ -21,6 +21,6 @@ handle_emit_openapi() {
 	if [ "${CDD_EMIT_SWAGGER2:-0}" = "1" ] || [ "${is_swagger}" = "1" ]; then
 		jq -f "${LIBSCRIPT_ROOT_DIR}/src/openapi/openapi2swagger.jq" "${CDD_AST_PATH:-${LIBSCRIPT_ROOT_DIR}/ast.json}" >"${file_path}"
 	else
-		jq '.' "${CDD_AST_PATH:-${LIBSCRIPT_ROOT_DIR}/ast.json}" >"${file_path}"
+		jq 'del(.arazzo, .arazzoSelf, .arazzoInfo, .sourceDescriptions, .workflows, .arazzoComponents, .arazzoExtensions, .x_resolved_sources)' "${CDD_AST_PATH:-${LIBSCRIPT_ROOT_DIR}/ast.json}" >"${file_path}"
 	fi
 }

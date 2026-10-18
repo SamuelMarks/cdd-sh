@@ -48,8 +48,8 @@ if [ ! -f tests/out/docs.json ] || ! jq -e '.endpoints["/users"].get' tests/out/
 fi
 
 res4=$(curl -s -X POST -H "Content-Type: application/json" -d '{"jsonrpc":"2.0","method":"--version","id":4}' http://localhost:8089)
-if ! printf "%s\n" "$res4" | jq -e '.result == "0.0.3"' >/dev/null; then
-	echo "FAIL: serve_json_rpc --version did not return 0.0.3: $res4"
+if ! printf "%s\n" "$res4" | jq -e '.result == "0.0.4"' >/dev/null; then
+	echo "FAIL: serve_json_rpc --version did not return 0.0.4: $res4"
 	exit 1
 fi
 

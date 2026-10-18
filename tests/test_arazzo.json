@@ -1,0 +1,318 @@
+{
+  "arazzo": "1.1.0",
+  "$self": "https://example.com/workflows/petstore.arazzo.json",
+  "info": {
+    "title": "Petstore Arazzo Workflow Suite",
+    "summary": "End-to-end pet adoption and order workflows",
+    "description": "Comprehensive Arazzo 1.1.0 workflow specification exercising all 108 conformance features.",
+    "version": "1.1.0",
+    "x-info-meta": "verified"
+  },
+  "sourceDescriptions": [
+    {
+      "name": "petstore",
+      "url": "./test.json",
+      "type": "openapi",
+      "x-sd-meta": "primary"
+    },
+    {
+      "name": "events",
+      "url": "./asyncapi.json",
+      "type": "asyncapi"
+    }
+  ],
+  "workflows": [
+    {
+      "workflowId": "authSetupFlow",
+      "summary": "Authenticate user session",
+      "description": "Obtains an authentication token for downstream workflows.",
+      "inputs": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string",
+            "default": "alice"
+          },
+          "role": {
+            "type": "string",
+            "enum": ["admin", "user"],
+            "default": "admin"
+          }
+        },
+        "required": ["username"]
+      },
+      "parameters": [
+        {
+          "reference": "$components.parameters.traceHeader",
+          "value": "trace-auth-001"
+        }
+      ],
+      "steps": [
+        {
+          "stepId": "loginStep",
+          "description": "Invoke getUsers or auth endpoint to issue token",
+          "operationId": "getUsers",
+          "timeout": 5000,
+          "parameters": [
+            {
+              "name": "limit",
+              "in": "query",
+              "value": "10"
+            },
+            {
+              "name": "X-User",
+              "in": "header",
+              "value": "$inputs.username"
+            }
+          ],
+          "successCriteria": [
+            {
+              "condition": "$statusCode == 200",
+              "type": "simple"
+            },
+            {
+              "context": "$statusCode",
+              "condition": "^20[014]$",
+              "type": "regex"
+            }
+          ],
+          "onSuccess": [
+            {
+              "reference": "$components.successActions.terminateSuccess"
+            }
+          ],
+          "onFailure": [
+            {
+              "reference": "$components.failureActions.retryTransient"
+            }
+          ],
+          "outputs": {
+            "sessionToken": "$response.body.token",
+            "firstId": {
+              "context": "$response.body",
+              "selector": "/id",
+              "type": {
+                "type": "jsonpointer",
+                "version": "rfc6901"
+              }
+            }
+          },
+          "x-step-meta": "auth-entry"
+        }
+      ],
+      "successActions": [
+        {
+          "name": "wfEnd",
+          "type": "end"
+        }
+      ],
+      "failureActions": [
+        {
+          "name": "wfFailEnd",
+          "type": "end"
+        }
+      ],
+      "outputs": {
+        "authToken": "$steps.loginStep.outputs.sessionToken",
+        "itemId": "$steps.loginStep.outputs.firstId"
+      },
+      "x-wf-meta": "core-auth"
+    },
+    {
+      "workflowId": "orderCheckoutFlow",
+      "summary": "Create order and publish event",
+      "description": "Chains authentication, item creation via operationPath, payload replacements, and async event notification.",
+      "dependsOn": ["authSetupFlow"],
+      "inputs": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string",
+            "default": "alice"
+          },
+          "itemName": {
+            "type": "string",
+            "default": "adoptable-puppy"
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1,
+            "default": 2
+          }
+        },
+        "required": ["username", "itemName"]
+      },
+      "steps": [
+        {
+          "stepId": "createOrderStep",
+          "description": "Create user order via operationPath with payload replacements",
+          "operationPath": "{$sourceDescriptions.petstore.url}#/paths/~1users/post",
+          "parameters": [
+            {
+              "name": "Authorization",
+              "in": "header",
+              "value": "Bearer {$workflows.authSetupFlow.outputs.authToken}"
+            }
+          ],
+          "requestBody": {
+            "contentType": "application/json",
+            "payload": {
+              "name": "$inputs.itemName",
+              "meta": {
+                "buyer": "placeholder",
+                "qty": 1
+              }
+            },
+            "replacements": [
+              {
+                "target": "/meta/buyer",
+                "targetSelectorType": {
+                  "type": "jsonpointer",
+                  "version": "rfc6901"
+                },
+                "value": "$inputs.username"
+              },
+              {
+                "target": "$.meta.qty",
+                "targetSelectorType": {
+                  "type": "jsonpath",
+                  "version": "rfc9535"
+                },
+                "value": "$inputs.quantity"
+              }
+            ]
+          },
+          "successCriteria": [
+            {
+              "condition": "$statusCode == 200 && $method == 'POST'"
+            },
+            {
+              "context": "$response.body",
+              "condition": "$.status",
+              "type": {
+                "type": "jsonpath",
+                "version": "rfc9535"
+              }
+            }
+          ],
+          "onSuccess": [
+            {
+              "name": "gotoNotify",
+              "type": "goto",
+              "stepId": "notifyChannelStep",
+              "criteria": [
+                {
+                  "condition": "$statusCode == 200"
+                }
+              ]
+            }
+          ],
+          "onFailure": [
+            {
+              "name": "retryCreate",
+              "type": "retry",
+              "retryAfter": 0,
+              "retryLimit": 2,
+              "criteria": [
+                {
+                  "condition": "$statusCode >= 500"
+                }
+              ]
+            }
+          ],
+          "outputs": {
+            "createdOrderId": {
+              "context": "$response.body",
+              "selector": "$.id",
+              "type": "jsonpath"
+            },
+            "echoBuyer": "$request.body#/meta/buyer"
+          }
+        },
+        {
+          "stepId": "notifyChannelStep",
+          "description": "Publish order event over AsyncAPI channel",
+          "channelPath": "/orders/created",
+          "action": "send",
+          "correlationId": "$steps.createOrderStep.outputs.createdOrderId",
+          "dependsOn": ["createOrderStep"],
+          "parameters": [
+            {
+              "name": "X-Correlation-Id",
+              "in": "header",
+              "value": "$steps.createOrderStep.outputs.createdOrderId"
+            }
+          ],
+          "requestBody": {
+            "contentType": "application/json",
+            "payload": {
+              "orderId": "$steps.createOrderStep.outputs.createdOrderId"
+            }
+          },
+          "successCriteria": [
+            {
+              "condition": "$statusCode == 200"
+            }
+          ],
+          "outputs": {
+            "deliveryChannel": "$message.payload.channel",
+            "corrHeader": "$message.header.X-Correlation-Id",
+            "sourceUrl": "$sourceDescriptions.petstore.url",
+            "selfUri": "$self"
+          }
+        }
+      ],
+      "outputs": {
+        "orderId": "$steps.createOrderStep.outputs.createdOrderId",
+        "buyer": "$steps.createOrderStep.outputs.echoBuyer",
+        "channel": "$steps.notifyChannelStep.outputs.deliveryChannel",
+        "selfDoc": "$steps.notifyChannelStep.outputs.selfUri"
+      }
+    }
+  ],
+  "components": {
+    "inputs": {
+      "UserCredentials": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": ["username"]
+      }
+    },
+    "parameters": {
+      "traceHeader": {
+        "name": "X-Trace-Id",
+        "in": "header",
+        "value": "default-trace"
+      }
+    },
+    "successActions": {
+      "terminateSuccess": {
+        "name": "terminateSuccess",
+        "type": "end",
+        "criteria": [
+          {
+            "condition": "$statusCode == 200"
+          }
+        ]
+      }
+    },
+    "failureActions": {
+      "retryTransient": {
+        "name": "retryTransient",
+        "type": "retry",
+        "retryAfter": 0,
+        "retryLimit": 2,
+        "criteria": [
+          {
+            "condition": "$statusCode >= 500"
+          }
+        ]
+      }
+    }
+  },
+  "x-arazzo-root-ext": "enabled"
+}

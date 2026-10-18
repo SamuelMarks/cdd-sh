@@ -158,6 +158,41 @@ Options:
   --help, -h                     Show this help message.
 ```
 
+#### `from_arazzo`
+```shell
+$ cdd-sh from_arazzo --help
+Usage:
+  cdd-sh from_arazzo [subcmd] [options]
+
+Subcommands:
+  to_sdk          Generate a client workflow SDK (src/workflows.sh + linked routes/classes).
+  to_sdk_cli      Generate a client workflow SDK and CLI runner (bin/sdk-cli).
+  to_server       Generate server with stateful workflow mocks and E2E workflow tests.
+  to_arazzo       Extract Arazzo 1.1.0 spec from an existing codebase.
+  to_docs_json    Extract documentation data structure with workflow snippets.
+
+Options:
+  -i, --input <arazzo.json>      Path to the Arazzo 1.1.0 specification file.
+  --input-dir <dir>              Path to a directory containing Arazzo and OpenAPI specification files.
+  -o, --output <target_dir>      Destination path for generation.
+  --no-github-actions            Skip generating GitHub Actions CI workflow.
+  --no-installable-package       Skip generating package definitions.
+  --tests                        Generate E2E workflow tests alongside the code.
+  --help, -h                     Show this help message.
+```
+
+#### `to_arazzo`
+```shell
+$ cdd-sh to_arazzo --help
+Usage:
+  cdd-sh to_arazzo [options]
+
+Options:
+  -i, --input <code_file_or_dir> Path to the workflow script, CLI, server, or directory to parse.
+  -o, --output <arazzo.json>     Destination path for the generated Arazzo 1.1.0 spec.
+  --help, -h                     Show this help message.
+```
+
 #### `to_docs_json`
 ```shell
 $ cdd-sh to_docs_json --help
