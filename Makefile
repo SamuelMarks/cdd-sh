@@ -1,4 +1,6 @@
-.PHONY: test build build_wasm clean docs install_deps
+.PHONY: test build build_wasm clean docs install_deps deps
+
+deps: install_deps
 
 install_deps:
 	@for pkg in jq awk curl; do \

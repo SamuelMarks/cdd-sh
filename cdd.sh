@@ -16,15 +16,19 @@ print_help() {
 	printf "  to_openapi      Generate an OpenAPI specification from source code.\n"
 	printf "  from_arazzo     Generate workflow SDK, CLI, or Server from an Arazzo 1.1.0 specification.\n"
 	printf "  to_arazzo       Generate an Arazzo 1.1.0 specification from source code or tests.\n"
+	printf "  sync            Synchronize source code, tests, docs, and specifications in-place.\n"
 	printf "  to_docs_json    Generate JSON documentation with code snippets for an OpenAPI/Arazzo specification.\n"
 	printf "  serve_json_rpc  Expose CLI interface as a JSON-RPC server.\n"
-	printf "  mcp             Run as an MCP server over stdio.\n\n"
+	printf "  mcp             Run as an MCP server over stdio.\n"
+	printf "  parse           Parse a source file or specification into the unified AST (ast.json).\n"
+	printf "  emit            Emit a target source file or specification from the unified AST (ast.json).\n\n"
 	printf "Options:\n"
 	printf "  --help, -h      Show this help message\n"
 	printf "  --version, -v   Show version information\n\n"
 	printf "Examples:\n"
 	printf "  cdd-sh to_openapi -i <code_file_or_dir> -o <spec.json>\n"
 	printf "  cdd-sh to_arazzo -i <code_file_or_dir> -o <arazzo.json>\n"
+	printf "  cdd-sh sync [--truth <source>] -i <code_file_or_dir> -o <target_dir>\n"
 	printf "  cdd-sh serve_json_rpc [-p|--port <port>] [-l|--listen <ip>]\n"
 	printf "  cdd-sh to_docs_json [--no-imports] [--no-wrapping] -i <spec.json> -o <docs.json>\n"
 	printf "  cdd-sh from_openapi [subcmd] -i <spec.json> -o <target_dir> [--no-github-actions] [--no-installable-package] [--tests]\n"
@@ -45,7 +49,7 @@ print_help_from_openapi() {
 	printf "  to_docs_json    Extract documentation data structure.\n\n"
 	printf "Options:\n"
 	printf "  -i, --input <spec>             Path to the OpenAPI specification file.\n"
-	printf "  --input-dir <dir>              Path to a directory containing OpenAPI specification files.\n"
+	printf "  -d, --input-dir <dir>          Path to a directory containing OpenAPI specification files.\n"
 	printf "  -o, --output <target_dir>      Destination path for generation.\n"
 	printf "  --no-github-actions            Skip generating GitHub Actions CI workflow.\n"
 	printf "  --no-installable-package       Skip generating package definitions (e.g., package.json).\n"
@@ -55,6 +59,59 @@ print_help_from_openapi() {
 	printf "  --strict-validation            (Server) Enforce strict OpenAPI request validation.\n"
 	printf "  --enforce-auth                 (Server) Enforce authentication for all endpoints.\n"
 	printf "  --start-auth-server            (Server) Start an embedded authentication server.\n"
+	printf "  --help, -h                     Show this help message.\n"
+	exit 1
+}
+
+# print_help_from_openapi_to_sdk prints usage instructions for the from_openapi to_sdk subcommand and exits.
+# @param none
+print_help_from_openapi_to_sdk() {
+	printf "Usage:\n  cdd-sh from_openapi to_sdk [options]\n\n"
+	printf "Description:\n  Generate a POSIX Shell client SDK (src/routes.sh, src/classes.sh, src/sdk.sh) from an OpenAPI specification.\n\n"
+	printf "Options:\n"
+	printf "  -i, --input <spec>             Path to the OpenAPI specification file.\n"
+	printf "  -d, --input-dir <dir>          Path to a directory containing OpenAPI specification files.\n"
+	printf "  -o, --output <target_dir>      Destination path for generation.\n"
+	printf "  --no-github-actions            Skip generating GitHub Actions CI workflow.\n"
+	printf "  --no-installable-package       Skip generating package definitions.\n"
+	printf "  --tests                        Generate route unit tests and mocks alongside the SDK.\n"
+	printf "  --help, -h                     Show this help message.\n"
+	exit 1
+}
+
+# print_help_from_openapi_to_sdk_cli prints usage instructions for the from_openapi to_sdk_cli subcommand and exits.
+# @param none
+print_help_from_openapi_to_sdk_cli() {
+	printf "Usage:\n  cdd-sh from_openapi to_sdk_cli [options]\n\n"
+	printf "Description:\n  Generate a POSIX Shell CLI and MCP stdio client (bin/sdk-cli) from an OpenAPI specification.\n\n"
+	printf "Options:\n"
+	printf "  -i, --input <spec>             Path to the OpenAPI specification file.\n"
+	printf "  -d, --input-dir <dir>          Path to a directory containing OpenAPI specification files.\n"
+	printf "  -o, --output <target_dir>      Destination path for generation.\n"
+	printf "  --no-github-actions            Skip generating GitHub Actions CI workflow.\n"
+	printf "  --no-installable-package       Skip generating package definitions.\n"
+	printf "  --tests                        Generate CLI tests alongside the code.\n"
+	printf "  --help, -h                     Show this help message.\n"
+	exit 1
+}
+
+# print_help_from_openapi_to_server prints usage instructions for the from_openapi to_server subcommand and exits.
+# @param none
+print_help_from_openapi_to_server() {
+	printf "Usage:\n  cdd-sh from_openapi to_server [options]\n\n"
+	printf "Description:\n  Generate a POSIX Shell HTTP and MCP SSE server (src/server.sh, src/routes/router.sh, src/models/*.sh, src/mocks/*.sh) from an OpenAPI specification.\n\n"
+	printf "Options:\n"
+	printf "  -i, --input <spec>             Path to the OpenAPI specification file.\n"
+	printf "  -d, --input-dir <dir>          Path to a directory containing OpenAPI specification files.\n"
+	printf "  -o, --output <target_dir>      Destination path for generation.\n"
+	printf "  --no-github-actions            Skip generating GitHub Actions CI workflow.\n"
+	printf "  --no-installable-package       Skip generating package definitions.\n"
+	printf "  --tests                        Generate server integration tests.\n"
+	printf "  --ephemeral                    Use ephemeral in-memory/temp SQLite storage.\n"
+	printf "  --seed                         Seed the database with Faker data on startup.\n"
+	printf "  --strict-validation            Enforce strict OpenAPI request validation.\n"
+	printf "  --enforce-auth                 Enforce authentication for all endpoints.\n"
+	printf "  --start-auth-server            Start an embedded authentication server.\n"
 	printf "  --help, -h                     Show this help message.\n"
 	exit 1
 }
@@ -82,11 +139,59 @@ print_help_from_arazzo() {
 	printf "  to_docs_json    Extract documentation data structure with workflow snippets.\n\n"
 	printf "Options:\n"
 	printf "  -i, --input <arazzo.json>      Path to the Arazzo 1.1.0 specification file.\n"
-	printf "  --input-dir <dir>              Path to a directory containing Arazzo and OpenAPI specification files.\n"
+	printf "  -d, --input-dir <dir>          Path to a directory containing Arazzo and OpenAPI specification files.\n"
 	printf "  -o, --output <target_dir>      Destination path for generation.\n"
 	printf "  --no-github-actions            Skip generating GitHub Actions CI workflow.\n"
 	printf "  --no-installable-package       Skip generating package definitions.\n"
 	printf "  --tests                        Generate E2E workflow tests alongside the code.\n"
+	printf "  --help, -h                     Show this help message.\n"
+	exit 1
+}
+
+# print_help_from_arazzo_to_sdk prints usage instructions for the from_arazzo to_sdk subcommand and exits.
+# @param none
+print_help_from_arazzo_to_sdk() {
+	printf "Usage:\n  cdd-sh from_arazzo to_sdk [options]\n\n"
+	printf "Description:\n  Generate a POSIX Shell workflow SDK (src/workflows.sh and linked OpenAPI routes/classes) from an Arazzo 1.1.0 specification.\n\n"
+	printf "Options:\n"
+	printf "  -i, --input <arazzo.json>      Path to the Arazzo 1.1.0 specification file.\n"
+	printf "  -d, --input-dir <dir>          Path to a directory containing Arazzo and OpenAPI specification files.\n"
+	printf "  -o, --output <target_dir>      Destination path for generation.\n"
+	printf "  --no-github-actions            Skip generating GitHub Actions CI workflow.\n"
+	printf "  --no-installable-package       Skip generating package definitions.\n"
+	printf "  --tests                        Generate E2E workflow tests alongside the SDK.\n"
+	printf "  --help, -h                     Show this help message.\n"
+	exit 1
+}
+
+# print_help_from_arazzo_to_sdk_cli prints usage instructions for the from_arazzo to_sdk_cli subcommand and exits.
+# @param none
+print_help_from_arazzo_to_sdk_cli() {
+	printf "Usage:\n  cdd-sh from_arazzo to_sdk_cli [options]\n\n"
+	printf "Description:\n  Generate a POSIX Shell workflow CLI runner and MCP workflow server (bin/sdk-cli) from an Arazzo 1.1.0 specification.\n\n"
+	printf "Options:\n"
+	printf "  -i, --input <arazzo.json>      Path to the Arazzo 1.1.0 specification file.\n"
+	printf "  -d, --input-dir <dir>          Path to a directory containing Arazzo and OpenAPI specification files.\n"
+	printf "  -o, --output <target_dir>      Destination path for generation.\n"
+	printf "  --no-github-actions            Skip generating GitHub Actions CI workflow.\n"
+	printf "  --no-installable-package       Skip generating package definitions.\n"
+	printf "  --tests                        Generate CLI workflow tests alongside the code.\n"
+	printf "  --help, -h                     Show this help message.\n"
+	exit 1
+}
+
+# print_help_from_arazzo_to_server prints usage instructions for the from_arazzo to_server subcommand and exits.
+# @param none
+print_help_from_arazzo_to_server() {
+	printf "Usage:\n  cdd-sh from_arazzo to_server [options]\n\n"
+	printf "Description:\n  Generate a POSIX Shell server with stateful Arazzo workflow mock endpoints (/_mock/workflows) and E2E workflow tests.\n\n"
+	printf "Options:\n"
+	printf "  -i, --input <arazzo.json>      Path to the Arazzo 1.1.0 specification file.\n"
+	printf "  -d, --input-dir <dir>          Path to a directory containing Arazzo and OpenAPI specification files.\n"
+	printf "  -o, --output <target_dir>      Destination path for generation.\n"
+	printf "  --no-github-actions            Skip generating GitHub Actions CI workflow.\n"
+	printf "  --no-installable-package       Skip generating package definitions.\n"
+	printf "  --tests                        Generate E2E workflow tests alongside the server.\n"
 	printf "  --help, -h                     Show this help message.\n"
 	exit 1
 }
@@ -98,6 +203,19 @@ print_help_to_arazzo() {
 	printf "Options:\n"
 	printf "  -i, --input <code_file_or_dir> Path to the workflow script, CLI, server, or directory to parse.\n"
 	printf "  -o, --output <arazzo.json>     Destination path for the generated Arazzo 1.1.0 spec.\n"
+	printf "  --help, -h                     Show this help message.\n"
+	exit 1
+}
+
+# print_help_sync prints usage instructions for the sync subcommand and exits.
+# @param none
+print_help_sync() {
+	printf "Usage:\n  cdd-sh sync [options]\n\n"
+	printf "Description:\n  Synchronize POSIX Shell source artifacts, documentation, tests, mocks, and OpenAPI/Arazzo specifications from a designated source of truth.\n\n"
+	printf "Options:\n"
+	printf "  --truth <source>               Source of truth (server, routes, classes, workflows, cli, openapi, arazzo, docstrings, tests, mocks; default: server).\n"
+	printf "  -i, --input <file>             Path to the input source of truth file.\n"
+	printf "  -o, --output <target_dir>      Destination directory for synchronized artifacts.\n"
 	printf "  --help, -h                     Show this help message.\n"
 	exit 1
 }
@@ -120,8 +238,8 @@ print_help_to_docs_json() {
 print_help_serve_json_rpc() {
 	printf "Usage:\n  cdd-sh serve_json_rpc [options]\n\n"
 	printf "Options:\n"
-	printf "  --port <port>                  Port to listen on (default: 8082).\n"
-	printf "  --listen <ip>                  IP to listen on (default: 0.0.0.0).\n"
+	printf "  -p, --port <port>              Port to listen on (default: 8082).\n"
+	printf "  -l, --listen <ip>              IP to listen on (default: 0.0.0.0).\n"
 	printf "  --help, -h                     Show this help message.\n"
 	exit 1
 }
@@ -132,6 +250,52 @@ print_help_mcp() {
 	printf "Usage:\n  cdd-sh mcp [options]\n\n"
 	printf "Description:\n"
 	printf "  Run the cdd-sh CLI as a Model Context Protocol (MCP) server over standard I/O.\n\n"
+	printf "Options:\n"
+	printf "  --help, -h                     Show this help message.\n"
+	exit 1
+}
+
+# print_help_parse prints usage instructions for the parse subcommand and exits.
+# @param none
+print_help_parse() {
+	printf "Usage:\n  cdd-sh parse <type> <file>\n\n"
+	printf "Description:\n  Parse a specification or POSIX Shell artifact into the unified AST (ast.json).\n\n"
+	printf "Types:\n"
+	printf "  openapi                        Parse an OpenAPI 3.x or Swagger 2.0 JSON specification.\n"
+	printf "  arazzo                         Parse an Arazzo 1.0.1 / 1.1.0 JSON specification.\n"
+	printf "  routes                         Parse a client routes script (routes.sh).\n"
+	printf "  classes                        Parse a schema data models script (classes.sh).\n"
+	printf "  workflows                      Parse an Arazzo workflow orchestrator script (workflows.sh).\n"
+	printf "  server                         Parse a generated HTTP/MCP server script (server.sh).\n"
+	printf "  cli                            Parse a generated SDK CLI script (bin/sdk-cli).\n"
+	printf "  functions                      Parse standalone utility functions (functions.sh).\n"
+	printf "  docstrings                     Parse Markdown API documentation (docs.md).\n"
+	printf "  tests                          Parse route unit test scripts (test_routes.sh).\n"
+	printf "  mocks                          Parse mock response JSON payloads (mocks.json).\n\n"
+	printf "Options:\n"
+	printf "  --help, -h                     Show this help message.\n"
+	exit 1
+}
+
+# print_help_emit prints usage instructions for the emit subcommand and exits.
+# @param none
+print_help_emit() {
+	printf "Usage:\n  cdd-sh emit <type> <file>\n\n"
+	printf "Description:\n  Emit a specification or POSIX Shell artifact from the unified AST (ast.json).\n\n"
+	printf "Types:\n"
+	printf "  openapi                        Emit an OpenAPI 3.2.0 (or Swagger 2.0 via CDD_EMIT_SWAGGER2=1) JSON specification.\n"
+	printf "  arazzo                         Emit an Arazzo 1.1.0 JSON specification.\n"
+	printf "  routes                         Emit a client HTTP routes script (routes.sh).\n"
+	printf "  classes                        Emit a schema data models & validation script (classes.sh).\n"
+	printf "  workflows                      Emit an Arazzo workflow orchestrator script (workflows.sh).\n"
+	printf "  sdk                            Emit an MCP & Auth client SDK script (sdk.sh).\n"
+	printf "  server                         Emit an HTTP & MCP SSE server entrypoint script (server.sh).\n"
+	printf "  cli                            Emit a client CLI & workflow runner script (bin/sdk-cli).\n"
+	printf "  functions                      Emit standalone utility functions (functions.sh).\n"
+	printf "  docstrings                     Emit Markdown API documentation (docs.md).\n"
+	printf "  docsjson                       Emit documentation code-snippet JSON (docs.json).\n"
+	printf "  tests                          Emit route contract test scripts (test_routes.sh).\n"
+	printf "  mocks                          Emit mock response JSON and curl override scripts (mocks.json, mocks.sh).\n\n"
 	printf "Options:\n"
 	printf "  --help, -h                     Show this help message.\n"
 	exit 1
@@ -160,18 +324,35 @@ done
 
 if [ "$has_help" -eq 1 ]; then
 	case "${CMD}" in
-	from_openapi) print_help_from_openapi ;;
+	from_openapi)
+		case "${1:-}" in
+		to_sdk) print_help_from_openapi_to_sdk ;;
+		to_sdk_cli) print_help_from_openapi_to_sdk_cli ;;
+		to_server) print_help_from_openapi_to_server ;;
+		*) print_help_from_openapi ;;
+		esac
+		;;
 	to_openapi) print_help_to_openapi ;;
-	from_arazzo) print_help_from_arazzo ;;
+	from_arazzo)
+		case "${1:-}" in
+		to_sdk) print_help_from_arazzo_to_sdk ;;
+		to_sdk_cli) print_help_from_arazzo_to_sdk_cli ;;
+		to_server) print_help_from_arazzo_to_server ;;
+		*) print_help_from_arazzo ;;
+		esac
+		;;
 	to_arazzo) print_help_to_arazzo ;;
+	sync) print_help_sync ;;
 	to_docs_json) print_help_to_docs_json ;;
 	serve_json_rpc) print_help_serve_json_rpc ;;
 	mcp) print_help_mcp ;;
+	parse) print_help_parse ;;
+	emit) print_help_emit ;;
 	*) print_help ;;
 	esac
 fi
 
-if [ "${CMD}" = "-version" ] || [ "${CMD}" = "--version" ]; then
+if [ "${CMD}" = "-version" ] || [ "${CMD}" = "--version" ] || [ "${CMD}" = "-v" ] || [ "${CMD}" = "-V" ]; then
 	echo "$VERSION"
 	exit 0
 fi
@@ -187,7 +368,7 @@ parse_global_args() {
 			export CDD_TRUTH="$2"
 			shift 2
 			;;
-		-i | --input)
+		-i | -f | --input)
 			export CDD_INPUT="$2"
 			shift 2
 			;;
@@ -195,15 +376,15 @@ parse_global_args() {
 			export CDD_OUTPUT="$2"
 			shift 2
 			;;
-		--input-dir)
+		-d | --input-dir)
 			export CDD_INPUT_DIR="$2"
 			shift 2
 			;;
-		--port)
+		-p | --port)
 			export CDD_PORT="$2"
 			shift 2
 			;;
-		--listen)
+		-l | --listen)
 			export CDD_LISTEN="$2"
 			shift 2
 			;;
@@ -241,10 +422,15 @@ parse_global_args() {
 			;;
 		--no-installable-package)
 			export CDD_NO_INSTALLABLE="1"
+			export CDD_NO_INSTALLABLE_PACKAGE="1"
 			shift 1
 			;;
-		--tests)
+		-t | --tests)
 			export CDD_TESTS="1"
+			shift 1
+			;;
+		-m | --mcp)
+			export CDD_MCP="1"
 			shift 1
 			;;
 		*)
@@ -592,10 +778,13 @@ to_docs_json)
 from_openapi)
 	if [ "$#" -eq 0 ]; then print_help; fi
 	SUBCMD="to_sdk"
-	if [ "$1" != "-i" ] && [ "$1" != "--input-dir" ] && [ "$1" != "-o" ] && [ "$1" != "--no-github-actions" ] && [ "$1" != "--no-installable-package" ] && [ "$1" != "--tests" ] && [ "$1" != "--ephemeral" ] && [ "$1" != "--seed" ] && [ "$1" != "--strict-validation" ] && [ "$1" != "--enforce-auth" ] && [ "$1" != "--start-auth-server" ]; then
+	case "${1:-}" in
+	-*) ;;
+	*)
 		SUBCMD="$1"
 		shift
-	fi
+		;;
+	esac
 	parse_global_args "$@"
 	ensure_output_dir
 	IN="${CDD_INPUT:-}"
@@ -728,10 +917,13 @@ from_openapi)
 from_arazzo)
 	if [ "$#" -eq 0 ]; then print_help_from_arazzo; fi
 	SUBCMD="to_sdk"
-	if [ "$1" != "-i" ] && [ "$1" != "--input-dir" ] && [ "$1" != "-o" ] && [ "$1" != "--no-github-actions" ] && [ "$1" != "--no-installable-package" ] && [ "$1" != "--tests" ]; then
+	case "${1:-}" in
+	-*) ;;
+	*)
 		SUBCMD="$1"
 		shift
-	fi
+		;;
+	esac
 	parse_global_args "$@"
 	ensure_output_dir
 	IN="${CDD_INPUT:-}"
@@ -830,6 +1022,19 @@ parse | emit | sync)
 		parse_global_args "$@"
 		TYPE="${CDD_TRUTH:-server}"
 		FILE="${CDD_INPUT:-}"
+		if [ -d "${FILE}" ]; then
+			if [ -f "${FILE}/server.sh" ]; then
+				FILE="${FILE}/server.sh"
+			elif [ -f "${FILE}/src/server.sh" ]; then
+				FILE="${FILE}/src/server.sh"
+			elif [ -f "${FILE}/routes.sh" ]; then
+				TYPE="${CDD_TRUTH:-routes}"
+				FILE="${FILE}/routes.sh"
+			elif [ -f "${FILE}/src/routes.sh" ]; then
+				TYPE="${CDD_TRUTH:-routes}"
+				FILE="${FILE}/src/routes.sh"
+			fi
+		fi
 	else
 		TYPE="${1:-}"
 		FILE="${2:-}"
@@ -852,24 +1057,32 @@ parse | emit | sync)
 
 	if [ "${CMD}" = "sync" ]; then
 		"handle_parse_${TYPE}" "${FILE}"
-		out_prefix=""
-		if [ -n "${CDD_OUTPUT:-}" ]; then
-			mkdir -p "${CDD_OUTPUT}"
-			out_prefix="${CDD_OUTPUT}/"
-		fi
-		for t in openapi arazzo routes classes workflows docstrings tests mocks docsjson; do
-			h="${LIBSCRIPT_ROOT_DIR:-.}/src/${t}/emit.sh"
-			if [ -f "$h" ]; then
-				# shellcheck disable=SC1090
-				. "$h"
-				ext="sh"
-				if [ "$t" = "openapi" ] || [ "$t" = "arazzo" ] || [ "$t" = "mocks" ] || [ "$t" = "docsjson" ]; then ext="json"; fi
-				if [ "$t" = "docstrings" ]; then ext="md"; fi
-				if type "handle_emit_${t}" >/dev/null 2>&1; then
-					"handle_emit_${t}" "${out_prefix}emitted_${t}.${ext}"
-				fi
+		case "${CDD_OUTPUT:-}" in
+		*.json)
+			. "${LIBSCRIPT_ROOT_DIR:-.}/src/openapi/emit.sh"
+			handle_emit_openapi "${CDD_OUTPUT}"
+			;;
+		*)
+			out_prefix=""
+			if [ -n "${CDD_OUTPUT:-}" ]; then
+				mkdir -p "${CDD_OUTPUT}"
+				out_prefix="${CDD_OUTPUT}/"
 			fi
-		done
+			for t in openapi arazzo routes classes workflows docstrings tests mocks docsjson; do
+				h="${LIBSCRIPT_ROOT_DIR:-.}/src/${t}/emit.sh"
+				if [ -f "$h" ]; then
+					# shellcheck disable=SC1090
+					. "$h"
+					ext="sh"
+					if [ "$t" = "openapi" ] || [ "$t" = "arazzo" ] || [ "$t" = "mocks" ] || [ "$t" = "docsjson" ]; then ext="json"; fi
+					if [ "$t" = "docstrings" ]; then ext="md"; fi
+					if type "handle_emit_${t}" >/dev/null 2>&1; then
+						"handle_emit_${t}" "${out_prefix}emitted_${t}.${ext}"
+					fi
+				fi
+			done
+			;;
+		esac
 	else
 		"handle_${CMD}_${TYPE}" "${FILE}"
 	fi

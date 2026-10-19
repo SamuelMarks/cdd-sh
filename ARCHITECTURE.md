@@ -1,7 +1,7 @@
 # cdd-sh Architecture
 
 [![License](https://img.shields.io/badge/license-Apache--2.0%20OR%20MIT-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![CI/CD](https://github.com/offscale/cdd-sh/workflows/CI/badge.svg)](https://github.com/offscale/cdd-sh/actions)
+[![CI](https://github.com/SamuelMarks/cdd-sh/actions/workflows/ci.yml/badge.svg)](https://github.com/SamuelMarks/cdd-sh/actions)
 [![Doc Coverage](https://img.shields.io/badge/doc_coverage-100%25-brightgreen.svg)]()
 [![Test Coverage](https://img.shields.io/badge/test_coverage-100%25-brightgreen.svg)]()
 
@@ -21,7 +21,7 @@ graph TD
 
     subgraph Frontend [Parsers]
         A[OpenAPI .yaml/.json]:::endpoint --> P1(OpenAPI Parser):::frontend
-        B[LANGUAGE Models / Source]:::endpoint --> P2(LANGUAGE Parser):::frontend
+        B[POSIX Shell Models / Source]:::endpoint --> P2(POSIX Shell Parser):::frontend
         C[Server Routes / Frameworks]:::endpoint --> P3(Framework Parser):::frontend
         D[Client SDKs / ORMs]:::endpoint --> P4(Ext Parser):::frontend
     end
@@ -32,7 +32,7 @@ graph TD
 
     subgraph Backend [Emitters]
         E1(OpenAPI Emitter):::backend --> X[OpenAPI .yaml/.json]:::endpoint
-        E2(LANGUAGE Emitter):::backend --> Y[LANGUAGE Models / Structs]:::endpoint
+        E2(POSIX Shell Emitter):::backend --> Y[POSIX Shell Models / Structs]:::endpoint
         E3(Server Emitter):::backend --> Z[Server Routes / Controllers]:::endpoint
         E4(Client Emitter):::backend --> W[Client SDKs / API Calls]:::endpoint
         E5(Data Emitter):::backend --> V[ORM Models / CLI Parsers]:::endpoint

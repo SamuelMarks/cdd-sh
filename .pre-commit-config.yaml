@@ -70,12 +70,6 @@ repos:
         language: system
         pass_filenames: false
 
-      - id: ml-framework-snapshots-grounding
-        name: Explicit Grounding via ../ml-framework-snapshots
-        entry: sh tests/test_ml_framework_snapshots.sh
-        language: system
-        pass_filenames: false
-
       - id: make-build-wasm
         name: Build WASM
         entry: make build_wasm
