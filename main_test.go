@@ -317,6 +317,9 @@ func TestRunMain(t *testing.T) {
 
 	// Test syntax error
 	runMain("((((", nil, exitFunc)
+	if exitCode != 1 {
+		t.Errorf("expected exitCode 1 for syntax error, got %d", exitCode)
+	}
 
 	// Test successful exit
 	exitCode = -1
@@ -328,28 +331,36 @@ func TestRunMain(t *testing.T) {
 	// Test StatHandler and OpenHandler via file existence check and sourcing
 	exitCode = -1
 	runMain("[ -f cdd.sh ] && . cdd.sh help", nil, exitFunc)
+	if exitCode != 1 {
+		t.Errorf("expected exitCode 1 when sourcing cdd.sh help, got %d", exitCode)
+	}
 
 	// Test fallback to default StatHandler and OpenHandler
+	exitCode = -1
 	runMain("[ -f nonexistent_file_12345 ]", nil, exitFunc)
+	if exitCode != 1 {
+		t.Errorf("expected exitCode 1 for nonexistent file test, got %d", exitCode)
+	}
+
+	exitCode = -1
 	runMain(". nonexistent_file_12345", nil, exitFunc)
+	if exitCode == -1 || exitCode == 0 {
+		t.Errorf("expected non-zero exitCode when sourcing nonexistent file, got %d", exitCode)
+	}
 
 	// Test error status error
+	exitCode = -1
 	runMain("exit 42", nil, exitFunc)
 	if exitCode != 42 {
 		t.Errorf("expected exit status 42, got %d", exitCode)
 	}
 
-	// Test general error
+	// Test positional arguments forwarding into script ($1, $2)
 	exitCode = -1
-	runMain("echo test", []string{"--invalid-flag-that-causes-interp-to-fail"}, exitFunc)
-	// Actually we already have TestRunMain_Errors to test that `called` is true when we pass this.
-	// Wait, runMain does not pass the flags directly to interp parsing options, it passes to interp.Params(args).
-	// To cause an interp error that isn't ExitStatus, we need a call to a command that returns a standard error,
-	// e.g. a command not found returns ExitStatus(127).
-	// A handler like `builtinCallHandler` returning a standard error will do it. But it always returns nil.
-	// `expand.ListEnviron` doesn't error.
-	// Since triggering a non-ExitStatus runtime error naturally in sh/v3 is difficult without custom handlers that we don't control, we'll accept less than 100% or just leave the syntax error.
-	// Let's remove the exitCode check for syntax error which returns early.
+	runMain("[ \"$1\" = \"arg_one\" ] && [ \"$2\" = \"arg_two\" ] || exit 99", []string{"arg_one", "arg_two"}, exitFunc)
+	if exitCode != -1 {
+		t.Errorf("expected positional args to match without calling exitFunc, got %d", exitCode)
+	}
 }
 
 func TestReadWriteNopCloser(t *testing.T) {
@@ -453,12 +464,7 @@ func TestFsMiddleware_Errors(t *testing.T) {
 		t.Errorf("expected cp to fail when src does not exist")
 	}
 
-	// cp error writing dst
-	dir1 := filepath.Join(tempDir, "dir1")
-	os.Mkdir(dir1, 0555) // Read-only dir
-	_, _, err = runMwScript(t, fsMiddleware, tempDir, "cp file1.txt dir1/file1.txt")
-	// On macOS/Linux, writing to read-only dir fails if root, maybe we should just write to a directory path
-	// e.g. cp file1.txt file1.txt/dst
+	// cp error writing dst when parent is a regular file
 	_, _, err = runMwScript(t, fsMiddleware, tempDir, "cp file1.txt file1.txt/dst")
 	if err == nil {
 		t.Errorf("expected cp to fail when dst is invalid")
@@ -753,19 +759,48 @@ func TestRunMain_FatalError(t *testing.T) {
 	}
 }
 
-func TestInitWasi(t *testing.T) {
-	oldGOOS := runtimeGOOS
-	defer func() { runtimeGOOS = oldGOOS }()
-	runtimeGOOS = "wasip1"
+type errWriter struct{}
 
-	oldWorkaround := workaroundBase
-	defer func() { workaroundBase = oldWorkaround }()
+func (errWriter) Write(_ []byte) (int, error) {
+	return 0, os.ErrInvalid
+}
 
-	workaroundBase = ""
-	initWasi()
+func TestRunMain_NewRunnerError(t *testing.T) {
+	oldNewRunner := newRunner
+	defer func() { newRunner = oldNewRunner }()
+	newRunner = func(_ ...interp.RunnerOption) (*interp.Runner, error) {
+		return nil, os.ErrInvalid
+	}
 
-	if workaroundBase != "" {
-		t.Errorf("expected workaroundBase to be '', got %q", workaroundBase)
+	exitCode := -1
+	runMain("echo test", nil, func(c int) { exitCode = c })
+	if exitCode != 1 {
+		t.Errorf("expected exitCode 1 when newRunner fails, got %d", exitCode)
+	}
+}
+
+func TestFsMiddleware_CatStdinError(t *testing.T) {
+	var stderr bytes.Buffer
+	runner, err := interp.New(
+		interp.StdIO(strings.NewReader("hello"), errWriter{}, &stderr),
+		interp.ExecHandlers(fsMiddleware),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	f1, _ := syntax.NewParser().Parse(strings.NewReader("cat"), "")
+	if err := runner.Run(context.Background(), f1); err == nil {
+		t.Errorf("expected cat with failing stdout to fail")
+	}
+
+	runner2, _ := interp.New(
+		interp.StdIO(strings.NewReader("hello"), errWriter{}, &stderr),
+		interp.ExecHandlers(fsMiddleware),
+	)
+	f2, _ := syntax.NewParser().Parse(strings.NewReader("cat -"), "")
+	if err := runner2.Run(context.Background(), f2); err == nil {
+		t.Errorf("expected cat - with failing stdout to fail")
 	}
 }
 
@@ -879,6 +914,21 @@ func TestFsMiddleware_ChmodAndTouch(t *testing.T) {
 	// chmod missing operand
 	if _, _, err := runMwScript(t, fsMiddleware, tempDir, "chmod +x"); err == nil {
 		t.Errorf("expected chmod with < 3 args to fail")
+	}
+
+	// chmod invalid mode
+	if _, _, err := runMwScript(t, fsMiddleware, tempDir, "chmod invalid_mode touched.txt"); err == nil {
+		t.Errorf("expected chmod with invalid mode to fail")
+	}
+
+	// chmod missing target file
+	if _, _, err := runMwScript(t, fsMiddleware, tempDir, "chmod 0755 nonexistent_target.txt"); err == nil {
+		t.Errorf("expected chmod on nonexistent file to fail")
+	}
+
+	// chmod octal and -w modes
+	if _, _, err := runMwScript(t, fsMiddleware, tempDir, "chmod -w touched.txt && chmod 0644 touched.txt"); err != nil {
+		t.Fatalf("chmod -w and 0644 failed: %v", err)
 	}
 
 	// chmod success via hostCommandValidator + fsMiddleware

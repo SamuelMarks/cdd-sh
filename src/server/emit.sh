@@ -14,6 +14,8 @@ handle_emit_server() {
 
 	{
 		printf "#!/bin/sh\n"
+		printf "# @file %s\n" "${output_file##*/}"
+		printf "# @description Auto-generated HTTP and MCP SSE server.\n"
 		printf "# shellcheck disable=SC2016,SC1090,SC1091,SC2235\n"
 		printf "# @openapi_server_start\n"
 		emit_mcp_handler_func
@@ -28,6 +30,7 @@ INNER_EOF
 			cat <<'INNER_EOF'
 EPHEMERAL=false
 SEED=false
+HANDLER_MODE=false
 STRICT_VALIDATION="${CDD_STRICT_VALIDATION:-false}"
 ENFORCE_AUTH="${CDD_ENFORCE_AUTH:-false}"
 START_AUTH_SERVER="${CDD_START_AUTH_SERVER:-false}"
@@ -35,6 +38,7 @@ for arg in "$@"; do
   case "$arg" in
     --ephemeral) EPHEMERAL=true ;;
     --seed) SEED=true ;;
+    --handler) HANDLER_MODE=true ;;
     --strict-validation) STRICT_VALIDATION=true ;;
     --enforce-auth) ENFORCE_AUTH=true ;;
     --start-auth-server) START_AUTH_SERVER=true ;;
@@ -124,7 +128,9 @@ INNER_EOF
 
 		cat <<'INNER_EOF'
 # Use socat or nc as a reliable router. It will just execute this script with a special mode.
-if [ "${1:-}" != "--handler" ]; then
+if [ "${1:-}" != "--handler" ] && [ "${HANDLER_MODE:-false}" != "true" ]; then
+  # shellcheck disable=SC2064
+  trap "rm -f /tmp/cdd_sse_$$.sh /tmp/cdd_sse_pipe_$$; [ \"${EPHEMERAL:-false}\" = \"true\" ] && rm -rf \"/tmp/cdd_ephemeral_db_$$\"" EXIT INT TERM
 echo "Starting SSE Server on port $PORT..."
 echo "To test: curl -N http://localhost:$PORT/mcp/sse"
   cat << 'SH_EOF' > /tmp/cdd_sse_$$.sh
@@ -321,6 +327,11 @@ INNER_EOF
           if [ -z "$body" ] || [ "$body" = "{}" ] || ! printf "%s" "$body" | jq -e 'type == "object" and (keys | length) > 0' >/dev/null 2>&1; then
             response_json="{\"error\": \"400 Bad Request: missing fields\"}"
             found="validation_failed"
+          elif [ -n "${matched_req_model:-}" ] && type "validate_${matched_req_model}" >/dev/null 2>&1; then
+            if ! "validate_${matched_req_model}" "$body" >/dev/null 2>&1; then
+              response_json="{\"error\": \"400 Bad Request: validation failed for ${matched_req_model}\"}"
+              found="validation_failed"
+            fi
           else
             for _model_file in "$(dirname "$0")"/models/model_*.sh; do
               if [ -f "$_model_file" ]; then
@@ -366,12 +377,5 @@ INNER_EOF
 		printf "# @openapi_server_end\n"
 	} >"${output_file}.tmp"
 
-	if [ -f "${output_file}" ]; then
-		awk -v new_file="${output_file}.tmp" -f "${LIBSCRIPT_ROOT_DIR}/lib/_common/merge.awk" <"${output_file}" >"${output_file}.merged"
-		mv "${output_file}.merged" "${output_file}"
-		rm -f "${output_file}.tmp"
-	else
-		mv "${output_file}.tmp" "${output_file}"
-	fi
-	chmod +x "${output_file}"
+	merge_or_move_emitted_file "${output_file}" "1"
 }

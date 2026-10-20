@@ -4,7 +4,7 @@ if .components and .components.schemas then
   .components.schemas | to_entries[] | .key as $className | .value as $schema |
   
   "# @class \($className)\n" +
-  (if $schema.description then "# @description \($schema.description)\n" else "" end) +
+  (if $schema.description then "# @description \($schema.description)\n" else "# @description Generated model for \($className)\n" end) +
   (
     if $schema.properties then
       ([$schema.properties | to_entries[] | 
@@ -23,6 +23,7 @@ if .components and .components.schemas then
       "# @required \($schema.required | join(", "))\n"
     else "" end
   ) +
+  "# @param $1: payload - JSON payload string to validate.\n" +
   "validate_\($className)() {\n" +
   "  _payload_\($className)=\"${1:-}\"\n" +
   "  [ -z \"${_payload_\($className)}\" ] && return 1\n" +
@@ -33,28 +34,27 @@ if .components and .components.schemas then
         (if $schema.required and ($schema.required | contains([$propKey])) then true else false end) as $isRequired |
         
         "  _tmp_val_\($className)=\"$(_get_prop \"${_payload_\($className)}\" \"\($propKey)\")\"\n" +
-        (if $propVal.default != null then "  if [ -z \"$_tmp_val_\($className)\" ] || [ \"$_tmp_val_\($className)\" = \"null\" ]; then _tmp_val_\($className)=\($propVal.default | tojson | tojson); fi\n" else "" end) +
+        (if $propVal.default != null then "  if [ -z \"$_tmp_val_\($className)\" ] || [ \"$_tmp_val_\($className)\" = \"null\" ]; then _tmp_val_\($className)=\($propVal.default | tostring | @sh); fi\n" else "" end) +
         (if $isRequired then "  [ -z \"$_tmp_val_\($className)\" ] || [ \"$_tmp_val_\($className)\" = \"null\" ] && return 1\n" else "" end) +
         "  if [ -n \"$_tmp_val_\($className)\" ] && [ \"$_tmp_val_\($className)\" != \"null\" ]; then\n" +
         "    :\n" +
         (if $propVal.type == "integer" or $propVal.type == "number" then
-          (if $propVal.minimum != null then "    [ \"$_tmp_val_\($className)\" -lt \($propVal.minimum) ] && return 1\n" else "" end) +
-          (if $propVal.maximum != null then "    [ \"$_tmp_val_\($className)\" -gt \($propVal.maximum) ] && return 1\n" else "" end) +
-          (if $propVal.exclusiveMinimum != null then "    [ \"$_tmp_val_\($className)\" -le \($propVal.exclusiveMinimum) ] && return 1\n" else "" end) +
-          (if $propVal.exclusiveMaximum != null then "    [ \"$_tmp_val_\($className)\" -ge \($propVal.exclusiveMaximum) ] && return 1\n" else "" end)
+          (if $propVal.minimum != null then "    printf '%s' \"$_tmp_val_\($className)\" | jq -e 'tonumber >= \($propVal.minimum)' >/dev/null 2>&1 || return 1\n" else "" end) +
+          (if $propVal.maximum != null then "    printf '%s' \"$_tmp_val_\($className)\" | jq -e 'tonumber <= \($propVal.maximum)' >/dev/null 2>&1 || return 1\n" else "" end) +
+          (if $propVal.exclusiveMinimum != null then "    printf '%s' \"$_tmp_val_\($className)\" | jq -e 'tonumber > \($propVal.exclusiveMinimum)' >/dev/null 2>&1 || return 1\n" else "" end) +
+          (if $propVal.exclusiveMaximum != null then "    printf '%s' \"$_tmp_val_\($className)\" | jq -e 'tonumber < \($propVal.exclusiveMaximum)' >/dev/null 2>&1 || return 1\n" else "" end)
         else "" end) +
         (if $propVal.type == "string" then
           "    _len_\($className)=\"${#_tmp_val_\($className)}\"\n" +
-          "    _len_\($className)=$((_len_\($className) - 2))\n" +
           (if $propVal.minLength != null then "    [ \"$_len_\($className)\" -lt \($propVal.minLength) ] && return 1\n" else "" end) +
           (if $propVal.maxLength != null then "    [ \"$_len_\($className)\" -gt \($propVal.maxLength) ] && return 1\n" else "" end) +
-          (if $propVal.pattern != null then "    printf '%s' \"$_tmp_val_\($className)\" | jq -e 'test(\"\($propVal.pattern)\")' >/dev/null || return 1\n" else "" end) +
-          (if $propVal.format == "email" then "    printf '%s' \"$_tmp_val_\($className)\" | jq -e 'test(\"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\\\.[A-Za-z]{2,}$\")' >/dev/null || return 1\n" else "" end) +
-          (if $propVal.format == "uri" then "    printf '%s' \"$_tmp_val_\($className)\" | jq -e 'test(\"^https?://\")' >/dev/null || return 1\n" else "" end)
+          (if $propVal.pattern != null then "    printf '%s' \"$_tmp_val_\($className)\" | jq -R -e 'test(\"\($propVal.pattern)\")' >/dev/null || return 1\n" else "" end) +
+          (if $propVal.format == "email" then "    printf '%s' \"$_tmp_val_\($className)\" | jq -R -e 'test(\"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\\\.[A-Za-z]{2,}$\")' >/dev/null || return 1\n" else "" end) +
+          (if $propVal.format == "uri" then "    printf '%s' \"$_tmp_val_\($className)\" | jq -R -e 'test(\"^https?://\")' >/dev/null || return 1\n" else "" end)
         else "" end) +
         (if $propVal.enum then
           "    _enum_ok_\($className)=0\n" +
-          "    " + ([$propVal.enum[] | "if [ \"$_tmp_val_\($className)\" = \(.|tojson|tojson) ]; then _enum_ok_\($className)=1; fi"] | join("\n    ")) + "\n" +
+          "    " + ([$propVal.enum[] | "if [ \"$_tmp_val_\($className)\" = \(tostring | @sh) ]; then _enum_ok_\($className)=1; fi"] | join("\n    ")) + "\n" +
           "    [ \"$_enum_ok_\($className)\" -eq 0 ] && return 1\n"
         else "" end) +
         (if $propVal.type == "array" then

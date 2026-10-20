@@ -12,22 +12,23 @@ handle_emit_routes() {
 	if [ ! -f "${ast}" ]; then return 1; fi
 
 	{
-		printf "#!/bin/sh\n# Auto-generated API Client\nset -eu\n\n"
+		printf "#!/bin/sh\n# @file %s\n# @description Auto-generated API Client\nset -eu\n\n" "${file_path##*/}"
 		BASE_URL=$(jq -r '.servers[0] | if .variables then reduce (.variables | to_entries[]) as $var (.url; gsub("\\{" + $var.key + "\\}"; $var.value.default)) else .url end // ""' "${ast}")
 		printf "BASE_URL=\"\${BASE_URL:-%s}\"\nOAUTH_TOKEN=\"\${OAUTH_TOKEN:-}\"\nAPI_KEY=\"\${API_KEY:-}\"\n\n" "${BASE_URL}"
-		printf "# urlencode \n_urlencode() {\n  printf '%%s' \"\$1\" | jq -s -R -r '@uri'\n}\n\n"
-		printf "# quote_sh safely escapes a string for eval.\n_quote_sh() {\n  printf '%%s' \"\$1\" | jq -s -R -r '@sh'\n}\n\n"
+		printf "# _urlencode percent-encodes a string for URLs.\n# @param \$1: value - Raw string to URL-encode.\n_urlencode() {\n  printf '%%s' \"\$1\" | jq -s -R -r '@uri'\n}\n\n"
+		printf "# _quote_sh safely escapes a string for shell evaluation.\n# @param \$1: value - Raw string to escape.\n_quote_sh() {\n  printf '%%s' \"\$1\" | jq -s -R -r '@sh'\n}\n\n"
 
-		printf "# serialize matrix\n_serialize_matrix() {\n  if [ \"\$3\" = \"true\" ]; then\n    printf \"%%s\" \"\$2\" | awk -F, -v n=\"\$1\" '{for(i=1;i<=NF;i++) printf \";\"n\"=\"\$i}'\n  else\n    printf \";%%s=%%s\" \"\$1\" \"\$2\"\n  fi\n}\n\n"
+		printf "# _serialize_matrix formats a parameter using OpenAPI matrix style.\n# @param \$1: name - Parameter name.\n# @param \$2: value - Parameter value.\n# @param \$3: explode - Whether to explode comma-separated items.\n_serialize_matrix() {\n  if [ \"\$3\" = \"true\" ]; then\n    printf \"%%s\" \"\$2\" | awk -F, -v n=\"\$1\" '{for(i=1;i<=NF;i++) printf \";\"n\"=\"\$i}'\n  else\n    printf \";%%s=%%s\" \"\$1\" \"\$2\"\n  fi\n}\n\n"
 
-		printf "# serialize label\n_serialize_label() {\n  if [ \"\$3\" = \"true\" ]; then\n    printf \"%%s\" \"\$2\" | awk -F, '{for(i=1;i<=NF;i++) printf \".\"\$i}'\n  else\n    printf \".%%s\" \"\$2\"\n  fi\n}\n\n"
+		printf "# _serialize_label formats a parameter using OpenAPI label style.\n# @param \$1: name - Parameter name.\n# @param \$2: value - Parameter value.\n# @param \$3: explode - Whether to explode comma-separated items.\n_serialize_label() {\n  if [ \"\$3\" = \"true\" ]; then\n    printf \"%%s\" \"\$2\" | awk -F, '{for(i=1;i<=NF;i++) printf \".\"\$i}'\n  else\n    printf \".%%s\" \"\$2\"\n  fi\n}\n\n"
 
 		jq -r '
       if .webhooks then
         .webhooks | to_entries[] | .key as $name | .value | to_entries[] | .key as $method | .value |
         "# @webhook \($name)\n" +
         "# @method \($method | ascii_upcase)\n" +
-        (if .summary then "# @description \(.summary)\n" else "" end) +
+        (if .summary then "# @description \(.summary)\n" else "# @description Webhook handler for \($name)\n" end) +
+        "# @param none\n" +
         "handle_webhook_\($name | gsub("-";"_"))() {\n" +
         "  echo \"[WEBHOOK] \($name)\"\n" +
         "}\n\n"
@@ -193,11 +194,5 @@ handle_emit_routes() {
 
 	} >"${file_path}.tmp"
 
-	if [ -f "${file_path}" ]; then
-		awk -v new_file="${file_path}.tmp" -f "${LIBSCRIPT_ROOT_DIR}/lib/_common/merge.awk" <"${file_path}" >"${file_path}.merged"
-		mv "${file_path}.merged" "${file_path}"
-		rm -f "${file_path}.tmp"
-	else
-		mv "${file_path}.tmp" "${file_path}"
-	fi
+	merge_or_move_emitted_file "${file_path}" "0"
 }

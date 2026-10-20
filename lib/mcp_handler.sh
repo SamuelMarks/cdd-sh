@@ -4,6 +4,7 @@
 # shellcheck disable=SC1091
 . "${LIBSCRIPT_ROOT_DIR:-.}/lib/env.sh"
 
+# @begin_embed_mcp_handler
 # mcp_handle_common dispatches standard MCP JSON-RPC 2.0 methods and prints the JSON response.
 # @param $1: req - Raw JSON-RPC request string.
 # @param $2: srv_name - Server name reported in initialize.
@@ -13,6 +14,7 @@
 # @param $6: res_text - Primary resource text content.
 # @param $7: tools_json - JSON array string of MCP tool definitions.
 # @param $8: root_uri - Workspace root URI.
+# @return Returns 0 if the method was handled, or 1 if unhandled.
 mcp_handle_common() {
 	mcp_req="$1"
 	mcp_srv_name="$2"
@@ -128,9 +130,16 @@ mcp_handle_common() {
 	esac
 	return 1
 }
+# @end_embed_mcp_handler
 
 # emit_mcp_handler_func outputs the standalone mcp_handle_common shell function definition for generated artifacts.
 # @param none
+# @return Prints the embedded mcp_handle_common function body to stdout, or returns 1 if markers are missing.
 emit_mcp_handler_func() {
-	awk '/^# mcp_handle_common /,/^}/' "${LIBSCRIPT_ROOT_DIR:-.}/lib/mcp_handler.sh"
+	awk '
+		/^# @begin_embed_mcp_handler$/ { p = 1; found = 1; next }
+		/^# @end_embed_mcp_handler$/ { p = 0; next }
+		p { print $0 }
+		END { if (!found) exit 1 }
+	' "${LIBSCRIPT_ROOT_DIR:-.}/lib/mcp_handler.sh"
 }

@@ -3,9 +3,24 @@
 # @description Core integration test suite for cdd-sh parsers and emitters.
 # shellcheck disable=SC1091
 . "$(cd "$(dirname -- "$0")/.." && pwd)/lib/env.sh"
+# shellcheck disable=SC1091
+. "$(cd "$(dirname -- "$0")" && pwd)/test_helpers.sh"
+
+MOCK_PORT=""
+SERVER_PID=""
+
+# cleanup_core_test cleans up temporary files and background processes created by tests/test.sh.
+# @param none
+# @return Returns 0.
+cleanup_core_test() {
+	cleanup_server_pid "${SERVER_PID:-}" "${MOCK_PORT:-}"
+	rm -f /tmp/mock_handler_$$.sh /tmp/nc_pipe_$$
+	rm -f ast.json tests/emitted_*.sh tests/emitted_*.json tests/emitted_*.md tests/emitted_*.txt tests/mocks.sh tests/test_*_out.sh
+}
+trap cleanup_core_test EXIT INT TERM
 
 # 1. Start clean
-rm -f ast.json tests/emitted_*.sh tests/emitted_*.json tests/emitted_*.txt
+rm -f ast.json tests/emitted_*.sh tests/emitted_*.json tests/emitted_*.md tests/emitted_*.txt
 
 # 2. Test OpenAPI Parsing
 echo "Testing OpenAPI Parse..."
@@ -29,7 +44,6 @@ fi
 
 # 4. Test Routes Parse (round-trip)
 echo "Testing Routes Parse..."
-# We append a custom function to test if it gets parsed back into the AST
 cat <<'ROUTE' >>tests/emitted_routes.sh
 # @function customRoute
 # @description A newly added custom route
@@ -136,7 +150,8 @@ fi
 
 # 11. Execute generated tests
 echo "Running generated tests..."
-cat <<'EOF' >/tmp/mock_handler.sh
+MOCK_PORT=$(allocate_free_port 18181)
+cat <<'EOF' >"/tmp/mock_handler_$$.sh"
 #!/bin/sh
 while IFS= read -r line; do
   line=$(printf "%s" "$line" | tr -d '\r')
@@ -144,20 +159,21 @@ while IFS= read -r line; do
 done
 printf "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}"
 EOF
-chmod +x /tmp/mock_handler.sh
+chmod +x "/tmp/mock_handler_$$.sh"
 if command -v socat >/dev/null 2>&1; then
-	socat TCP4-LISTEN:8181,reuseaddr,fork EXEC:/tmp/mock_handler.sh >/dev/null 2>&1 &
+	socat "TCP4-LISTEN:${MOCK_PORT},reuseaddr,fork" "EXEC:/tmp/mock_handler_$$.sh" >/dev/null 2>&1 &
 else
-	rm -f /tmp/nc_pipe
-	mkfifo /tmp/nc_pipe
+	rm -f "/tmp/nc_pipe_$$"
+	mkfifo "/tmp/nc_pipe_$$"
 	# shellcheck disable=SC2094
-	while true; do nc -l 8181 </tmp/nc_pipe | /tmp/mock_handler.sh >/tmp/nc_pipe; done >/dev/null 2>&1 &
+	while true; do nc -l "${MOCK_PORT}" <"/tmp/nc_pipe_$$" | "/tmp/mock_handler_$$.sh" >"/tmp/nc_pipe_$$"; done >/dev/null 2>&1 &
 fi
 SERVER_PID=$!
-sleep 1
+wait_for_port "${MOCK_PORT}" 50
 
-BASE_URL="http://localhost:8181/v2" sh tests/emitted_tests.sh
-kill $SERVER_PID
+BASE_URL="http://127.0.0.1:${MOCK_PORT}/v2" sh tests/emitted_tests.sh
+cleanup_server_pid "${SERVER_PID}" "${MOCK_PORT}"
+SERVER_PID=""
 
 echo "All tests passed! 100% Coverage reached."
 echo "Testing docsjson Emit..."
@@ -192,12 +208,17 @@ if tests/test_array_validation.sh >/dev/null; then echo "All array constraints v
 
 echo "Testing Advanced Validation Emit..."
 if tests/test_advanced_validation.sh >/dev/null; then echo "All advanced constraints valid!"; else exit 1; fi
+
 sh tests/test_input_dir.sh
 sh tests/test_mcp.sh
 sh tests/test_server.sh
 sh tests/test_sdk.sh
 sh tests/test_serve_rpc.sh
+sh tests/test_cors.sh
+sh tests/test_sync.sh
+sh tests/test_validation_server.sh
 sh tests/test_arazzo.sh
+sh tests/test_coverage_exhaustive.sh
 
 if [ "${RUN_SLOW_TESTS:-0}" = "1" ]; then
 	sh tests/test_petstore_sdks.sh

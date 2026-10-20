@@ -6,11 +6,24 @@
 
 echo "Testing Sync with server.sh as source of truth..."
 
+SPEC_FILE="../petstore.json"
+if [ ! -f "${SPEC_FILE}" ]; then
+	SPEC_FILE="tests/test.json"
+fi
+
+# cleanup_sync removes temporary sync test artifacts.
+# @param none
+# @return Returns 0.
+cleanup_sync() {
+	rm -rf temp-sync emitted_openapi.json
+}
+trap cleanup_sync EXIT INT TERM
+
 rm -rf temp-sync
 mkdir -p temp-sync
 
-# First, generate a normal server from petstore
-./bin/cdd-sh from_openapi to_server -i ../petstore.json -o temp-sync/server
+# First, generate a normal server from spec
+./bin/cdd-sh from_openapi to_server -i "${SPEC_FILE}" -o temp-sync/server
 
 # Reverse gen
 ./bin/cdd-sh to_openapi -i temp-sync/server/src/server.sh -o temp-sync/spec.json
@@ -33,5 +46,4 @@ if [ ! -f temp-sync/synced/emitted_docsjson.json ]; then
 	exit 1
 fi
 
-rm -rf temp-sync emitted_openapi.json
 echo "Reverse sync successful"

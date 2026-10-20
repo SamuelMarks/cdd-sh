@@ -4,11 +4,20 @@
 # shellcheck disable=SC2016,SC1091
 . "${LIBSCRIPT_ROOT_DIR:-.}/lib/env.sh"
 
+# _arazzo_jq_defs prints the shared JQ function definitions for Arazzo runtime expressions, selectors, and criteria.
+# @param none
+# @return Prints the JQ library definitions to stdout.
+_arazzo_jq_defs() {
+	cat "${LIBSCRIPT_ROOT_DIR:-.}/lib/_common/arazzo_expr.jq"
+}
+
+# @begin_embed_arazzo_runtime
 # arazzo_init_state initializes the global WORKFLOW_STATE_JSON object for a workflow execution run.
 # @param $1: inputs_json - JSON object of workflow inputs.
 # @param $2: source_descs_json - JSON array of sourceDescriptions.
 # @param $3: components_json - JSON object of reusable Arazzo components.
 # @param $4: self_uri - String URI for $self.
+# @return Exports WORKFLOW_STATE_JSON and returns 0.
 arazzo_init_state() {
 	_init_inputs="${1:-}"
 	_init_sds="${2:-}"
@@ -56,11 +65,11 @@ arazzo_init_state() {
 # arazzo_xpath_extract evaluates an XPath 1.0/2.0/3.0 query against an XML string using pure AWK.
 # @param $1: xml_str - The XML document string.
 # @param $2: xpath_expr - The XPath expression (e.g., /order/id, //item[1]/name/text(), //item/@id).
+# @return Prints the extracted XML node text or attribute value to stdout.
 arazzo_xpath_extract() {
 	_xml_in="${1:-}"
 	_xp="${2:-}"
-	printf '%s
-' "${_xml_in}" | awk -v xp="${_xp}" '
+	printf '%s\n' "${_xml_in}" | awk -v xp="${_xp}" '
 	BEGIN {
 		gsub(/^\/+/, "", xp)
 		sub(/\/text\(\)$/, "", xp)
@@ -105,6 +114,7 @@ arazzo_xpath_extract() {
 # Supports all 17 runtime expression roots ($url, $method, $statusCode, $request.*, $response.*,
 # $message.*, $inputs.*, $outputs.*, $steps.*, $workflows.*, $sourceDescriptions.*, $components.*, $self).
 # @param $1: expr - The runtime expression or literal string.
+# @return Prints the evaluated string or JSON value to stdout.
 arazzo_eval_expr() {
 	_expr="${1:-}"
 	case "${_expr}" in
@@ -122,62 +132,12 @@ arazzo_eval_expr() {
 		;;
 	esac
 
-	printf '%s' "${WORKFLOW_STATE_JSON:-"{}"}" | jq -r --arg expr "${_expr}" '
-		def parse_subpath($s):
-			if $s == "" or $s == null then []
-			elif ($s | startswith("#/")) then
-				($s | ltrimstr("#/") | split("/") | map(gsub("~1"; "/") | gsub("~0"; "~") | (tonumber? // .)))
-			elif ($s | contains("#/")) then
-				($s | split("#/")) as $halves |
-				(($halves[0] | ltrimstr(".") | if . == "" then [] else split(".") end) +
-				 ($halves[1] | split("/") | map(gsub("~1"; "/") | gsub("~0"; "~") | (tonumber? // .))))
-			else
-				($s | ltrimstr(".") | split("[") | join(".") | split("]") | join("") | if . == "" then [] else (split(".") | map(select(. != "") | (tonumber? // .))) end)
-			end;
-		def lookup_ci($obj; $k):
-			if ($obj | type) != "object" then null
-			elif ($obj | has($k)) then $obj[$k]
-			else
-				($k | ascii_downcase) as $lk |
-				([ $obj | to_entries[] | select((.key | ascii_downcase) == $lk) | .value ][0] // null)
-			end;
-		def eval_path($root; $p):
-			reduce $p[] as $seg ($root;
-				if . == null then null
-				elif (. | type) == "object" then lookup_ci(.; ($seg | tostring))
-				elif (. | type) == "array" and ($seg | type) == "number" then .[$seg]
-				else null end
-			);
-		if $expr == "$url" then (.current.url // "")
-		elif $expr == "$method" then (.current.method // "")
-		elif $expr == "$statusCode" then (.current.statusCode // 200)
-		elif $expr == "$self" then (.self // "")
-		elif ($expr | startswith("$request.header.")) then lookup_ci(.current.request.header // {}; ($expr | ltrimstr("$request.header.")))
-		elif ($expr | startswith("$request.query.")) then lookup_ci(.current.request.query // {}; ($expr | ltrimstr("$request.query.")))
-		elif ($expr | startswith("$request.path.")) then lookup_ci(.current.request.path // {}; ($expr | ltrimstr("$request.path.")))
-		elif $expr == "$request.body" then (.current.request.body // {})
-		elif ($expr | startswith("$request.body")) then eval_path(.current.request.body; parse_subpath($expr | ltrimstr("$request.body")))
-		elif ($expr | startswith("$response.header.")) then lookup_ci(.current.response.header // {}; ($expr | ltrimstr("$response.header.")))
-		elif $expr == "$response.body" then (.current.response.body // {})
-		elif ($expr | startswith("$response.body")) then eval_path(.current.response.body; parse_subpath($expr | ltrimstr("$response.body")))
-		elif ($expr | startswith("$message.header.")) then lookup_ci(.current.message.header // {}; ($expr | ltrimstr("$message.header.")))
-		elif $expr == "$message.payload" then (.current.message.payload // {})
-		elif ($expr | startswith("$message.payload")) then eval_path(.current.message.payload; parse_subpath($expr | ltrimstr("$message.payload")))
-		elif ($expr | startswith("$inputs.")) then eval_path(.inputs; parse_subpath($expr | ltrimstr("$inputs.")))
-		elif $expr == "$inputs" then (.inputs // {})
-		elif ($expr | startswith("$outputs.")) then eval_path(.outputs; parse_subpath($expr | ltrimstr("$outputs.")))
-		elif $expr == "$outputs" then (.outputs // {})
-		elif ($expr | startswith("$steps.")) then eval_path(.steps; parse_subpath($expr | ltrimstr("$steps.")))
-		elif ($expr | startswith("$workflows.")) then eval_path(.workflows; parse_subpath($expr | ltrimstr("$workflows.")))
-		elif ($expr | startswith("$sourceDescriptions.")) then eval_path(.sourceDescriptions; parse_subpath($expr | ltrimstr("$sourceDescriptions.")))
-		elif ($expr | startswith("$components.")) then eval_path(.components; parse_subpath($expr | ltrimstr("$components.")))
-		else $expr end |
-		if . == null then "" elif (type == "object" or type == "array") then tojson else tostring end
-	'
+	printf '%s' "${WORKFLOW_STATE_JSON:-"{}"}" | jq -r --arg expr "${_expr}" "$(_arazzo_jq_defs) eval_runtime_expr(\$expr)"
 }
 
 # arazzo_interpolate_template interpolates embedded {$...} runtime expressions inside a template string.
 # @param $1: template_str - String containing zero or more {$...} placeholders.
+# @return Prints the interpolated string to stdout.
 arazzo_interpolate_template() {
 	_tpl="${1:-}"
 	_out=""
@@ -204,6 +164,7 @@ arazzo_interpolate_template() {
 # arazzo_select_value evaluates an Arazzo 1.1.0 Selector Object or runtime expression string.
 # Supports jsonpointer (rfc6901), jsonpath (rfc9535 / draft-goessner), and xpath (xpath-30/20/10).
 # @param $1: selector_or_expr_json - JSON string representing either a string expression or Selector Object.
+# @return Prints the selected value to stdout.
 arazzo_select_value() {
 	_sel_raw="${1:-}"
 	if printf '%s' "${_sel_raw}" | jq -e 'type == "object" and (has("selector") or has("context"))' >/dev/null 2>&1; then
@@ -220,22 +181,10 @@ arazzo_select_value() {
 			arazzo_xpath_extract "${_ctx_val}" "${_selector}"
 			;;
 		jsonpointer | rfc6901)
-			printf '%s' "${_ctx_val}" | jq -r --arg ptr "${_selector}" '
-				($ptr | ltrimstr("#") | ltrimstr("/") | if . == "" then [] else (split("/") | map(gsub("~1"; "/") | gsub("~0"; "~") | (tonumber? // .))) end) as $p |
-				getpath($p) | if . == null then "" elif (type == "object" or type == "array") then tojson else tostring end
-			'
+			printf '%s' "${_ctx_val}" | jq -r --arg ptr "${_selector}" "$(_arazzo_jq_defs) eval_jsonpointer_selector(\$ptr)"
 			;;
 		*)
-			printf '%s' "${_ctx_val}" | jq -r --arg jp "${_selector}" '
-				if ($jp | startswith("$..")) then
-					($jp | ltrimstr("$..")) as $key |
-					([ .. | objects | select(has($key)) | .[$key] ][0] // "")
-				else
-					($jp | ltrimstr("$") | ltrimstr(".") | split("[") | join(".") | split("]") | join("") | if . == "" then [] else (split(".") | map(select(. != "") | (tonumber? // .))) end) as $p |
-					getpath($p)
-				end |
-				if . == null then "" elif (type == "object" or type == "array") then tojson else tostring end
-			'
+			printf '%s' "${_ctx_val}" | jq -r --arg jp "${_selector}" "$(_arazzo_jq_defs) eval_jsonpath_selector(\$jp)"
 			;;
 		esac
 	else
@@ -245,8 +194,8 @@ arazzo_select_value() {
 }
 
 # arazzo_eval_criterion evaluates a single Arazzo 1.1.0 Criterion Object against WORKFLOW_STATE_JSON.
-# Returns 0 if the criterion passes, 1 if it fails.
 # @param $1: criterion_json - JSON object with condition, optional context, and optional type.
+# @return Returns 0 if the criterion passes, 1 if it fails.
 arazzo_eval_criterion() {
 	_crit_json="${1:-"{}"}"
 	_cond=$(printf '%s' "${_crit_json}" | jq -r '.condition // ""')
@@ -275,21 +224,7 @@ arazzo_eval_criterion() {
 		;;
 	jsonpath)
 		_ctx_val=$(arazzo_eval_expr "${_ctx_expr:-$response.body}")
-		if printf '%s' "${_ctx_val}" | jq -e --arg jp "${_cond}" --arg sq "'" '
-			if ($jp | contains("[?(")) then
-				if ($jp | contains("==")) then
-					($jp | split("@.")[1] | split(")")[0] | split("==")) as $parts |
-					($parts[0] | gsub(" "; "")) as $k |
-					($parts[1] | gsub(" "; "") | gsub($sq; "")) as $v |
-					([ .. | objects | select(.[$k] == $v) ] | length) > 0
-				else
-					(. != null and . != "" and . != [] and . != {})
-				end
-			else
-				($jp | ltrimstr("$") | ltrimstr(".") | split("[") | join(".") | split("]") | join("") | if . == "" then [] else (split(".") | map(select(. != "") | (tonumber? // .))) end) as $p |
-				getpath($p) != null and getpath($p) != false
-			end
-		' >/dev/null 2>&1; then
+		if printf '%s' "${_ctx_val}" | jq -e --arg jp "${_cond}" "$(_arazzo_jq_defs) eval_jsonpath_criterion(\$jp)" >/dev/null 2>&1; then
 			return 0
 		fi
 		return 1
@@ -314,40 +249,7 @@ arazzo_eval_criterion() {
 			_ctx_val=$(arazzo_eval_expr "${_ctx_expr}")
 			_interpolated="${_ctx_val} ${_interpolated}"
 		fi
-		if jq -n -e --arg expr "${_interpolated}" --arg sq "'" '
-			def trim_ws($s):
-				$s | sub("^[ \t]+"; "") | sub("[ \t]+$"; "") | ltrimstr($sq) | rtrimstr($sq);
-			def eval_atom($a):
-				trim_ws($a) as $t |
-				if ($t | contains("==")) then
-					($t | split("==")) as $p |
-					(trim_ws($p[0]) == trim_ws($p[1]))
-				elif ($t | contains("!=")) then
-					($t | split("!=")) as $p |
-					(trim_ws($p[0]) != trim_ws($p[1]))
-				elif ($t | contains(">=")) then
-					($t | split(">=")) as $p |
-					(((trim_ws($p[0]) | tonumber?) // 0) >= ((trim_ws($p[1]) | tonumber?) // 0))
-				elif ($t | contains("<=")) then
-					($t | split("<=")) as $p |
-					(((trim_ws($p[0]) | tonumber?) // 0) <= ((trim_ws($p[1]) | tonumber?) // 0))
-				elif ($t | contains(">")) then
-					($t | split(">")) as $p |
-					(((trim_ws($p[0]) | tonumber?) // 0) > ((trim_ws($p[1]) | tonumber?) // 0))
-				elif ($t | contains("<")) then
-					($t | split("<")) as $p |
-					(((trim_ws($p[0]) | tonumber?) // 0) < ((trim_ws($p[1]) | tonumber?) // 0))
-				else
-					($t != "" and $t != "false" and $t != "null" and $t != "0")
-				end;
-			if ($expr | contains("||")) then
-				any($expr | split("||")[]; eval_atom(.))
-			elif ($expr | contains("&&")) then
-				all($expr | split("&&")[]; eval_atom(.))
-			else
-				eval_atom($expr)
-			end
-		' >/dev/null 2>&1; then
+		if jq -n -e --arg expr "${_interpolated}" "$(_arazzo_jq_defs) eval_simple_criterion(\$expr)" >/dev/null 2>&1; then
 			return 0
 		fi
 		return 1
@@ -358,6 +260,7 @@ arazzo_eval_criterion() {
 # arazzo_build_request_body constructs an HTTP request payload from a Step Object's requestBody definition,
 # evaluating runtime expressions and applying all Payload Replacement Objects.
 # @param $1: req_body_def_json - JSON object of the step's requestBody (contentType, payload, replacements).
+# @return Prints the constructed request body string to stdout.
 arazzo_build_request_body() {
 	_rb_def="${1:-"{}"}"
 	if [ -z "${_rb_def}" ] || [ "${_rb_def}" = "null" ] || [ "${_rb_def}" = "{}" ]; then
@@ -375,7 +278,7 @@ arazzo_build_request_body() {
 		_str_p=$(printf '%s' "${_raw_payload}" | jq -r '.')
 		_body_json=$(arazzo_eval_expr "${_str_p}")
 	else
-		_str_leaves=$(printf '%s' "${_raw_payload}" | jq -r 'paths(scalars) as $p | "\($p | tojson)	\(getpath($p))"' 2>/dev/null || true)
+		_str_leaves=$(printf '%s' "${_raw_payload}" | jq -r 'paths(scalars) as $p | "\($p | tojson)\t\(getpath($p))"' 2>/dev/null || true)
 		_body_json="${_raw_payload}"
 		if [ -n "${_str_leaves}" ]; then
 			while IFS='	' read -r _p_json _leaf_val; do
@@ -400,10 +303,7 @@ EOF
 			_raw_val=$(printf '%s' "${_repl}" | jq -r 'if (.value | type) == "string" then .value else (.value | tojson) end')
 			_resolved_val=$(arazzo_eval_expr "${_raw_val}")
 			if [ -n "${_target}" ]; then
-				_body_json=$(printf '%s' "${_body_json}" | jq -c --arg t "${_target}" --arg v "${_resolved_val}" '
-					($t | ltrimstr("$") | ltrimstr(".") | ltrimstr("#") | ltrimstr("/") | split("[") | join("/") | split("]") | join("") | split(".") | join("/") | split("/") | map(select(. != "") | gsub("~1"; "/") | gsub("~0"; "~") | (tonumber? // .))) as $path |
-					setpath($path; (($v | fromjson?) // $v))
-				' 2>/dev/null || printf '%s' "${_body_json}")
+				_body_json=$(printf '%s' "${_body_json}" | jq -c --arg t "${_target}" --arg v "${_resolved_val}" "$(_arazzo_jq_defs) apply_payload_replacement(\$t; \$v)" 2>/dev/null || printf '%s' "${_body_json}")
 			fi
 		done <<EOF
 ${_repl_list}
@@ -427,6 +327,7 @@ EOF
 # @param $10: outputs_json - JSON object of step output definitions.
 # @param $11: next_default_step - Next sequential stepId or __END__.
 # @param $12: timeout_ms - Step timeout in milliseconds (0 for default).
+# @return Returns 0 on step transition success, or 1 on terminal step failure.
 arazzo_execute_step() {
 	_es_wf_id="$1"
 	_es_step_id="$2"
@@ -535,14 +436,10 @@ EOF
 				fi
 				set +e
 				# shellcheck disable=SC2086
-				_raw_http=$(curl -s ${_curl_timeout_arg} -w "
-%{http_code}" "${BASE_URL}/${_es_fn}" 2>/dev/null || printf "{}
-200")
+				_raw_http=$(curl -s ${_curl_timeout_arg} -w "\n%{http_code}" "${BASE_URL}/${_es_fn}" 2>/dev/null || printf "{}\n200")
 				set -e
-				_resp_status=$(printf '%s
-' "${_raw_http}" | tail -n1)
-				_resp_body=$(printf '%s
-' "${_raw_http}" | sed '$d')
+				_resp_status=$(printf '%s\n' "${_raw_http}" | tail -n1)
+				_resp_body=$(printf '%s\n' "${_raw_http}" | sed '$d')
 				[ -z "${_resp_body}" ] && _resp_body="{}"
 			else
 				_resp_status="${ARAZZO_MOCK_STATUS:-200}"
@@ -715,8 +612,7 @@ EOF
 				esac
 			fi
 
-			printf "Error: step %s in workflow %s failed successCriteria
-" "${_es_step_id}" "${_es_wf_id}" >&2
+			printf "Error: step %s in workflow %s failed successCriteria\n" "${_es_step_id}" "${_es_wf_id}" >&2
 			return 1
 		fi
 	done
@@ -725,6 +621,7 @@ EOF
 # arazzo_finalize_workflow computes the workflow outputs object, records it in WORKFLOW_STATE_JSON, and prints it to stdout.
 # @param $1: wf_id - Workflow identifier.
 # @param $2: wf_outputs_def_json - JSON object of workflow output definitions.
+# @return Prints the JSON workflow outputs object to stdout.
 arazzo_finalize_workflow() {
 	_fw_id="$1"
 	_fw_defs="${2:-"{}"}"
@@ -749,16 +646,24 @@ EOF
 		}
 	')
 	export WORKFLOW_STATE_JSON
-	printf '%s
-' "${_final_out}"
+	printf '%s\n' "${_final_out}"
 }
+# @end_embed_arazzo_runtime
 
-# emit_arazzo_runtime_func outputs the inline runtime functions for standalone generated workflow scripts.
+# emit_arazzo_runtime_func outputs the inline runtime functions and JQ definitions for standalone generated workflow scripts.
 # @param none
+# @return Prints the embedded Arazzo runtime functions and JQ library to stdout, or returns 1 if markers are missing.
 emit_arazzo_runtime_func() {
+	printf "# _arazzo_jq_defs prints the shared JQ function definitions for Arazzo runtime expressions, selectors, and criteria.\n"
+	printf "# @param none\n"
+	printf "# @return Prints the JQ library definitions to stdout.\n"
+	printf "_arazzo_jq_defs() {\n\tcat <<'ARAZZO_JQ_EOF'\n"
+	cat "${LIBSCRIPT_ROOT_DIR:-.}/lib/_common/arazzo_expr.jq"
+	printf "ARAZZO_JQ_EOF\n}\n\n"
 	awk '
-		/^# arazzo_init_state / { p = 1 }
-		/^# emit_arazzo_runtime_func / { p = 0 }
+		/^# @begin_embed_arazzo_runtime$/ { p = 1; found = 1; next }
+		/^# @end_embed_arazzo_runtime$/ { p = 0; next }
 		p { print $0 }
+		END { if (!found) exit 1 }
 	' "${LIBSCRIPT_ROOT_DIR:-.}/lib/arazzo_runtime.sh"
 }

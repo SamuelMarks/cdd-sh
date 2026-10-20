@@ -4,61 +4,64 @@
 # shellcheck disable=SC2016,SC1091
 . "${LIBSCRIPT_ROOT_DIR:-.}/lib/env.sh"
 
-# handle_parse_functions parses annotated functions into x-functions in the AST.
+# handle_parse_functions parses standalone utility functions into the AST.
 # @param $1: file_path - The input shell script path (default: functions.sh).
 handle_parse_functions() {
 	file_path="${1:-functions.sh}"
-	if [ ! -f "${file_path}" ]; then return 1; fi
 	ast="${CDD_AST_PATH:-${LIBSCRIPT_ROOT_DIR}/ast.json}"
-	if [ ! -f "${ast}" ]; then echo '{"openapi": "3.2.0"}' >"${ast}"; fi
+	if [ ! -f "${ast}" ]; then echo '{"openapi":"3.2.0"}' >"${ast}"; fi
+	if [ ! -f "${file_path}" ]; then return 0; fi
 
-	funcs_json=$(awk -v dq='"' '
+	funcs_json=$(awk '
+      # @function json_esc
+      # @description Escapes backslashes, double quotes, and newlines for safe JSON string interpolation.
+      # @param s - Input string to escape.
+      function json_esc(s) {
+        gsub(/\\/, "\\\\", s)
+        gsub(/"/, "\\\"", s)
+        gsub(/\n/, "\\n", s)
+        return s
+      }
       BEGIN {
-          printf "{"
-          first = 1
-          fname = ""
-          desc = ""
-          in_body = 0
-          body = ""
+        printf "{"
+        first=1
+        in_func=0
+        desc=""
+        func_name=""
+        body=""
       }
       /^# @function / {
-          fname = $3
-          desc = ""
-          body = ""
-          next
+        func_name=$3
+        in_func=1
+        desc=""
+        body=""
       }
       /^# @description / {
-          desc = substr($0, 16)
-          next
+        if (in_func) {
+          desc=substr($0, 16)
+        }
       }
-      /^[a-zA-Z0-9_]+\(\) \{/ {
-          if (fname != "") {
-              in_body = 1
-              next
-          }
+      /^\}/ {
+        if (in_func) {
+          if (!first) printf ", "
+          first=0
+          printf "\"%s\": {\"description\": \"%s\", \"body\": \"%s\"}", json_esc(func_name), json_esc(desc), json_esc(body)
+          in_func=0
+          func_name=""
+          desc=""
+          body=""
+        }
       }
-      in_body == 1 {
-          if ($0 ~ /^}/) {
-              in_body = 0
-              gsub(/\\/, "\\\\", body)
-              gsub(/"/, "\\\"", body)
-              gsub(/\n/, "\\n", body)
-              gsub(/"/, "\\\"", desc)
-              if (!first) printf ","
-              first = 0
-              printf "%s%s%s:{%sdescription%s:%s%s%s,%sbody%s:%s%s%s}", dq, fname, dq, dq, dq, dq, desc, dq, dq, dq, dq, body, dq
-              fname = ""
-              desc = ""
-              body = ""
-          } else {
-              line = $0
-              sub(/^[ \t]+/, "", line)
-              if (body != "") body = body "\n" line
-              else body = line
-          }
+      {
+        if (in_func && $0 !~ /^#/ && $0 !~ /\(\) \{/ && $0 !~ /^\}/) {
+          line = $0
+          gsub(/^  /, "", line)
+          if (body != "") body = body "\n" line
+          else body = line
+        }
       }
       END {
-          printf "}\n"
+        printf "}\n"
       }
     ' "${file_path}")
 

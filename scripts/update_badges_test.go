@@ -33,6 +33,55 @@ func TestGetColor(t *testing.T) {
 	}
 }
 
+func TestBadgeError(t *testing.T) {
+	be := &BadgeError{Kind: ErrBadgeCoverageBelow100, Msg: "cov error"}
+	if be.Error() != "cov error" || be.ExitCode() != 1 {
+		t.Errorf("unexpected BadgeError behavior: %v / %d", be.Error(), be.ExitCode())
+	}
+}
+
+func TestExtractPrecedingDocBlock(t *testing.T) {
+	if _, ok := extractPrecedingDocBlock("", 0, "#"); ok {
+		t.Error("expected empty content to return false")
+	}
+	if _, ok := extractPrecedingDocBlock("foo() {}", 0, "#"); ok {
+		t.Error("expected no preceding comment to return false")
+	}
+	if _, ok := extractPrecedingDocBlock("# foo is a function\nfoo() {}", 20, "#"); ok {
+		t.Error("expected placeholder comment to return false")
+	}
+	block, ok := extractPrecedingDocBlock("# line 1\n# @param $1\nfoo() {}", 21, "#")
+	if !ok || !strings.Contains(block, "@param") {
+		t.Errorf("expected multi-line doc block, got %q (ok=%v)", block, ok)
+	}
+}
+
+func TestAuditFileDocCoverage(t *testing.T) {
+	shContent := "#!/bin/sh\n# @file s.sh\n# @description d\n# fn doc\n# @param $1\nfn() {\n :\n}\n"
+	tot, doc := auditFileDocCoverage("s.sh", shContent)
+	if tot != 3 || doc != 3 {
+		t.Errorf("expected 3/3 for sh, got %d/%d", doc, tot)
+	}
+
+	awkContent := "# @file a.awk\n# @description d\n# fn doc\n# @param x\nfunction fn(x) { return x }\n"
+	tot, doc = auditFileDocCoverage("a.awk", awkContent)
+	if tot != 3 || doc != 3 {
+		t.Errorf("expected 3/3 for awk, got %d/%d", doc, tot)
+	}
+
+	jqContent := "# @file f.jq\n# @description d\n# fn doc\n# @param $x\ndef fn($x): $x;\n"
+	tot, doc = auditFileDocCoverage("f.jq", jqContent)
+	if tot != 3 || doc != 3 {
+		t.Errorf("expected 3/3 for jq, got %d/%d", doc, tot)
+	}
+
+	goContent := "// Package p docs\npackage p\n// T docs\ntype T int\n// F docs\n// Parameters:\n// - x: int\nfunc F(x int) {}\n"
+	tot, doc = auditFileDocCoverage("f.go", goContent)
+	if tot != 4 || doc != 4 {
+		t.Errorf("expected 4/4 for go, got %d/%d", doc, tot)
+	}
+}
+
 func TestMainFunc_Normal(t *testing.T) {
 	os.Setenv("SKIP_GO_TEST", "1")
 	defer os.Unsetenv("SKIP_GO_TEST")
@@ -47,13 +96,13 @@ func TestMainFunc_Normal(t *testing.T) {
 	if err := os.WriteFile("coverage.out", []byte("mode: set\ncdd-sh/main.go:1.1,2.2 1 1\ntotal:\t(statements)\t100.0%\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile("script.sh", []byte("#!/bin/sh\n# my_func docs\nmy_func() {\n  echo ok\n}\n"), 0644); err != nil {
+	if err := os.WriteFile("script.sh", []byte("#!/bin/sh\n# @file script.sh\n# @description desc\n# my_func docs\n# @param none\nmy_func() {\n  echo ok\n}\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile("helper.awk", []byte("# my_awk_func docs\nfunction my_awk_func() {\n  return 1\n}\n"), 0644); err != nil {
+	if err := os.WriteFile("helper.awk", []byte("# @file helper.awk\n# @description desc\n# my_awk_func docs\n# @param none\nfunction my_awk_func() {\n  return 1\n}\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile("filter.jq", []byte("# filter.jq docs\n.\n"), 0644); err != nil {
+	if err := os.WriteFile("filter.jq", []byte("# @file filter.jq\n# @description desc\n.\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile("emitted_skip.sh", []byte("undoc() {\n echo skip\n}\n"), 0644); err != nil {
@@ -71,6 +120,9 @@ func TestMainFunc_Normal(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(tmp, "out", "file.txt"), []byte("skip"), 0644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(tmp, "temp-swagger-sdk.sh"), []byte("skip() {\n :\n}\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
 
 	main()
 
@@ -80,6 +132,56 @@ func TestMainFunc_Normal(t *testing.T) {
 	}
 	if !strings.Contains(string(updated), "doc_coverage-100%25-brightgreen.svg") {
 		t.Errorf("expected 100%% doc coverage badge, got:\n%s", string(updated))
+	}
+}
+
+func TestMainFunc_CheckFailure(t *testing.T) {
+	os.Setenv("SKIP_GO_TEST", "1")
+	defer os.Unsetenv("SKIP_GO_TEST")
+	tmp := t.TempDir()
+	orig, _ := os.Getwd()
+	os.Chdir(tmp)
+	defer os.Chdir(orig)
+
+	os.WriteFile("README.md", []byte(sampleReadme), 0644)
+	os.WriteFile("undoc.sh", []byte("#!/bin/sh\n\nundoc_fn() {\n :\n}\n"), 0644)
+
+	oldArgs := os.Args
+	defer func() { os.Args = oldArgs }()
+	os.Args = []string{"update_badges", "--check"}
+
+	oldExit := badgeOsExit
+	defer func() { badgeOsExit = oldExit }()
+	exitCode := 0
+	badgeOsExit = func(c int) { exitCode = c }
+
+	main()
+	if exitCode != 1 {
+		t.Errorf("expected exitCode 1 when doc coverage < 100%% in --check mode, got %d", exitCode)
+	}
+}
+
+func TestRunUpdateBadges_Errors(t *testing.T) {
+	tmp := t.TempDir()
+	orig, _ := os.Getwd()
+	os.Chdir(tmp)
+	defer os.Chdir(orig)
+
+	os.WriteFile("README.md", []byte(sampleReadme), 0644)
+
+	// Test failing go test in check mode
+	os.Unsetenv("SKIP_GO_TEST")
+	if err := runUpdateBadges([]string{"--check"}); err == nil {
+		t.Error("expected error when go test fails in --check mode")
+	}
+
+	// Test read-only README write error in check mode
+	os.Setenv("SKIP_GO_TEST", "1")
+	defer os.Unsetenv("SKIP_GO_TEST")
+	os.Chmod("README.md", 0400)
+	defer os.Chmod("README.md", 0644)
+	if err := runUpdateBadges([]string{"--check"}); err == nil {
+		t.Error("expected IO error when README.md is read-only in --check mode")
 	}
 }
 
@@ -110,7 +212,7 @@ func TestMainFunc_NoReadme(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(tmp, "README.md"), []byte(sampleReadme), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(tmp, "code.go"), []byte("package main\n// ExportedFunc docs\nfunc ExportedFunc() {}\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(tmp, "code.go"), []byte("// Package main docs\npackage main\n// ExportedFunc docs\nfunc ExportedFunc() {}\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -142,7 +244,7 @@ func TestMainFunc_WithTypes(t *testing.T) {
 
 	os.WriteFile("README.md", []byte(sampleReadme), 0644)
 	os.WriteFile("go.mod", []byte("module testmod\n\ngo 1.21\n"), 0644)
-	os.WriteFile("dummy.go", []byte("package main\n// Dummy type docs\ntype Dummy int\n// GetDummy docs\nfunc GetDummy() Dummy { return 1 }\n"), 0644)
+	os.WriteFile("dummy.go", []byte("// Package main docs\npackage main\n// Dummy type docs\ntype Dummy int\n// GetDummy docs\nfunc GetDummy() Dummy { return 1 }\n"), 0644)
 	os.WriteFile("dummy_test.go", []byte("package main\nimport \"testing\"\nfunc TestGetDummy(t *testing.T) { if GetDummy() != 1 { t.Fail() } }\n"), 0644)
 
 	main()

@@ -12,7 +12,8 @@ handle_emit_functions() {
 	if [ ! -f "${ast}" ]; then return 1; fi
 	{
 		printf "#!/bin/sh\n"
-		printf "# Utility functions based on openapi extensions.\n\n"
+		printf "# @file %s\n" "${file_path##*/}"
+		printf "# @description Utility functions based on openapi extensions.\n\n"
 		printf "# _urlencode encodes a string for safe inclusion in a URL.\n"
 		printf "# @param \$1: The string to encode.\n"
 		printf "_urlencode() {\n"
@@ -22,7 +23,8 @@ handle_emit_functions() {
       if ."x-functions" then
         ."x-functions" | to_entries[] |
         "# @function \(.key)\n" +
-        (if .value.description then "# @description \(.value.description)\n" else "" end) +
+        (if .value.description and .value.description != "" then "# @description \(.value.description)\n" else "# @description Utility function \(.key).\n" end) +
+        "# @param $@: args - Function arguments.\n" +
         "\(.key)() {\n" +
         "  \(.value.body // ":")\n" +
         "}\n"

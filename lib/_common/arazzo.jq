@@ -4,14 +4,22 @@ include "openapi";
 include "arazzo_expr";
 
 # get_workflow_fn_name($wfId) converts an Arazzo workflowId into an idiomatic POSIX shell function name.
+# @param $wfId - The workflow identifier string.
+# @return The sanitized shell function name.
 def get_workflow_fn_name($wfId):
   "workflow_" + ($wfId | to_snake_case | gsub("[^a-zA-Z0-9_]"; "_"));
 
 # get_step_fn_name($wfId; $stepId) converts a workflowId and stepId into an idiomatic POSIX shell step function name.
+# @param $wfId - The workflow identifier string.
+# @param $stepId - The step identifier string.
+# @return The sanitized shell step function name.
 def get_step_fn_name($wfId; $stepId):
   "step_" + ($wfId | to_snake_case | gsub("[^a-zA-Z0-9_]"; "_")) + "_" + ($stepId | to_snake_case | gsub("[^a-zA-Z0-9_]"; "_"));
 
 # resolve_reusable_object($root; $obj) dereferences Arazzo Reusable Objects ($components.parameters.*, $components.successActions.*, $components.failureActions.*, $components.inputs.*) while applying any value override.
+# @param $root - The root AST object.
+# @param $obj - The object or Reusable Object to resolve.
+# @return The resolved object.
 def resolve_reusable_object($root; $obj):
   if ($obj | type) == "object" and ($obj | has("reference")) and ($obj.reference | type) == "string" then
     ($root.arazzoComponents // $root.components // {}) as $comps |
@@ -35,6 +43,9 @@ def resolve_reusable_object($root; $obj):
   end;
 
 # resolve_operation_path($root; $opPath) resolves an Arazzo operationPath JSON Pointer (optionally prefixed with a sourceDescription expression) into a target operationId.
+# @param $root - The root AST object.
+# @param $opPath - The operationPath JSON Pointer expression.
+# @return The resolved operationId string.
 def resolve_operation_path($root; $opPath):
   if ($opPath | type) != "string" or $opPath == "" then
     ""
@@ -62,10 +73,17 @@ def resolve_operation_path($root; $opPath):
   end;
 
 # resolve_channel_path($root; $channelPath; $action; $correlationId) resolves an Arazzo 1.1.0 AsyncAPI channelPath and action into a shell helper function name.
+# @param $root - The root AST object.
+# @param $channelPath - The AsyncAPI channel path string.
+# @param $action - The channel action (send or receive).
+# @param $correlationId - Optional correlation identifier.
+# @return The resolved shell helper function name.
 def resolve_channel_path($root; $channelPath; $action; $correlationId):
   "_async_" + (($action // "send") | ascii_downcase) + "_" + (($channelPath // "channel") | gsub("[^a-zA-Z0-9_]"; "_") | sub("^_+"; ""));
 
 # normalize_arazzo_root normalizes an Arazzo 1.0.x / 1.1.0 document for merging into the unified CDD AST.
+# @param none
+# @return The normalized Arazzo AST fragment object.
 def normalize_arazzo_root:
   . as $doc |
   {
@@ -92,6 +110,8 @@ def normalize_arazzo_root:
   } | with_entries(select(.value != null));
 
 # extract_arazzo_spec reconstructs a clean, standard-compliant Arazzo 1.1.0 document from the unified CDD AST.
+# @param none
+# @return The extracted Arazzo 1.1.0 specification object.
 def extract_arazzo_spec:
   . as $root |
   (
@@ -126,6 +146,8 @@ def extract_arazzo_spec:
   ) | with_entries(select(.value != null));
 
 # emit_mcp_workflow_tools builds MCP tool definitions for all Arazzo workflows in the AST.
+# @param none
+# @return JSON array of MCP Tool Objects for workflows.
 def emit_mcp_workflow_tools:
   if .workflows and (.workflows | length) > 0 then
     [

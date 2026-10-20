@@ -33,24 +33,23 @@ repos:
         pass_filenames: false
 
       - id: update-badges
-        name: Update Badges (Doc & Test Coverage)
-        entry: go run scripts/update_badges.go
+        name: Update Badges & Enforce 100% Doc/Test Coverage
+        entry: go run scripts/update_badges.go --check
         language: system
         pass_filenames: false
         always_run: true
 
       - id: swagger-2-petstore
         name: Swagger 2.0 Petstore Test
-        entry: bash -c 'cat ../petstore.json > temp-sh-spec.json && ./cdd.sh from_openapi -i temp-sh-spec.json -o temp-sh-dir && ./cdd.sh to_openapi -i temp-sh-dir -o temp-sh-out.json && rm -rf temp-sh-spec.json temp-sh-dir temp-sh-out.json ast.json'
+        entry: bash -c 'T=$(mktemp -d); trap "rm -rf $T" EXIT; S="../petstore.json"; [ -f "$S" ] || S="tests/test_swagger.json"; CDD_AST_PATH="$T/ast.json" ./cdd.sh from_openapi -i "$S" -o "$T/dir" && CDD_AST_PATH="$T/ast.json" ./cdd.sh to_openapi -i "$T/dir" -o "$T/out.json"'
         language: system
         pass_filenames: false
 
       - id: openapi-3-petstore
         name: OpenAPI 3.2.0 Petstore Test
-        entry: bash -c 'cat ../petstore_oas3.json > temp-sh-spec.json && ./cdd.sh from_openapi -i temp-sh-spec.json -o temp-sh-dir && ./cdd.sh to_openapi -i temp-sh-dir -o temp-sh-out.json && rm -rf temp-sh-spec.json temp-sh-dir temp-sh-out.json ast.json'
+        entry: bash -c 'T=$(mktemp -d); trap "rm -rf $T" EXIT; S="../petstore_oas3.json"; [ -f "$S" ] || S="tests/test.json"; CDD_AST_PATH="$T/ast.json" ./cdd.sh from_openapi -i "$S" -o "$T/dir" && CDD_AST_PATH="$T/ast.json" ./cdd.sh to_openapi -i "$T/dir" -o "$T/out.json"'
         language: system
         pass_filenames: false
-
 
       - id: swagger-2-petstore-server
         name: Swagger 2.0 Petstore Generated Server Test
@@ -75,4 +74,3 @@ repos:
         entry: make build_wasm
         language: system
         pass_filenames: false
-

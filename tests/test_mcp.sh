@@ -4,8 +4,16 @@
 # shellcheck disable=SC1091
 . "$(cd "$(dirname -- "$0")/.." && pwd)/lib/env.sh"
 
+# cleanup_mcp_test removes temporary MCP test outputs.
+# @param none
+# @return Returns 0.
+cleanup_mcp_test() {
+	rm -rf tests/out tests/out2 tests/out_arz tests/out_spec.json tests/out_arazzo.json
+}
+trap cleanup_mcp_test EXIT INT TERM
+
 # Generate the CLI
-rm -rf tests/out
+cleanup_mcp_test
 mkdir -p tests/out
 ./bin/cdd-sh from_openapi to_sdk_cli -i tests/test.json -o tests/out
 
@@ -157,7 +165,6 @@ fi
 
 # notifications
 echo '{"jsonrpc": "2.0", "method": "notifications/tools/list_changed"}' >tests/out/mcp_in.txt
-# we expect no output for notifications, so we just run it and ensure it doesn't crash or output anything
 res=$(tests/out/bin/sdk-cli mcp <tests/out/mcp_in.txt)
 if [ -n "$res" ]; then
 	echo "FAIL: notifications"
@@ -271,10 +278,76 @@ if ! printf "%s\n" "$res" | grep -q '"error":'; then
 fi
 
 echo '{"jsonrpc": "2.0", "id": 103, "method": "tools/call", "params": {"name": "from_openapi", "arguments": {"subcmd": "to_sdk", "input": "tests/test.json", "output": "tests/out2", "tests": true}}}' >tests/out/mcp_cdd_in.txt
-res=$(./bin/cdd-sh mcp <tests/out/mcp_cdd_in.txt || true)
+res=$(./bin/cdd-sh mcp <tests/out/mcp_cdd_in.txt)
+if ! printf "%s\n" "$res" | jq -e '.result.isError == false' >/dev/null; then
+	echo "FAIL: cdd-sh mcp from_openapi (tests=true) failed: $res"
+	exit 1
+fi
+if [ ! -f tests/out2/src/routes.sh ] || [ ! -f tests/out2/tests/test_routes.sh ]; then
+	echo "FAIL: cdd-sh mcp from_openapi (tests=true) did not emit routes.sh and test_routes.sh"
+	exit 1
+fi
 
+rm -rf tests/out2
 echo '{"jsonrpc": "2.0", "id": 104, "method": "tools/call", "params": {"name": "from_openapi", "arguments": {"subcmd": "to_sdk", "input": "tests/test.json", "output": "tests/out2", "tests": false}}}' >tests/out/mcp_cdd_in.txt
-res=$(./bin/cdd-sh mcp <tests/out/mcp_cdd_in.txt || true)
+res=$(./bin/cdd-sh mcp <tests/out/mcp_cdd_in.txt)
+if ! printf "%s\n" "$res" | jq -e '.result.isError == false' >/dev/null; then
+	echo "FAIL: cdd-sh mcp from_openapi (tests=false) failed: $res"
+	exit 1
+fi
+if [ ! -f tests/out2/src/routes.sh ] || [ -f tests/out2/tests/test_routes.sh ]; then
+	echo "FAIL: cdd-sh mcp from_openapi (tests=false) unexpected files"
+	exit 1
+fi
 
 echo '{"jsonrpc": "2.0", "id": 105, "method": "tools/call", "params": {"name": "to_openapi", "arguments": {"input": "tests/test.json", "output": "tests/out_spec.json"}}}' >tests/out/mcp_cdd_in.txt
-res=$(./bin/cdd-sh mcp <tests/out/mcp_cdd_in.txt || true)
+res=$(./bin/cdd-sh mcp <tests/out/mcp_cdd_in.txt)
+if ! printf "%s\n" "$res" | jq -e '.result.isError == false' >/dev/null; then
+	echo "FAIL: cdd-sh mcp to_openapi failed: $res"
+	exit 1
+fi
+if [ ! -f tests/out_spec.json ] || ! jq -e '.paths["/users"].get' tests/out_spec.json >/dev/null; then
+	echo "FAIL: cdd-sh mcp to_openapi did not emit valid tests/out_spec.json"
+	exit 1
+fi
+
+echo '{"jsonrpc": "2.0", "id": 106, "method": "tools/call", "params": {"name": "from_arazzo", "arguments": {"subcmd": "to_sdk", "input": "tests/test_arazzo.json", "output": "tests/out_arz", "tests": true}}}' >tests/out/mcp_cdd_in.txt
+res=$(./bin/cdd-sh mcp <tests/out/mcp_cdd_in.txt)
+if ! printf "%s\n" "$res" | jq -e '.result.isError == false' >/dev/null; then
+	echo "FAIL: cdd-sh mcp from_arazzo (tests=true) failed: $res"
+	exit 1
+fi
+if [ ! -f tests/out_arz/src/workflows.sh ] || [ ! -f tests/out_arz/tests/test_workflows.sh ]; then
+	echo "FAIL: cdd-sh mcp from_arazzo (tests=true) did not emit workflows.sh and test_workflows.sh"
+	exit 1
+fi
+
+rm -rf tests/out_arz
+echo '{"jsonrpc": "2.0", "id": 107, "method": "tools/call", "params": {"name": "from_arazzo", "arguments": {"subcmd": "to_sdk", "input": "tests/test_arazzo.json", "output": "tests/out_arz", "tests": false}}}' >tests/out/mcp_cdd_in.txt
+res=$(./bin/cdd-sh mcp <tests/out/mcp_cdd_in.txt)
+if ! printf "%s\n" "$res" | jq -e '.result.isError == false' >/dev/null; then
+	echo "FAIL: cdd-sh mcp from_arazzo (tests=false) failed: $res"
+	exit 1
+fi
+if [ ! -f tests/out_arz/src/workflows.sh ]; then
+	echo "FAIL: cdd-sh mcp from_arazzo (tests=false) did not emit workflows.sh"
+	exit 1
+fi
+
+echo '{"jsonrpc": "2.0", "id": 108, "method": "tools/call", "params": {"name": "to_arazzo", "arguments": {"input": "tests/out_arz/src/workflows.sh", "output": "tests/out_arazzo.json"}}}' >tests/out/mcp_cdd_in.txt
+res=$(./bin/cdd-sh mcp <tests/out/mcp_cdd_in.txt)
+if ! printf "%s\n" "$res" | jq -e '.result.isError == false' >/dev/null; then
+	echo "FAIL: cdd-sh mcp to_arazzo failed: $res"
+	exit 1
+fi
+if [ ! -f tests/out_arazzo.json ] || ! jq -e '.workflows | length == 2' tests/out_arazzo.json >/dev/null; then
+	echo "FAIL: cdd-sh mcp to_arazzo did not emit valid tests/out_arazzo.json"
+	exit 1
+fi
+
+echo '{"jsonrpc": "2.0", "id": 109, "method": "tools/call", "params": {"name": "nonexistent_tool", "arguments": {}}}' >tests/out/mcp_cdd_in.txt
+res=$(./bin/cdd-sh mcp <tests/out/mcp_cdd_in.txt)
+if ! printf "%s\n" "$res" | jq -e '.result.isError == true' >/dev/null; then
+	echo "FAIL: cdd-sh mcp nonexistent_tool should return isError=true: $res"
+	exit 1
+fi

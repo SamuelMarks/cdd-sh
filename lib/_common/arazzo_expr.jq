@@ -2,6 +2,8 @@
 # @description JQ helper functions for evaluating Arazzo 1.1.0 runtime expressions, JSONPath selectors, and simple/jsonpath criteria.
 
 # parse_subpath($s) splits a dot-separated or JSON Pointer subpath into a jq path array.
+# @param $s - Subpath string (dot-separated or JSON Pointer).
+# @return Array of path segments.
 def parse_subpath($s):
   if $s == "" or $s == null then []
   elif ($s | startswith("#/")) then
@@ -15,6 +17,9 @@ def parse_subpath($s):
   end;
 
 # lookup_ci($obj; $k) performs a case-insensitive key lookup on a JSON object.
+# @param $obj - JSON object to query.
+# @param $k - Key name to look up case-insensitively.
+# @return Matched property value or null.
 def lookup_ci($obj; $k):
   if ($obj | type) != "object" then null
   elif ($obj | has($k)) then $obj[$k]
@@ -24,6 +29,9 @@ def lookup_ci($obj; $k):
   end;
 
 # eval_path($root; $p) traverses $root along path array $p using case-insensitive object lookup.
+# @param $root - Root JSON value to traverse.
+# @param $p - Array of path segments.
+# @return Traversed value or null.
 def eval_path($root; $p):
   reduce $p[] as $seg ($root;
     if . == null then null
@@ -33,6 +41,8 @@ def eval_path($root; $p):
   );
 
 # eval_runtime_expr($expr) evaluates an Arazzo 1.1.0 runtime expression against the workflow state object.
+# @param $expr - Runtime expression string.
+# @return Evaluated scalar or JSON-serialized string.
 def eval_runtime_expr($expr):
   if $expr == "$url" then (.current.url // "")
   elif $expr == "$method" then (.current.method // "")
@@ -79,11 +89,15 @@ def eval_runtime_expr($expr):
   else tostring end;
 
 # eval_jsonpointer_selector($ptr) extracts a value from input JSON using an RFC 6901 JSON Pointer.
+# @param $ptr - RFC 6901 JSON Pointer string.
+# @return Extracted value as string or JSON string.
 def eval_jsonpointer_selector($ptr):
   ($ptr | ltrimstr("#") | ltrimstr("/") | if . == "" then [] else (split("/") | map(gsub("~1"; "/") | gsub("~0"; "~") | (tonumber? // .))) end) as $p |
   getpath($p) | if . == null then "" elif (type == "object" or type == "array") then tojson else tostring end;
 
 # eval_jsonpath_selector($jp) extracts a value from input JSON using an RFC 9535 JSONPath expression.
+# @param $jp - JSONPath selector string.
+# @return Extracted value as string or JSON string.
 def eval_jsonpath_selector($jp):
   if ($jp | startswith("$..")) then
     ($jp | ltrimstr("$..")) as $key |
@@ -95,6 +109,8 @@ def eval_jsonpath_selector($jp):
   if . == null then "" elif (type == "object" or type == "array") then tojson else tostring end;
 
 # eval_jsonpath_criterion($jp) evaluates a JSONPath filter or path existence check on input JSON.
+# @param $jp - JSONPath condition string.
+# @return Boolean true if the JSONPath condition matches, false otherwise.
 def eval_jsonpath_criterion($jp):
   if ($jp | contains("[?(")) then
     if ($jp | contains("==")) then
@@ -111,10 +127,14 @@ def eval_jsonpath_criterion($jp):
   end;
 
 # trim_ws($s) strips leading and trailing whitespace and single quotes from a string.
+# @param $s - String to trim.
+# @return Trimmed string.
 def trim_ws($s):
   $s | sub("^[ 	]+"; "") | sub("[ 	]+$"; "") | ltrimstr("'") | rtrimstr("'");
 
 # eval_simple_atom($a) evaluates an atomic comparison expression (==, !=, >=, <=, >, <).
+# @param $a - Atomic comparison string.
+# @return Boolean result of the comparison.
 def eval_simple_atom($a):
   trim_ws($a) as $t |
   if ($t | contains("==")) then
@@ -140,6 +160,8 @@ def eval_simple_atom($a):
   end;
 
 # eval_simple_criterion($expr) evaluates a simple boolean expression with && and || combinators.
+# @param $expr - Boolean condition string.
+# @return Boolean evaluation result.
 def eval_simple_criterion($expr):
   if ($expr | contains("||")) then
     any($expr | split("||")[]; eval_simple_atom(.))
@@ -150,6 +172,9 @@ def eval_simple_criterion($expr):
   end;
 
 # apply_payload_replacement($t; $v) sets path $t to value $v inside a JSON request payload.
+# @param $t - Target JSON Pointer or JSONPath string.
+# @param $v - Replacement value string or JSON.
+# @return Updated JSON payload object.
 def apply_payload_replacement($t; $v):
   ($t | ltrimstr("$") | ltrimstr(".") | ltrimstr("#") | ltrimstr("/") | split("[") | join("/") | split("]") | join("") | split(".") | join("/") | split("/") | map(select(. != "") | gsub("~1"; "/") | gsub("~0"; "~") | (tonumber? // .))) as $path |
   setpath($path; (($v | fromjson?) // $v));

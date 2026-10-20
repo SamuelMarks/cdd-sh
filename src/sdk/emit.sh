@@ -14,9 +14,12 @@ handle_emit_sdk() {
 	{
 		cat <<'EOF'
 #!/bin/sh
+# @file sdk.sh
+# @description Auto-generated MCP client SDK bindings.
 # @openapi_sdk_start
 MCP_CLI_BIN="./bin/sdk-cli"
 # mcp_get_tools retrieves the list of available MCP tools from the CLI server.
+# @param none
 mcp_get_tools() {
   echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | $MCP_CLI_BIN mcp | jq -r '.result.tools'
 }
@@ -68,14 +71,17 @@ mcp_unsubscribe_resource() {
   jq -c -n --arg uri "$uri" '{"jsonrpc":"2.0","id":1,"method":"resources/unsubscribe","params":{"uri":$uri}}' | $MCP_CLI_BIN mcp | jq -c '.result // .error'
 }
 # mcp_ping sends a JSON-RPC ping request to the MCP server and returns "ok" on success.
+# @param none
 mcp_ping() {
   echo '{"jsonrpc":"2.0","id":1,"method":"ping"}' | $MCP_CLI_BIN mcp | jq -r '.result | if . == {} then "ok" else "error" end'
 }
 # mcp_get_prompts retrieves the list of available MCP prompts.
+# @param none
 mcp_get_prompts() {
   echo '{"jsonrpc":"2.0","id":1,"method":"prompts/list"}' | $MCP_CLI_BIN mcp | jq -r '.result.prompts'
 }
 # mcp_get_roots retrieves the list of configured workspace roots from the MCP server.
+# @param none
 mcp_get_roots() {
   echo '{"jsonrpc":"2.0","id":1,"method":"roots/list"}' | $MCP_CLI_BIN mcp | jq -r '.result.roots'
 }
@@ -115,12 +121,5 @@ mcp_set_logging_level() {
 EOF
 	} >"${output_file}.tmp"
 
-	if [ -f "${output_file}" ]; then
-		awk -v new_file="${output_file}.tmp" -f "${LIBSCRIPT_ROOT_DIR}/lib/_common/merge.awk" <"${output_file}" >"${output_file}.merged"
-		mv "${output_file}.merged" "${output_file}"
-		rm -f "${output_file}.tmp"
-	else
-		mv "${output_file}.tmp" "${output_file}"
-	fi
-	chmod +x "${output_file}"
+	merge_or_move_emitted_file "${output_file}" "1"
 }

@@ -28,13 +28,16 @@ handle_emit_mocks() {
 
 	{
 		printf "#!/bin/sh\n"
+		printf "# @file mocks.sh\n"
+		printf "# @description Mock curl wrapper returning static responses from %s.\n" "${json_name}"
 		printf "# shellcheck disable=SC3028,SC2034\n"
 		printf "DIR=\"\$(cd \"\$(dirname \"\${BASH_SOURCE:-\$0}\")\" && pwd)\"\n\n"
-		printf "# curl overrides the system curl to return mock data from %s\n" "${json_name}"
+		printf "# curl overrides the system curl to return mock data from %s.\n" "${json_name}"
+		printf "# @param \$@: args - Ignored curl arguments.\n"
 		printf 'curl() {\n'
-		printf '  if [ -f "$DIR/mocks.json" ]; then\n'
+		printf '  if [ -f "$DIR/%s" ]; then\n' "${json_name}"
 		printf '    # Simply return the first mock we find, or `{}`.\n'
-		printf '    body=$(jq -r '"'"'if type == "array" and length > 0 then .[0] else . end | tojson'"'"' "$DIR/mocks.json" 2>/dev/null || echo "{}")\n'
+		printf '    body=$(jq -r '"'"'if type == "array" and length > 0 then .[0] else . end | tojson'"'"' "$DIR/%s" 2>/dev/null || echo "{}")\n' "${json_name}"
 		printf '  else\n'
 		printf '    body="{}"\n'
 		printf '  fi\n'

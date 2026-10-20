@@ -88,11 +88,17 @@ missing_*.txt
 
 # Explicitly track tests directory and root test files to prevent accidental ignores
 !/tests/test_*.sh
-!/tests/emitted_*
-!/tests/mocks.sh
-!/test_array_validation.sh
 !/test_*.go
-\n.bin_mock/\n
+
+# Ignore generated test outputs inside tests/
+tests/emitted_*
+tests/mocks.sh
+tests/out_spec.json
+tests/out_arazzo.json
+tests/out/
+tests/out2/
+tests/out_arz/
+tests/test_*_out.sh
 
 # Throwaway patches and temporary files
 patch*.py

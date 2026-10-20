@@ -5,6 +5,8 @@ include "openapi";
 if .paths then
   "###FILE###run_all.sh\n" +
   "#!/bin/sh\n" +
+  "# @file run_all.sh\n" +
+  "# @description Master runner for generated server endpoint tests.\n" +
   "set -e\n" +
   "DIR=\"$(dirname \"$0\")\"\n" +
   ([ .paths | to_entries[] | .key as $path | .value | to_entries[] | select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers") | .key as $method | .value |
@@ -16,6 +18,8 @@ if .paths then
   ($path | gsub("\\{[^}]+\\}"; "1")) as $resolvedPath |
   "###FILE###test_\($opId).sh\n" +
   "#!/bin/sh\n" +
+  "# @file test_\($opId).sh\n" +
+  "# @description Integration test for \($method | ascii_upcase) \($path).\n" +
   "set -e\n" +
   "BASE_URL=\"${BASE_URL:-http://localhost:8080}\"\n" +
   "res=$(curl -s -X \($method | ascii_upcase) \"$BASE_URL\($resolvedPath)\")\n" +

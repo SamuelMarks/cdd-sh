@@ -21,6 +21,7 @@ handle_parse_workflows() {
 	extracted_lines=$(awk '
 	# @function flush_step
 	# @description Emits the currently accumulated step metadata line.
+	# @param none
 	function flush_step() {
 		if (step_id == "" || wf_id == "") return
 		printf "STEP:%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", wf_id, step_id, step_desc, step_target_kind, step_target_val, step_action, step_corr, step_timeout, step_deps, step_params, step_rb, step_crit, step_succ, step_fail, step_out, step_ext
@@ -31,6 +32,7 @@ handle_parse_workflows() {
 	}
 	# @function flush_wf
 	# @description Emits the currently accumulated workflow metadata line.
+	# @param none
 	function flush_wf() {
 		flush_step()
 		if (wf_id == "") return

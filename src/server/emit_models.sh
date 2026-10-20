@@ -15,28 +15,19 @@ handle_emit_server_models() {
 
 	{
 		printf "#!/bin/sh\n"
-		printf "# get property\n_get_prop() {\n  printf '%%s' \"\$1\" | jq -c \".\\\\\"\$2\\\\\" // empty\"\n}\n"
+		printf "# @file _helpers.sh\n"
+		printf "# @description Shared JSON property extraction helper for generated server models.\n"
+		printf "# _get_prop extracts a top-level property from a JSON object string.\n"
+		printf "# @param \$1: json - Raw JSON object string.\n"
+		printf "# @param \$2: key - Property name to extract.\n"
+		printf "_get_prop() {\n  printf '%%s' \"\$1\" | jq -r \".\\\\\"\$2\\\\\" | if . == null then empty elif (type == \\\\\"object\\\\\" or type == \\\\\"array\\\\\") then tojson else tostring end\"\n}\n"
 	} >"${out_dir}/_helpers.sh"
 	chmod +x "${out_dir}/_helpers.sh"
 
-	# We use the existing classes/emit.jq, but split it into multiple files using awk.
-	# The output of emit.jq starts a new model with `# @class ModelName`.
-	jq -r -f "${LIBSCRIPT_ROOT_DIR}/src/classes/emit.jq" "${ast}" | awk -v out_dir="${out_dir}" '
-	  /^# @class / {
-          if (out_file != "") { close(out_file) }
-          model_name = $3
-          out_file = out_dir "/" model_name ".sh"
-          print "#!/bin/sh" > out_file
-      }
-      {
-          if (out_file != "") { print $0 >> out_file }
-      }
-      END {
-          if (out_file != "") { close(out_file) }
-      }
-    '
-
-	for f in "${out_dir}"/*.sh; do
-		if [ -f "$f" ]; then chmod +x "$f"; fi
-	done
+	jq -r -f "${LIBSCRIPT_ROOT_DIR}/src/classes/emit.jq" "${ast}" | awk '
+		/^# @class / {
+			printf "###FILE###model_%s.sh\n#!/bin/sh\n# @file model_%s.sh\n# @description Generated validation model for %s.\n", $3, $3, $3
+		}
+		{ print $0 }
+	' | emit_split_files "${out_dir}"
 }

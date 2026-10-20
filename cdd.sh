@@ -479,31 +479,31 @@ mcp)
 			if [ "$tool_name" = "to_openapi" ]; then
 				input=$(echo "$args" | jq -r '.input')
 				output=$(echo "$args" | jq -r '.output')
-				res=$(./bin/cdd-sh to_openapi -i "$input" -o "$output" 2>&1)
+				res=$(sh "${LIBSCRIPT_ROOT_DIR:-.}/cdd.sh" to_openapi -i "$input" -o "$output" 2>&1)
 				exit_code=$?
 			elif [ "$tool_name" = "from_openapi" ]; then
 				subcmd=$(echo "$args" | jq -r '.subcmd')
 				input=$(echo "$args" | jq -r '.input')
 				output=$(echo "$args" | jq -r '.output')
 				if [ "$(echo "$args" | jq -r '.tests // false')" = "true" ]; then
-					res=$(./bin/cdd-sh from_openapi "$subcmd" -i "$input" -o "$output" --tests 2>&1)
+					res=$(sh "${LIBSCRIPT_ROOT_DIR:-.}/cdd.sh" from_openapi "$subcmd" -i "$input" -o "$output" --tests 2>&1)
 				else
-					res=$(./bin/cdd-sh from_openapi "$subcmd" -i "$input" -o "$output" 2>&1)
+					res=$(sh "${LIBSCRIPT_ROOT_DIR:-.}/cdd.sh" from_openapi "$subcmd" -i "$input" -o "$output" 2>&1)
 				fi
 				exit_code=$?
 			elif [ "$tool_name" = "to_arazzo" ]; then
 				input=$(echo "$args" | jq -r '.input')
 				output=$(echo "$args" | jq -r '.output')
-				res=$(./bin/cdd-sh to_arazzo -i "$input" -o "$output" 2>&1)
+				res=$(sh "${LIBSCRIPT_ROOT_DIR:-.}/cdd.sh" to_arazzo -i "$input" -o "$output" 2>&1)
 				exit_code=$?
 			elif [ "$tool_name" = "from_arazzo" ]; then
 				subcmd=$(echo "$args" | jq -r '.subcmd')
 				input=$(echo "$args" | jq -r '.input')
 				output=$(echo "$args" | jq -r '.output')
 				if [ "$(echo "$args" | jq -r '.tests // false')" = "true" ]; then
-					res=$(./bin/cdd-sh from_arazzo "$subcmd" -i "$input" -o "$output" --tests 2>&1)
+					res=$(sh "${LIBSCRIPT_ROOT_DIR:-.}/cdd.sh" from_arazzo "$subcmd" -i "$input" -o "$output" --tests 2>&1)
 				else
-					res=$(./bin/cdd-sh from_arazzo "$subcmd" -i "$input" -o "$output" 2>&1)
+					res=$(sh "${LIBSCRIPT_ROOT_DIR:-.}/cdd.sh" from_arazzo "$subcmd" -i "$input" -o "$output" 2>&1)
 				fi
 				exit_code=$?
 			else
@@ -570,10 +570,10 @@ serve_json_rpc)
 					o_val=$(echo "$json_params" | jq -r '.out // ""')
 					case "$f_val" in
 					*.json)
-						out=$(./bin/cdd-sh parse openapi "$f_val" 2>&1 && ./bin/cdd-sh emit openapi "$o_val" 2>&1 || true)
+						out=$(sh "${LIBSCRIPT_ROOT_DIR:-.}/cdd.sh" parse openapi "$f_val" 2>&1 && sh "${LIBSCRIPT_ROOT_DIR:-.}/cdd.sh" emit openapi "$o_val" 2>&1 || true)
 						;;
 					*)
-						out=$(./bin/cdd-sh to_openapi -i "$f_val" -o "$o_val" 2>&1 || true)
+						out=$(sh "${LIBSCRIPT_ROOT_DIR:-.}/cdd.sh" to_openapi -i "$f_val" -o "$o_val" 2>&1 || true)
 						;;
 					esac
 					;;
@@ -594,12 +594,12 @@ serve_json_rpc)
 					fi
 
 					# shellcheck disable=SC2086
-					out=$(./bin/cdd-sh from_openapi "$subcmd_val" -i "$i_val" -o "$o_val" $opts 2>&1 || true)
+					out=$(sh "${LIBSCRIPT_ROOT_DIR:-.}/cdd.sh" from_openapi "$subcmd_val" -i "$i_val" -o "$o_val" $opts 2>&1 || true)
 					;;
 				to_arazzo)
 					f_val=$(echo "$json_params" | jq -r '.file // .input // ""')
 					o_val=$(echo "$json_params" | jq -r '.out // .output // ""')
-					out=$(./bin/cdd-sh to_arazzo -i "$f_val" -o "$o_val" 2>&1 || true)
+					out=$(sh "${LIBSCRIPT_ROOT_DIR:-.}/cdd.sh" to_arazzo -i "$f_val" -o "$o_val" 2>&1 || true)
 					;;
 				from_arazzo)
 					subcmd_val=$(echo "$json_params" | jq -r '.subcmd // "to_sdk"')
@@ -610,15 +610,15 @@ serve_json_rpc)
 						opts="$opts --tests"
 					fi
 					# shellcheck disable=SC2086
-					out=$(./bin/cdd-sh from_arazzo "$subcmd_val" -i "$i_val" -o "$o_val" $opts 2>&1 || true)
+					out=$(sh "${LIBSCRIPT_ROOT_DIR:-.}/cdd.sh" from_arazzo "$subcmd_val" -i "$i_val" -o "$o_val" $opts 2>&1 || true)
 					;;
 				to_docs_json)
 					i_val=$(echo "$json_params" | jq -r '.spec // ""')
 					o_val=$(echo "$json_params" | jq -r '.out // ""')
-					out=$(./bin/cdd-sh to_docs_json -i "$i_val" -o "$o_val" 2>&1 || true)
+					out=$(sh "${LIBSCRIPT_ROOT_DIR:-.}/cdd.sh" to_docs_json -i "$i_val" -o "$o_val" 2>&1 || true)
 					;;
 				--version)
-					out=$(./bin/cdd-sh --version 2>&1 || true)
+					out=$(sh "${LIBSCRIPT_ROOT_DIR:-.}/cdd.sh" --version 2>&1 || true)
 					;;
 				*)
 					out="Unknown method"
@@ -885,7 +885,7 @@ from_openapi)
 		;;
 	to_docs_json)
 		. "${LIBSCRIPT_ROOT_DIR:-.}/src/docsjson/emit.sh"
-		handle_to_docs_json "$@" >"$OUT/docs.json"
+		handle_to_docs_json -i "$IN" -o "$OUT/docs.json"
 		;;
 	to_openapi)
 		if [ -d "$IN" ]; then

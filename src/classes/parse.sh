@@ -13,13 +13,22 @@ handle_parse_classes() {
 	if [ ! -f "${ast}" ]; then echo "{}" >"${ast}"; fi
 
 	parsed_classes=$(awk '
+	# @function json_esc
+	# @description Escapes backslashes and double quotes for safe JSON string interpolation.
+	# @param s - Input string to escape.
+	function json_esc(s) {
+	  gsub(/\\/, "\\\\", s)
+	  gsub(/"/, "\\\"", s)
+	  return s
+	}
 	# @function finish_class
 	# @description Emits the accumulated class schema JSON object.
+	# @param none
 	function finish_class() {
 	if (class_name == "") return
-	printf "{\"name\": \"%s\", \"description\": \"%s\", \"required\": \"%s\", \"properties\": {", class_name, desc, req
+	printf "{\"name\": \"%s\", \"description\": \"%s\", \"required\": \"%s\", \"properties\": {", json_esc(class_name), json_esc(desc), json_esc(req)
 	for (i=0; i<prop_count; i++) {
-	printf "\"%s\": {\"type\": \"%s\"}", props[i, "name"], props[i, "type"]
+	printf "\"%s\": {\"type\": \"%s\"}", json_esc(props[i, "name"]), json_esc(props[i, "type"])
 	if (i < prop_count - 1) printf ", "
 	}
 	printf "}}\n"

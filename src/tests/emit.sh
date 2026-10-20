@@ -17,7 +17,7 @@ handle_emit_tests() {
 	fi
 
 	{
-		printf "#!/bin/sh\nset -eu\n\n"
+		printf "#!/bin/sh\n# @file %s\n# @description Auto-generated route unit tests.\nset -eu\n\n" "${file_path##*/}"
 		printf "# shellcheck disable=SC3028,SC2034\n"
 		printf 'DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")" && pwd)"\n'
 
@@ -26,7 +26,8 @@ handle_emit_tests() {
 		printf 'export API_KEY="special-key"\n'
 		printf 'export OAUTH_TOKEN="special-key"\n'
 		printf 'export BASIC_AUTH="user:pass"\n\n'
-		printf '# curl is a wrapper around the system curl command.\n'
+		printf '# curl is a wrapper around the system curl command that asserts 2xx/3xx HTTP status codes.\n'
+		printf '# @param $@: args - Arguments forwarded to command curl.\n'
 		printf 'curl() {\n'
 		printf '  out=$(command curl -s -w "\\n%%{http_code}" "$@" || true)\n'
 		printf '  status=$(printf "%%s\\n" "$out" | tail -n1)\n'
@@ -42,6 +43,10 @@ handle_emit_tests() {
 
 		jq -r '
       . as $root |
+      # generate_json recursively builds a sample JSON value string matching schema.
+      # @param schema - The OpenAPI Schema Object.
+      # @param root - The root OpenAPI specification AST.
+      # @return A JSON-encoded sample string.
       def generate_json(schema; root):
         if schema."$ref" then
           generate_json(root.components.schemas[schema."$ref" | sub("^#/components/schemas/"; "")] // {}; root)
@@ -65,6 +70,11 @@ handle_emit_tests() {
           "\"test_string\""
         end;
 
+      # get_dummy generates a shell-quoted dummy argument for a parameter or requestBody.
+      # @param obj - The Parameter or MediaType Object.
+      # @param content_type - The MIME content type string.
+      # @param root - The root OpenAPI specification AST.
+      # @return A shell-quoted dummy argument string.
       def get_dummy(obj; content_type; root):
         (if obj.schema then obj.schema else obj end) as $schema |
         if obj.name == "api_key" or obj.name == "apiKey" then "\"special-key\""
@@ -105,7 +115,7 @@ handle_emit_tests() {
         ] | sort_by(if .method == "post" then 1 elif .method == "put" then 2 elif .method == "get" then 3 else 4 end) as $ops |
         
         ([ $ops[] | 
-          "# test \(.id)\ntest_\(.id)() {\n" +
+          "# test_\(.id) invokes \(.id) with synthetic arguments and validates JSON output.\n# @param none\ntest_\(.id)() {\n" +
           "  echo \"Testing \(.id)\"\n" +
           "  out=$(\(.id) \(.args | join(" ")))\n" +
           "  if [ -n \"$out\" ]; then\n" +
@@ -113,19 +123,13 @@ handle_emit_tests() {
           "  fi\n" +
           "}\n"
         ] | join("\n")) +
-        "\n# run all tests\nrun_all_tests() {\n  touch test_string\n" +
+        "\n# run_all_tests executes all generated route unit tests.\n# @param none\nrun_all_tests() {\n  touch test_string\n  trap '\''rm -f test_string'\'' EXIT\n" +
         ([ $ops[] | "  test_\(.id)" ] | join("\n")) +
-        "\n}\n\n" +
+        "\n  rm -f test_string\n}\n\n" +
         "if ! (return 0 2>/dev/null); then\n  run_all_tests \"$@\"\nfi\n"
       else empty end
     ' "${ast}"
 	} >"${file_path}.tmp"
 
-	if [ -f "${file_path}" ]; then
-		awk -v new_file="${file_path}.tmp" -f "${LIBSCRIPT_ROOT_DIR}/lib/_common/merge.awk" "${file_path}" >"${file_path}.merged"
-		mv "${file_path}.merged" "${file_path}"
-		rm -f "${file_path}.tmp"
-	else
-		mv "${file_path}.tmp" "${file_path}"
-	fi
+	merge_or_move_emitted_file "${file_path}" "0"
 }

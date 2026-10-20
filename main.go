@@ -10,7 +10,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"runtime"
+	"strconv"
 	"strings"
 
 	"cdd-sh/internal/goawkcli"
@@ -31,6 +31,8 @@ const (
 	ErrCatFailed
 	// ErrDirnameMissingOperand indicates dirname was invoked without an operand.
 	ErrDirnameMissingOperand
+	// ErrChmodFailed indicates a file permission update error in the virtualized chmod command.
+	ErrChmodFailed
 )
 
 // RunnerError is a strongly typed error structure implementing error and ExitCode() for the shell runner.
@@ -41,11 +43,19 @@ type RunnerError struct {
 }
 
 // Error returns the formatted diagnostic message for the RunnerError.
+// Parameters:
+//   - none
+//
+// Returns the diagnostic error string.
 func (e *RunnerError) Error() string {
 	return e.Msg
 }
 
 // ExitCode returns the numeric exit status code associated with the RunnerError.
+// Parameters:
+//   - none
+//
+// Returns the numeric exit status code.
 func (e *RunnerError) ExitCode() int {
 	return int(e.Code)
 }
@@ -72,26 +82,17 @@ var embeddedFiles embed.FS
 // workaroundBase holds an optional base directory prefix for WASI path resolution.
 var workaroundBase string
 
-// runtimeGOOS holds the current operating system target for WASI initialization checks.
-var runtimeGOOS = runtime.GOOS
-
 // init configures the embedded filesystems and path resolvers for goawkcli and gojqcli.
+// Parameters:
+//   - none
+//
+// Returns nothing.
 func init() {
 	goawkcli.EmbeddedFS = embeddedFiles
 	gojqcli.EmbeddedFS = embeddedFiles
 
-	goawkcli.ResolvePath = func(p string) string { return resolvePath(".", p) }
-	gojqcli.ResolvePath = func(p string) string { return resolvePath(".", p) }
-
-	initWasi()
-}
-
-// initWasi performs WASI-specific environment initialization.
-func initWasi() {
-	// The wasip1 '.' preopen workaround has been disabled.
-	// It incorrectly matches directories in shims (like browser_wasi_shim)
-	// that return inode 0 for all directories, causing path resolution failures.
-	_ = runtimeGOOS
+	goawkcli.SetResolvePath(func(p string) string { return resolvePath(".", p) })
+	gojqcli.SetResolvePath(func(p string) string { return resolvePath(".", p) })
 }
 
 // getDir extracts the current working directory from the interpreter handler context.
@@ -126,6 +127,9 @@ func (readWriteNopCloser) Write(p []byte) (n int, err error) {
 }
 
 // Close closes the underlying reader if it implements io.Closer.
+// Parameters:
+//   - none
+//
 // Returns any error encountered while closing.
 func (r readWriteNopCloser) Close() error {
 	if c, ok := r.Reader.(io.Closer); ok {
@@ -156,10 +160,10 @@ func awkMiddleware(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 	return func(ctx context.Context, args []string) error {
 		if len(args) > 0 && args[0] == "awk" {
 			hc := interp.HandlerCtx(ctx)
-			prevResolve := goawkcli.ResolvePath
-			goawkcli.ResolvePath = func(p string) string { return resolvePath(hc.Dir, p) }
-			defer func() { goawkcli.ResolvePath = prevResolve }()
+			prev := goawkcli.ResolvePath
+			goawkcli.SetResolvePath(func(p string) string { return resolvePath(hc.Dir, p) })
 			exitCode := goawkcli.RunAwk(args[1:], hc.Stdin, hc.Stdout, hc.Stderr)
+			goawkcli.SetResolvePath(prev)
 			if exitCode == 0 {
 				return nil
 			}
@@ -178,10 +182,10 @@ func jqMiddleware(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 	return func(ctx context.Context, args []string) error {
 		if len(args) > 0 && args[0] == "jq" {
 			hc := interp.HandlerCtx(ctx)
-			prevResolve := gojqcli.ResolvePath
-			gojqcli.ResolvePath = func(p string) string { return resolvePath(hc.Dir, p) }
-			defer func() { gojqcli.ResolvePath = prevResolve }()
+			prev := gojqcli.ResolvePath
+			gojqcli.SetResolvePath(func(p string) string { return resolvePath(hc.Dir, p) })
 			exitCode := gojqcli.RunJq(args[1:], hc.Stdin, hc.Stdout, hc.Stderr)
+			gojqcli.SetResolvePath(prev)
 			if exitCode == 0 {
 				return nil
 			}
@@ -193,6 +197,11 @@ func jqMiddleware(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 
 // resolvePath returns the absolute path based on a given base directory and a relative path p.
 // If p is already absolute, it returns p directly.
+// Parameters:
+//   - base: The base working directory.
+//   - p: The relative or absolute target path.
+//
+// Returns the resolved path string.
 func resolvePath(base, p string) string {
 	if filepath.IsAbs(p) {
 		return p
@@ -205,6 +214,25 @@ func resolvePath(base, p string) string {
 		return filepath.Join(workaroundBase, joined)
 	}
 	return joined
+}
+
+// parseChmodMode parses an octal or symbolic chmod mode string into an os.FileMode.
+// Parameters:
+//   - modeStr: The mode argument (e.g., "+x", "0755", "644").
+//
+// Returns the parsed os.FileMode and any parse error.
+func parseChmodMode(modeStr string) (os.FileMode, error) {
+	if strings.Contains(modeStr, "+x") {
+		return 0755, nil
+	}
+	if strings.Contains(modeStr, "-w") {
+		return 0555, nil
+	}
+	parsed, err := strconv.ParseUint(modeStr, 8, 32)
+	if err != nil {
+		return 0, err
+	}
+	return os.FileMode(parsed), nil
 }
 
 // hostCommandValidator ensures that only a specific set of bundled commands are permitted to run.
@@ -247,9 +275,15 @@ func fsMiddleware(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 			if len(args) < 3 {
 				return interp.NewExitStatus(1)
 			}
+			mode, err := parseChmodMode(args[1])
+			if err != nil {
+				return failRunner(hc.Stderr, ErrChmodFailed, 1, fmt.Sprintf("chmod: %v", err))
+			}
 			for _, arg := range args[2:] {
 				target := resolvePath(dir, arg)
-				_ = os.Chmod(target, 0755)
+				if err := os.Chmod(target, mode); err != nil {
+					return failRunner(hc.Stderr, ErrChmodFailed, 1, fmt.Sprintf("chmod: %v", err))
+				}
 			}
 			return nil
 		}
@@ -281,14 +315,16 @@ func fsMiddleware(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 		}
 		if args[0] == "cat" {
 			if len(args) == 1 {
-				_, copyErr := io.Copy(hc.Stdout, hc.Stdin)
-				_ = copyErr
+				if _, copyErr := io.Copy(hc.Stdout, hc.Stdin); copyErr != nil {
+					return failRunner(hc.Stderr, ErrCatFailed, 1, fmt.Sprintf("cat: %v", copyErr))
+				}
 				return nil
 			}
 			for _, arg := range args[1:] {
 				if arg == "-" {
-					_, copyErr := io.Copy(hc.Stdout, hc.Stdin)
-					_ = copyErr
+					if _, copyErr := io.Copy(hc.Stdout, hc.Stdin); copyErr != nil {
+						return failRunner(hc.Stderr, ErrCatFailed, 1, fmt.Sprintf("cat: %v", copyErr))
+					}
 					continue
 				}
 				target := resolvePath(dir, arg)
@@ -452,6 +488,9 @@ func builtinCallHandler(ctx context.Context, args []string) ([]string, error) {
 // activeCallHandler holds the interp.CallHandlerFunc used by runMain, allowing injection in tests.
 var activeCallHandler interp.CallHandlerFunc = builtinCallHandler
 
+// newRunner is the factory function for creating an interp.Runner, allowing error injection in tests.
+var newRunner = interp.New
+
 // osExit is a variable pointing to os.Exit to allow mocking in tests.
 var osExit = os.Exit
 
@@ -461,6 +500,8 @@ var osExit = os.Exit
 //   - scriptOverride: The shell script source code to execute.
 //   - args: Positional arguments passed to the script.
 //   - exitFunc: Callback invoked with the non-zero exit code on failure.
+//
+// Returns nothing.
 func runMain(scriptOverride string, args []string, exitFunc func(int)) {
 	r := strings.NewReader(scriptOverride)
 	f, err := syntax.NewParser().Parse(r, "")
@@ -470,7 +511,7 @@ func runMain(scriptOverride string, args []string, exitFunc func(int)) {
 		return
 	}
 
-	runner, _ := interp.New(
+	runner, err := newRunner(
 		interp.StdIO(os.Stdin, os.Stdout, os.Stderr),
 		interp.Env(expand.ListEnviron(os.Environ()...)),
 		interp.Params(append([]string{"--"}, args...)...),
@@ -500,6 +541,11 @@ func runMain(scriptOverride string, args []string, exitFunc func(int)) {
 			return interp.DefaultOpenHandler()(ctx, resolvedPath, flag, perm)
 		}),
 	)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		exitFunc(1)
+		return
+	}
 
 	err = runner.Run(context.Background(), f)
 	if err != nil {
@@ -513,6 +559,10 @@ func runMain(scriptOverride string, args []string, exitFunc func(int)) {
 }
 
 // main reads the runtime arguments and delegates execution to runMain with the default script.
+// Parameters:
+//   - none
+//
+// Returns nothing.
 func main() {
 	var args []string
 	if len(os.Args) > 1 {

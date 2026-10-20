@@ -14,6 +14,8 @@ handle_emit_cli() {
 
 	{
 		printf "#!/bin/sh\n"
+		printf "# @file %s\n" "${output_file##*/}"
+		printf "# @description Auto-generated CLI, workflow runner, and MCP server.\n"
 		printf "# shellcheck disable=SC2016,SC2034,SC1091\n"
 		printf "# @openapi_cli_start\n"
 		jq -r -L "${LIBSCRIPT_ROOT_DIR}/lib/_common" '
@@ -54,6 +56,8 @@ INNER_EOF
 		emit_mcp_handler_func
 		printf "\n"
 
+		printf "# usage prints CLI help information.\n"
+		printf "# @param none\n"
 		printf "usage() {\n"
 		printf "  echo \"\$TITLE - \$VERSION\"\n"
 		printf "  echo \"\$SUMMARY\"\n"
@@ -269,12 +273,5 @@ INNER_EOF
 		printf "# @openapi_cli_end\n"
 	} >"${output_file}.tmp"
 
-	if [ -f "${output_file}" ]; then
-		awk -v new_file="${output_file}.tmp" -f "${LIBSCRIPT_ROOT_DIR}/lib/_common/merge.awk" <"${output_file}" >"${output_file}.merged"
-		mv "${output_file}.merged" "${output_file}"
-		rm -f "${output_file}.tmp"
-	else
-		mv "${output_file}.tmp" "${output_file}"
-	fi
-	chmod +x "${output_file}"
+	merge_or_move_emitted_file "${output_file}" "1"
 }

@@ -11,13 +11,21 @@ handle_parse_routes() {
 	if [ ! -f "${file_path}" ]; then return 1; fi
 
 	all_raw=$(awk '
+    # @function json_esc
+    # @description Escapes backslashes and double quotes for safe JSON string interpolation.
+    # @param s - Input string to escape.
+    function json_esc(s) {
+      gsub(/\\/, "\\\\", s)
+      gsub(/"/, "\\\"", s)
+      return s
+    }
     BEGIN { in_func = 0; in_webhook = 0; in_callback = 0 }
     /^# @callback / { callbackName = $3; method = ""; summary = ""; in_callback = 1; in_func = 0 }
     /^# @method / { if (in_callback||in_webhook) method = tolower($3) }
     /^# @description / { if (in_callback||in_webhook||in_func) summary = substr($0, 16) }
-    /^handle_callback_/ { if (in_callback) { printf "CALLBACK:{\"name\": \"%s\", \"method\": \"%s\", \"summary\": \"%s\"}\n", callbackName, method, summary; in_callback = 0 } }
+    /^handle_callback_/ { if (in_callback) { printf "CALLBACK:{\"name\": \"%s\", \"method\": \"%s\", \"summary\": \"%s\"}\n", json_esc(callbackName), json_esc(method), json_esc(summary); in_callback = 0 } }
     /^# @webhook / { webhookName = $3; method = ""; summary = ""; in_webhook = 1; in_func = 0 }
-    /^handle_webhook_/ { if (in_webhook) { printf "WEBHOOK:{\"name\": \"%s\", \"method\": \"%s\", \"summary\": \"%s\"}\n", webhookName, method, summary; in_webhook = 0 } }
+    /^handle_webhook_/ { if (in_webhook) { printf "WEBHOOK:{\"name\": \"%s\", \"method\": \"%s\", \"summary\": \"%s\"}\n", json_esc(webhookName), json_esc(method), json_esc(summary); in_webhook = 0 } }
     /^# @function / { operationId = $3; if (operationId ~ /^auth_login_/) { in_func = 0; next }; method = ""; path = ""; summary = ""; reqBody = "false"; reqBodyType = "application/json"; param_count = 0; delete params; openapi_json = ""; extUrl = ""; extDesc = ""; in_func = 1; in_webhook = 0 }
     /^# @externalDocs / { if (in_func) { extUrl = $3; extDesc = substr($0, length($1) + length($2) + length($3) + 4); } }
     /^# @openapi_json / { if (in_func) { openapi_json = substr($0, 16); } }
@@ -26,7 +34,7 @@ handle_parse_routes() {
         if ($3 == "requestBody" || $4 == "requestBody") {
           reqBody = "true"
           if ($4 == "requestBody") { p_in = $5; gsub(/[\(\)]/, "", p_in); if (p_in != "") reqBodyType = p_in }
-        } else {
+        } else if ($3 != "none") {
           p_name = $4; p_in = $5; if (substr(p_name, length(p_name)) == ":") p_name = substr(p_name, 1, length(p_name)-1)
           gsub(/[\(\)]/, "", p_in); idx = index($0, "- "); if (idx > 0) p_desc = substr($0, idx + 2); else p_desc = ""
           params[param_count, "name"] = p_name; params[param_count, "in"] = p_in; params[param_count, "desc"] = p_desc; param_count++
@@ -43,17 +51,17 @@ handle_parse_routes() {
     /curl -s -X/ {
       if (in_func) {
         for (i=1; i<=NF; i++) { if ($i == "-X") method = tolower($(i+1)) }
-        printf "OP:{\"path\": \"%s\", \"method\": \"%s\", \"operationId\": \"%s\", \"summary\": \"%s\", \"extUrl\": \"%s\", \"extDesc\": \"%s\"", path, method, operationId, summary, extUrl, extDesc
+        printf "OP:{\"path\": \"%s\", \"method\": \"%s\", \"operationId\": \"%s\", \"summary\": \"%s\", \"extUrl\": \"%s\", \"extDesc\": \"%s\"", json_esc(path), json_esc(method), json_esc(operationId), json_esc(summary), json_esc(extUrl), json_esc(extDesc)
         if (openapi_json != "") { printf ", \"openapi_json\": %s", openapi_json }
         if (param_count > 0) {
           printf ", \"parameters\": ["
           for (i=0; i<param_count; i++) {
-            printf "{\"name\": \"%s\", \"in\": \"%s\", \"description\": \"%s\"}", params[i, "name"], params[i, "in"], params[i, "desc"]
+            printf "{\"name\": \"%s\", \"in\": \"%s\", \"description\": \"%s\"}", json_esc(params[i, "name"]), json_esc(params[i, "in"]), json_esc(params[i, "desc"])
             if (i < param_count - 1) printf ", "
           }
           printf "]"
         }
-        if (reqBody == "true") printf ", \"requestBody\": {\"content\": {\"%s\": {}}}", reqBodyType
+        if (reqBody == "true") printf ", \"requestBody\": {\"content\": {\"%s\": {}}}", json_esc(reqBodyType)
         printf "}\n"
         in_func = 0
       }

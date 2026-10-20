@@ -13,6 +13,15 @@ handle_parse_docstrings() {
 	if [ ! -f "${file_path}" ]; then return 0; fi
 
 	all_raw=$(awk '
+	# @function json_esc
+	# @description Escapes backslashes, double quotes, and newlines for safe JSON string interpolation.
+	# @param s - Input string to escape.
+	function json_esc(s) {
+		gsub(/\\/, "\\\\", s)
+		gsub(/"/, "\\\"", s)
+		gsub(/\n/, "\\n", s)
+		return s
+	}
 	BEGIN { op = ""; desc = ""; info_desc = ""; in_info = 0 }
 	/^# / {
 	title_ver = substr($0, 3)
@@ -36,7 +45,7 @@ handle_parse_docstrings() {
 	END {
 	if (op != "") { ops[op] = desc }
 	gsub(/\n$/, "", info_desc)
-	printf "INFO:{\"title\": \"%s\", \"version\": \"%s\", \"description\": \"%s\"}\n", title, ver, info_desc
+	printf "INFO:{\"title\": \"%s\", \"version\": \"%s\", \"description\": \"%s\"}\n", json_esc(title), json_esc(ver), json_esc(info_desc)
 
 	printf "OPS:{"
 	first=1
@@ -44,7 +53,7 @@ handle_parse_docstrings() {
 	  gsub(/\n$/, "", ops[o])
 	  if (!first) printf ", "
 	  first=0
-	  printf "\"%s\": \"%s\"", o, ops[o]
+	  printf "\"%s\": \"%s\"", json_esc(o), json_esc(ops[o])
 	}
 	printf "}\n"
 	}
