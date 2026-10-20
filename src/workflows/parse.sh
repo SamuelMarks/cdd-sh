@@ -19,12 +19,19 @@ handle_parse_workflows() {
 	fi
 
 	extracted_lines=$(awk '
+	# @function clean_tab
+	# @description Replaces literal tabs and carriage returns with spaces to preserve tab-delimited IPC framing.
+	# @param s - Input string to sanitize.
+	function clean_tab(s) {
+		gsub(/[\t\r]/, " ", s)
+		return s
+	}
 	# @function flush_step
 	# @description Emits the currently accumulated step metadata line.
 	# @param none
 	function flush_step() {
 		if (step_id == "" || wf_id == "") return
-		printf "STEP:%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", wf_id, step_id, step_desc, step_target_kind, step_target_val, step_action, step_corr, step_timeout, step_deps, step_params, step_rb, step_crit, step_succ, step_fail, step_out, step_ext
+		printf "STEP:%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", clean_tab(wf_id), clean_tab(step_id), clean_tab(step_desc), clean_tab(step_target_kind), clean_tab(step_target_val), clean_tab(step_action), clean_tab(step_corr), clean_tab(step_timeout), clean_tab(step_deps), clean_tab(step_params), clean_tab(step_rb), clean_tab(step_crit), clean_tab(step_succ), clean_tab(step_fail), clean_tab(step_out), clean_tab(step_ext)
 		step_id = ""; step_desc = ""; step_target_kind = ""; step_target_val = ""
 		step_action = ""; step_corr = ""; step_timeout = ""; step_deps = ""
 		step_params = ""; step_rb = ""; step_crit = ""; step_succ = ""
@@ -36,7 +43,7 @@ handle_parse_workflows() {
 	function flush_wf() {
 		flush_step()
 		if (wf_id == "") return
-		printf "WF:%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", wf_id, wf_summary, wf_desc, wf_deps, wf_inputs, wf_params, wf_succ, wf_fail, wf_out, wf_ext
+		printf "WF:%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n", clean_tab(wf_id), clean_tab(wf_summary), clean_tab(wf_desc), clean_tab(wf_deps), clean_tab(wf_inputs), clean_tab(wf_params), clean_tab(wf_succ), clean_tab(wf_fail), clean_tab(wf_out), clean_tab(wf_ext)
 		wf_id = ""; wf_summary = ""; wf_desc = ""; wf_deps = ""; wf_inputs = ""
 		wf_params = ""; wf_succ = ""; wf_fail = ""; wf_out = ""; wf_ext = ""
 	}

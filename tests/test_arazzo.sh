@@ -7,8 +7,7 @@ ROOT_DIR="$(cd "$(dirname -- "$0")/.." && pwd)"
 . "${ROOT_DIR}/lib/env.sh"
 . "${ROOT_DIR}/lib/arazzo_runtime.sh"
 
-TMP_ARAZZO_DIR="/tmp/cdd_test_arazzo_$$"
-mkdir -p "${TMP_ARAZZO_DIR}"
+TMP_ARAZZO_DIR=$(mktemp -d "${TMPDIR:-/tmp}/cdd_test_arazzo.XXXXXX")
 # shellcheck disable=SC2064
 trap "rm -rf \"${TMP_ARAZZO_DIR}\"" EXIT INT TERM
 

@@ -22,6 +22,7 @@ type encoder struct {
 	tab    bool
 	indent int
 	depth  int
+	colors colorConfig
 	buf    [64]byte
 }
 
@@ -32,11 +33,25 @@ type encoder struct {
 //
 // Returns a pointer to the initialized encoder.
 func newEncoder(tab bool, indent int) *encoder {
+	return newEncoderWithColors(tab, indent, defaultColorConfig(noColor))
+}
+
+// newEncoderWithColors creates a new encoder with the specified tab, indentation, and color configuration.
+// Parameters:
+//   - tab: Whether to indent using tab characters instead of spaces.
+//   - indent: Indentation level per nesting depth (-1 for compact output).
+//   - colors: Per-encoder ANSI color configuration.
+//
+// Returns a pointer to the initialized encoder.
+func newEncoderWithColors(tab bool, indent int, colors colorConfig) *encoder {
 	// reuse the buffer in multiple calls of marshal
-	return &encoder{w: new(bytes.Buffer), tab: tab, indent: indent}
+	return &encoder{w: new(bytes.Buffer), tab: tab, indent: indent, colors: colors}
 }
 
 // flush writes all buffered bytes to the underlying output writer and resets the internal buffer.
+// Parameters:
+//   - none
+//
 // Returns any error encountered while writing to e.out.
 func (e *encoder) flush() error {
 	_, err := e.out.Write(e.w.Bytes())
@@ -63,23 +78,23 @@ func (e *encoder) marshal(v any, w io.Writer) error {
 func (e *encoder) encode(v any) error {
 	switch v := v.(type) {
 	case nil:
-		e.write([]byte("null"), nullColor)
+		e.write([]byte("null"), e.colors.nullColor)
 	case bool:
 		if v {
-			e.write([]byte("true"), trueColor)
+			e.write([]byte("true"), e.colors.trueColor)
 		} else {
-			e.write([]byte("false"), falseColor)
+			e.write([]byte("false"), e.colors.falseColor)
 		}
 	case int:
-		e.write(strconv.AppendInt(e.buf[:0], int64(v), 10), numberColor)
+		e.write(strconv.AppendInt(e.buf[:0], int64(v), 10), e.colors.numberColor)
 	case float64:
 		e.encodeFloat64(v)
 	case *big.Int:
-		e.write(v.Append(e.buf[:0], 10), numberColor)
+		e.write(v.Append(e.buf[:0], 10), e.colors.numberColor)
 	case json.Number:
-		e.write([]byte(v.String()), numberColor)
+		e.write([]byte(v.String()), e.colors.numberColor)
 	case string:
-		e.encodeString(v, stringColor)
+		e.encodeString(v, e.colors.stringColor)
 	case []any:
 		if err := e.encodeArray(v); err != nil {
 			return err
@@ -89,7 +104,7 @@ func (e *encoder) encode(v any) error {
 			return err
 		}
 	default:
-		panic(fmt.Sprintf("invalid type: %[1]T (%[1]v)", v))
+		return newCliError(ErrKindUnsupportedType, exitCodeDefaultErr, fmt.Sprintf("invalid type: %[1]T (%[1]v)", v))
 	}
 	if e.w.Len() > 8*1024 {
 		return e.flush()
@@ -102,7 +117,7 @@ func (e *encoder) encode(v any) error {
 //   - f: The floating-point number to encode.
 func (e *encoder) encodeFloat64(f float64) {
 	if math.IsNaN(f) {
-		e.write([]byte("null"), nullColor)
+		e.write([]byte("null"), e.colors.nullColor)
 		return
 	}
 	f = min(max(f, -math.MaxFloat64), math.MaxFloat64)
@@ -118,7 +133,7 @@ func (e *encoder) encodeFloat64(f float64) {
 			buf = buf[:n-1]
 		}
 	}
-	e.write(buf, numberColor)
+	e.write(buf, e.colors.numberColor)
 }
 
 // encodeString writes a JSON-escaped and quoted string with optional ANSI color codes.
@@ -127,7 +142,7 @@ func (e *encoder) encodeFloat64(f float64) {
 //   - color: Optional ANSI escape sequence bytes for coloring.
 func (e *encoder) encodeString(s string, color []byte) {
 	if color != nil {
-		setColor(e.w, color)
+		e.colors.writeColor(e.w, color)
 	}
 	e.w.WriteByte('"')
 	start := 0
@@ -182,7 +197,7 @@ func (e *encoder) encodeString(s string, color []byte) {
 	}
 	e.w.WriteByte('"')
 	if color != nil {
-		setColor(e.w, resetColor)
+		e.colors.writeColor(e.w, e.colors.resetColor)
 	}
 }
 
@@ -192,11 +207,11 @@ func (e *encoder) encodeString(s string, color []byte) {
 //
 // Returns any encoding or flush error.
 func (e *encoder) encodeArray(vs []any) error {
-	e.writeByte('[', arrayColor)
+	e.writeByte('[', e.colors.arrayColor)
 	e.depth += e.indent
 	for i, v := range vs {
 		if i > 0 {
-			e.writeByte(',', arrayColor)
+			e.writeByte(',', e.colors.arrayColor)
 		}
 		if e.indent >= 0 {
 			e.writeIndent()
@@ -209,7 +224,7 @@ func (e *encoder) encodeArray(vs []any) error {
 	if len(vs) > 0 && e.indent >= 0 {
 		e.writeIndent()
 	}
-	e.writeByte(']', arrayColor)
+	e.writeByte(']', e.colors.arrayColor)
 	return nil
 }
 
@@ -219,7 +234,7 @@ func (e *encoder) encodeArray(vs []any) error {
 //
 // Returns any encoding or flush error.
 func (e *encoder) encodeObject(vs map[string]any) error {
-	e.writeByte('{', objectColor)
+	e.writeByte('{', e.colors.objectColor)
 	e.depth += e.indent
 	type keyVal struct {
 		key string
@@ -236,13 +251,13 @@ func (e *encoder) encodeObject(vs map[string]any) error {
 	})
 	for i, kv := range kvs {
 		if i > 0 {
-			e.writeByte(',', objectColor)
+			e.writeByte(',', e.colors.objectColor)
 		}
 		if e.indent >= 0 {
 			e.writeIndent()
 		}
-		e.encodeString(kv.key, objectKeyColor)
-		e.writeByte(':', objectColor)
+		e.encodeString(kv.key, e.colors.objectKeyColor)
+		e.writeByte(':', e.colors.objectColor)
 		if e.indent >= 0 {
 			e.w.WriteByte(' ')
 		}
@@ -254,11 +269,13 @@ func (e *encoder) encodeObject(vs map[string]any) error {
 	if len(vs) > 0 && e.indent >= 0 {
 		e.writeIndent()
 	}
-	e.writeByte('}', objectColor)
+	e.writeByte('}', e.colors.objectColor)
 	return nil
 }
 
 // writeIndent writes a newline followed by indentation whitespace for the current nesting depth.
+// Parameters:
+//   - none
 func (e *encoder) writeIndent() {
 	e.w.WriteByte('\n')
 	if n := e.depth; n > 0 {
@@ -299,9 +316,9 @@ func (e *encoder) writeByte(b byte, color []byte) {
 	if color == nil {
 		e.err = cmp.Or(e.err, e.w.WriteByte(b))
 	} else {
-		setColor(e.w, color)
+		e.colors.writeColor(e.w, color)
 		e.err = cmp.Or(e.err, e.w.WriteByte(b))
-		setColor(e.w, resetColor)
+		e.colors.writeColor(e.w, e.colors.resetColor)
 	}
 }
 
@@ -314,9 +331,9 @@ func (e *encoder) write(bs, color []byte) {
 		_, err := e.w.Write(bs)
 		e.err = cmp.Or(e.err, err)
 	} else {
-		setColor(e.w, color)
+		e.colors.writeColor(e.w, color)
 		_, err := e.w.Write(bs)
 		e.err = cmp.Or(e.err, err)
-		setColor(e.w, resetColor)
+		e.colors.writeColor(e.w, e.colors.resetColor)
 	}
 }

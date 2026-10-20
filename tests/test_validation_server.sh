@@ -58,4 +58,32 @@ if ! echo "$res" | grep -q "dispatched"; then
 	exit 1
 fi
 
+# Test multi-model fallback validation: add User and StrictOther models and verify valid User payload passes while invalid payload fails
+mkdir -p temp-validation/server/src/models
+cat <<'MODEL_A' >temp-validation/server/src/models/model_User.sh
+#!/bin/sh
+validate_User() {
+  printf '%s' "$1" | jq -e 'has("id") and has("name")' >/dev/null 2>&1
+}
+MODEL_A
+cat <<'MODEL_B' >temp-validation/server/src/models/model_StrictOther.sh
+#!/bin/sh
+validate_StrictOther() {
+  printf '%s' "$1" | jq -e 'has("unrelatedRequiredField")' >/dev/null 2>&1
+}
+MODEL_B
+chmod +x temp-validation/server/src/models/model_User.sh temp-validation/server/src/models/model_StrictOther.sh
+
+res_valid=$(curl -s -X POST "http://127.0.0.1:${VAL_PORT}/users" -H "Authorization: Bearer mock-token-123" -H "Content-Type: application/json" -d '{"id":"u1","name":"Alice"}')
+if echo "$res_valid" | grep -q "400 Bad Request"; then
+	echo "FAIL: Expected valid User payload to pass strict validation even when unrelated model exists, got: $res_valid"
+	exit 1
+fi
+
+res_invalid=$(curl -s -X POST "http://127.0.0.1:${VAL_PORT}/users" -H "Authorization: Bearer mock-token-123" -H "Content-Type: application/json" -d '{"neither":"valid"}')
+if ! echo "$res_invalid" | grep -q "400 Bad Request"; then
+	echo "FAIL: Expected invalid payload matching neither model to fail strict validation, got: $res_invalid"
+	exit 1
+fi
+
 echo "Validation & Auth tests passed!"

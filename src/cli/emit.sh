@@ -56,6 +56,27 @@ INNER_EOF
 		emit_mcp_handler_func
 		printf "\n"
 
+		cat <<'INNER_EOF'
+# cli_mcp_tool_dispatch dispatches MCP tools/call requests to workflows or CLI operation commands.
+# @param $1: tool_name - The invoked MCP tool name.
+# @param $2: args - JSON object string of tool arguments.
+# @return Prints the tool execution output and returns its exit status.
+cli_mcp_tool_dispatch() {
+  _cli_tname="$1"
+  _cli_targs="$2"
+  case "${_cli_tname}" in
+    workflow_*)
+      _mcp_wf_id="${_cli_tname#workflow_}"
+      "$0" workflow run "$_mcp_wf_id" --inputs "$_cli_targs"
+      ;;
+    *)
+      eval_args=$(printf '%s\n' "$_cli_targs" | jq -r 'to_entries | map(select(.key | test("^[a-zA-Z0-9_-]+$")) | "--" + .key + " " + (.value | tostring | @sh)) | join(" ")')
+      eval "\"$0\" \"$_cli_tname\" $eval_args"
+      ;;
+  esac
+}
+INNER_EOF
+
 		printf "# usage prints CLI help information.\n"
 		printf "# @param none\n"
 		printf "usage() {\n"
@@ -85,7 +106,10 @@ INNER_EOF
 		printf 'if [ "${1:-}" = "--version" ] || [ "${1:-}" = "-v" ]; then echo "$VERSION"; exit 0; fi\n'
 
 		printf 'SERVER_URL=""\n'
-		printf 'if [ "${1:-}" = "--server" ]; then SERVER_URL="$2"; export BASE_URL="$2"; shift 2; fi\n'
+		printf 'if [ "${1:-}" = "--server" ]; then\n'
+		printf '  SERVER_URL="$2"; export BASE_URL="$2"; shift 2\n'
+		printf '  if [ -f "${_CLI_DIR}/../src/routes.sh" ]; then . "${_CLI_DIR}/../src/routes.sh"; elif [ -f "${_CLI_DIR}/routes.sh" ]; then . "${_CLI_DIR}/routes.sh"; fi\n'
+		printf 'fi\n'
 
 		printf 'CMD="${1:-}"\n'
 		printf "[ -z \"\$CMD\" ] && usage && exit 1\n"
@@ -198,53 +222,7 @@ INNER_EOF
 		cat <<INNER_EOF
   mcp)
     tools_json=${tools_json_sh}
-    while read -r line || [ -n "\$line" ]; do
-      if echo "\$line" | grep -qi "^Content-Length:"; then
-        read -r _
-        content_length=\$(echo "\$line" | awk '{print \$2}' | tr -d '\r\n')
-        line=\$(dd bs=1 count="\$content_length" 2>/dev/null)
-      elif echo "\$line" | grep -qi "^[A-Za-z-]\+: "; then
-        continue
-      elif [ -z "\$(echo "\$line" | tr -d '\r\n')" ]; then
-        continue
-      fi
-      method=\$(echo "\$line" | jq -r '.method // empty')
-      id=\$(echo "\$line" | jq -r '.id // null')
-      if mcp_out=\$(mcp_handle_common "\$line" "\$TITLE" "\$VERSION" "openapi://spec" "OpenAPI Spec" "\$OPENAPI_JSON" "\$tools_json" "file://\$(pwd)"); then
-        if [ -n "\$mcp_out" ]; then
-          printf '%s\n' "\$mcp_out"
-        fi
-      elif [ "\$method" = "tools/call" ]; then
-        tool_name=\$(echo "\$line" | jq -r '.params.name')
-        args=\$(echo "\$line" | jq -c '.params.arguments // {}')
-        case "\$tool_name" in
-          workflow_*)
-            _mcp_wf_id="\${tool_name#workflow_}"
-            set +e
-            res=\$("\$0" workflow run "\$_mcp_wf_id" --inputs "\$args" 2>&1)
-            exit_code=\$?
-            set -e
-            ;;
-          *)
-            eval_args=\$(echo "\$args" | jq -r 'to_entries | map("--" + .key + " " + (.value | tostring | @sh)) | join(" ")')
-            set +e
-            res=\$(eval "\$0 \$tool_name \$eval_args" 2>&1)
-            exit_code=\$?
-            set -e
-            ;;
-        esac
-        res_escaped=\$(printf "%s" "\$res" | jq -R -s '.')
-        if [ "\$exit_code" -ne 0 ]; then
-          printf '{"jsonrpc":"2.0","id":%s,"result":{"isError":true,"content":[{"type":"text","text":%s}]}}\n' "\$id" "\$res_escaped"
-        else
-          printf '{"jsonrpc":"2.0","id":%s,"result":{"isError":false,"content":[{"type":"text","text":%s}]}}\n' "\$id" "\$res_escaped"
-        fi
-      else
-        if [ "\$id" != "null" ]; then
-          echo "{\"jsonrpc\":\"2.0\",\"id\":\$id,\"error\":{\"code\":-32601,\"message\":\"Method not found\"}}"
-        fi
-      fi
-    done
+    mcp_serve_stdio "\$TITLE" "\$VERSION" "openapi://spec" "OpenAPI Spec" "\$OPENAPI_JSON" "\$tools_json" "file://\$(pwd)" "cli_mcp_tool_dispatch"
     ;;
 INNER_EOF
 		jq -r -L "${LIBSCRIPT_ROOT_DIR}/lib/_common" '
@@ -253,7 +231,12 @@ INNER_EOF
       if .paths then
       .paths | to_entries[] | .key as $path | .value | to_entries[] | select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers") | .key as $method | .value |
       get_op_id($method; $path) as $opId |
+      get_raw_op_id($method; $path) as $rawOpId |
       ((.parameters // []) + ($root.paths[$path].parameters // []) | map(if ."$ref" then ($root.components.parameters[."$ref" | sub("^#/components/parameters/"; "")] // .) else . end)) as $params |
+      ([
+        ($params[] | "\"${\(.name | gsub("-"; "_")):-}\""),
+        (if .requestBody then "\"${requestBody:-}\"" else empty end)
+      ] | join(" ")) as $callArgs |
       "  \($opId))\n" +
       "    while [ $# -gt 0 ]; do\n" +
       "      case \"$1\" in\n" +
@@ -265,7 +248,11 @@ INNER_EOF
       "\n        *) echo \"Unknown flag $1\"; exit 1;;\n" +
       "      esac\n" +
       "    done\n" +
-      "    echo \"Executing \($opId)...\"\n" +
+      "    if [ -n \"${SERVER_URL:-}\" ] && type \($rawOpId) >/dev/null 2>&1; then\n" +
+      (if $callArgs != "" then "      \($rawOpId) \($callArgs)\n" else "      \($rawOpId)\n" end) +
+      "    else\n" +
+      "      echo \"Executing \($opId)...\"\n" +
+      "    fi\n" +
       "    ;;"
       else empty end
     ' "${ast}"

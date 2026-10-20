@@ -2,8 +2,10 @@ package gojqcli
 
 import (
 	"errors"
-	"github.com/itchyny/gojq"
+	"strings"
 	"testing"
+
+	"github.com/itchyny/gojq"
 )
 
 func TestError(t *testing.T) {
@@ -14,8 +16,8 @@ func TestError(t *testing.T) {
 	err.isEmptyError() // cover the method
 
 	err2 := &exitCodeError{3}
-	if err2.Error() == "" || err2.ExitCode() != 3 {
-		t.Errorf("exitCodeError failed")
+	if err2.Error() != "exit code: 3" || err2.ExitCode() != 3 {
+		t.Errorf("exitCodeError failed: got %q (%d)", err2.Error(), err2.ExitCode())
 	}
 	err2.isEmptyError() // cover the method
 
@@ -30,18 +32,18 @@ func TestError(t *testing.T) {
 	}
 
 	// test queryParseError
-	_, errGoJq := gojq.Parse("invalid")
-	err5 := &queryParseError{"<arg>", "invalid", errGoJq}
+	_, errGoJq := gojq.Parse("invalid +")
+	err5 := &queryParseError{"<arg>", "invalid +", errGoJq}
 	if err5.ExitCode() != 3 {
 		t.Errorf("queryParseError ExitCode failed")
 	}
-	if err5.Error() == "" {
-		t.Errorf("queryParseError Error failed")
+	if !strings.Contains(err5.Error(), "invalid query: invalid +") {
+		t.Errorf("queryParseError Error failed: got %q", err5.Error())
 	}
 
 	// test jsonParseError
 	err6 := &jsonParseError{"a.json", "content", 1, errors.New("json err")}
-	if err6.Error() == "" {
-		t.Errorf("jsonParseError failed")
+	if !strings.Contains(err6.Error(), "invalid json: a.json:2") || !strings.Contains(err6.Error(), "json err") {
+		t.Errorf("jsonParseError failed: got %q", err6.Error())
 	}
 }

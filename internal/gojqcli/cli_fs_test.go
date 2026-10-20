@@ -15,4 +15,9 @@ func TestResolveJqPath(t *testing.T) {
 	if resolveJqPath("test") != "resolved" {
 		t.Errorf("expected 'resolved'")
 	}
+
+	c := &cli{}
+	if c.resolveFilePath("test") != "resolved" {
+		t.Errorf("expected 'resolved' from cli.resolveFilePath")
+	}
 }

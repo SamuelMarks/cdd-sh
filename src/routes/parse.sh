@@ -12,11 +12,14 @@ handle_parse_routes() {
 
 	all_raw=$(awk '
     # @function json_esc
-    # @description Escapes backslashes and double quotes for safe JSON string interpolation.
+    # @description Escapes backslashes, double quotes, and control characters for safe JSON string interpolation.
     # @param s - Input string to escape.
     function json_esc(s) {
       gsub(/\\/, "\\\\", s)
       gsub(/"/, "\\\"", s)
+      gsub(/\t/, "\\t", s)
+      gsub(/\r/, "\\r", s)
+      gsub(/\n/, "\\n", s)
       return s
     }
     BEGIN { in_func = 0; in_webhook = 0; in_callback = 0 }
@@ -48,7 +51,7 @@ handle_parse_routes() {
         path = url
       }
     }
-    /curl -s -X/ {
+    /set -- -s -X|curl -s -X/ {
       if (in_func) {
         for (i=1; i<=NF; i++) { if ($i == "-X") method = tolower($(i+1)) }
         printf "OP:{\"path\": \"%s\", \"method\": \"%s\", \"operationId\": \"%s\", \"summary\": \"%s\", \"extUrl\": \"%s\", \"extDesc\": \"%s\"", json_esc(path), json_esc(method), json_esc(operationId), json_esc(summary), json_esc(extUrl), json_esc(extDesc)

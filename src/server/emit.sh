@@ -62,21 +62,33 @@ INNER_EOF
 # EPHEMERAL Database Connection Setup
 # If EPHEMERAL=true, we override DATABASE_URL to a clean temp directory.
 if [ "$EPHEMERAL" = "true" ]; then
-  export DATABASE_URL="/tmp/cdd_ephemeral_db_$$"
-  mkdir -p "$DATABASE_URL"
+  export DATABASE_URL=$(mktemp -d "${TMPDIR:-/tmp}/cdd_ephemeral_db_XXXXXX")
 fi
 INNER_EOF
 		fi
 
 		if [ "${CDD_SEED:-0}" = "1" ]; then
-			cat <<'INNER_EOF'
-if [ "$SEED" = "true" ] && [ "$ACTIVE_DAO" = "concrete" ]; then
-  echo "Seeding database at $DATABASE_URL"
+			schema_sql=$(jq -r '
+				"CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT, email TEXT);" +
+				(if .components and .components.schemas then
+					([ .components.schemas | to_entries[] | select(.value.properties != null) |
+						(.key | ascii_downcase | gsub("[^a-z0-9_]"; "_")) as $tbl |
+						([ .value.properties | keys[] | gsub("[^a-zA-Z0-9_]"; "_") + " TEXT" ] | join(", ")) as $cols |
+						if $cols != "" then "\nCREATE TABLE IF NOT EXISTS \($tbl) (\($cols));" else empty end
+					] | join(""))
+				else "" end)
+			' "${ast}")
+			cat <<INNER_EOF
+if [ "\$SEED" = "true" ] && [ "\$ACTIVE_DAO" = "concrete" ]; then
+  echo "Seeding database at \$DATABASE_URL"
   # initialize_db_schema executes DB schema migrations for the Concrete DAOs.
-  echo "CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT, email TEXT);" > "$DATABASE_URL/schema.sql"
+  cat << 'SCHEMA_EOF' > "\$DATABASE_URL/schema.sql"
+${schema_sql}
+SCHEMA_EOF
   # Documentation: The seeder module is responsible for initializing the Faker library
   # and batch inserting fake data to maintain referential integrity in the ephemeral DB.
-  cat << 'FAKER_EOF' > /tmp/faker_$$.awk
+  _faker_script=\$(mktemp "\${TMPDIR:-/tmp}/cdd_faker.XXXXXX")
+  cat << 'FAKER_EOF' > "\$_faker_script"
 INNER_EOF
 			cat "${LIBSCRIPT_ROOT_DIR}/src/server/seeder/faker.awk"
 			cat <<'INNER_EOF'
@@ -88,8 +100,8 @@ BEGIN {
     }
 }
 FAKER_EOF
-  awk -f /tmp/faker_$$.awk > "$DATABASE_URL/seed.sql" || true
-  rm -f /tmp/faker_$$.awk
+  awk -f "$_faker_script" > "$DATABASE_URL/seed.sql" || true
+  rm -f "$_faker_script"
 fi
 INNER_EOF
 		fi
@@ -129,11 +141,14 @@ INNER_EOF
 		cat <<'INNER_EOF'
 # Use socat or nc as a reliable router. It will just execute this script with a special mode.
 if [ "${1:-}" != "--handler" ] && [ "${HANDLER_MODE:-false}" != "true" ]; then
+  _srv_rt_dir=$(mktemp -d "${TMPDIR:-/tmp}/cdd_srv_rt.XXXXXX")
+  _sse_sh="${_srv_rt_dir}/sse_handler.sh"
+  _sse_pipe="${_srv_rt_dir}/sse_pipe"
   # shellcheck disable=SC2064
-  trap "rm -f /tmp/cdd_sse_$$.sh /tmp/cdd_sse_pipe_$$; [ \"${EPHEMERAL:-false}\" = \"true\" ] && rm -rf \"/tmp/cdd_ephemeral_db_$$\"" EXIT INT TERM
+  trap "rm -rf \"${_srv_rt_dir}\"; [ \"\${EPHEMERAL:-false}\" = \"true\" ] && [ -n \"\${DATABASE_URL:-}\" ] && rm -rf \"\${DATABASE_URL}\"" EXIT INT TERM
 echo "Starting SSE Server on port $PORT..."
 echo "To test: curl -N http://localhost:$PORT/mcp/sse"
-  cat << 'SH_EOF' > /tmp/cdd_sse_$$.sh
+  cat << 'SH_EOF' > "$_sse_sh"
 #!/bin/sh
 method=""
 path=""
@@ -174,20 +189,18 @@ else
   sh "$1" --handler
 fi
 SH_EOF
-  chmod +x /tmp/cdd_sse_$$.sh
+  chmod +x "$_sse_sh"
 
   if command -v socat >/dev/null 2>&1; then
-    socat TCP4-LISTEN:"$PORT",reuseaddr,fork EXEC:"/tmp/cdd_sse_$$.sh \"$0\""
+    socat TCP4-LISTEN:"$PORT",reuseaddr,fork EXEC:"\"$_sse_sh\" \"$0\""
   else
-    rm -f "/tmp/cdd_sse_pipe_$$"
-    mkfifo "/tmp/cdd_sse_pipe_$$"
+    mkfifo "$_sse_pipe"
     # shellcheck disable=SC2094
     while true; do
-      nc -l "$PORT" < "/tmp/cdd_sse_pipe_$$" | "/tmp/cdd_sse_$$.sh" "$0" > "/tmp/cdd_sse_pipe_$$"
+      nc -l "$PORT" < "$_sse_pipe" | "$_sse_sh" "$0" > "$_sse_pipe"
     done
-    rm -f "/tmp/cdd_sse_pipe_$$"
   fi
-  rm -f /tmp/cdd_sse_$$.sh
+  rm -rf "$_srv_rt_dir"
   exit 0
 fi
 
@@ -236,7 +249,7 @@ INNER_EOF
         tool_name=\$(echo "\$body" | jq -r '.params.name')
         args=\$(echo "\$body" | jq -c '.params.arguments // {}')
         
-        eval_args=\$(echo "\$args" | jq -r 'to_entries | map("--" + .key + " " + (.value | tostring | @sh)) | join(" ")')
+        eval_args=\$(echo "\$args" | jq -r 'to_entries | map(select(.key | test("^[a-zA-Z0-9_-]+$")) | "--" + .key + " " + (.value | tostring | @sh)) | join(" ")')
         
         set +e
         if type "dao_\${ACTIVE_DAO}_\${tool_name}" >/dev/null 2>&1; then
@@ -316,7 +329,8 @@ INNER_EOF
 
       if [ "$found" = "true" ]; then
         if ( [ "$ENFORCE_AUTH" = "true" ] || [ "$ENFORCE_AUTH" = "1" ] ) && ! echo "$path" | grep -q "^/auth/" && ! echo "$path" | grep -q "^/_mock/"; then
-          if [ -z "$auth_header" ] || [ "$auth_header" != "Bearer mock-token-123" ]; then
+          _expected_auth="${CDD_EXPECTED_AUTH_TOKEN:-Bearer mock-token-123}"
+          if [ -z "$auth_header" ] || [ "$auth_header" != "${_expected_auth}" ]; then
             response_json="{\"error\": \"401 Unauthorized\"}"
             found="auth_failed"
           fi
@@ -333,25 +347,34 @@ INNER_EOF
               found="validation_failed"
             fi
           else
+            _any_model_exists=0
+            _any_model_passed=0
+            _first_failed_model=""
             for _model_file in "$(dirname "$0")"/models/model_*.sh; do
               if [ -f "$_model_file" ]; then
                 _mname=$(basename "$_model_file" .sh)
                 _mname="${_mname#model_}"
                 if type "validate_${_mname}" >/dev/null 2>&1; then
-                  if ! "validate_${_mname}" "$body" >/dev/null 2>&1; then
-                    response_json="{\"error\": \"400 Bad Request: validation failed for ${_mname}\"}"
-                    found="validation_failed"
+                  _any_model_exists=1
+                  if "validate_${_mname}" "$body" >/dev/null 2>&1; then
+                    _any_model_passed=1
                     break
+                  elif [ -z "${_first_failed_model}" ]; then
+                    _first_failed_model="${_mname}"
                   fi
                 fi
               fi
             done
+            if [ "${_any_model_exists}" -eq 1 ] && [ "${_any_model_passed}" -eq 0 ]; then
+              response_json="{\"error\": \"400 Bad Request: validation failed for ${_first_failed_model}\"}"
+              found="validation_failed"
+            fi
           fi
         fi
       fi
 
       if [ "$found" = "true" ] || [ "$found" = "auth_failed" ] || [ "$found" = "validation_failed" ]; then
-        res_len=${#response_json}
+        res_len=$(printf "%s" "$response_json" | wc -c | tr -d ' ')
         if [ "$found" = "auth_failed" ]; then
           printf "HTTP/1.1 401 Unauthorized\r\n"
         elif [ "$found" = "validation_failed" ]; then

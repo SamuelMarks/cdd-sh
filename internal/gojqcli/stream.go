@@ -36,6 +36,9 @@ const (
 )
 
 // next advances the JSON stream and returns the next path-value tuple or path-end tuple.
+// Parameters:
+//   - none
+//
 // Returns the stream tuple (`[]any`) and any decoding error.
 func (s *jsonStream) next() (any, error) {
 	switch s.states[len(s.states)-1] {
@@ -114,6 +117,10 @@ func (s *jsonStream) next() (any, error) {
 }
 
 // copyPath returns a shallow copy of the current JSON path slice.
+// Parameters:
+//   - none
+//
+// Returns a copied slice of path elements.
 func (s *jsonStream) copyPath() []any {
 	path := make([]any, len(s.path))
 	copy(path, s.path)

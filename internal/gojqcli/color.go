@@ -10,6 +10,74 @@ import (
 // noColor controls whether ANSI color escape codes are suppressed during encoding.
 var noColor bool
 
+// colorConfig holds the per-encoder ANSI color palette and suppression flag.
+type colorConfig struct {
+	noColor        bool
+	resetColor     []byte
+	nullColor      []byte
+	falseColor     []byte
+	trueColor      []byte
+	numberColor    []byte
+	stringColor    []byte
+	objectKeyColor []byte
+	arrayColor     []byte
+	objectColor    []byte
+}
+
+// defaultColorConfig constructs a colorConfig initialized from the default color palette.
+// Parameters:
+//   - disableColor: Whether ANSI color output is disabled for this configuration.
+//
+// Returns the initialized colorConfig.
+func defaultColorConfig(disableColor bool) colorConfig {
+	return colorConfig{
+		noColor:        disableColor,
+		resetColor:     resetColor,
+		nullColor:      nullColor,
+		falseColor:     falseColor,
+		trueColor:      trueColor,
+		numberColor:    numberColor,
+		stringColor:    stringColor,
+		objectKeyColor: objectKeyColor,
+		arrayColor:     arrayColor,
+		objectColor:    objectColor,
+	}
+}
+
+// writeColor writes the given ANSI color bytes to buf if coloring is enabled in cfg.
+// Parameters:
+//   - buf: The target buffer.
+//   - color: The ANSI escape sequence bytes to write.
+func (cfg *colorConfig) writeColor(buf *bytes.Buffer, color []byte) {
+	if !cfg.noColor {
+		buf.Write(color)
+	}
+}
+
+// parseColors parses a colon-delimited GOJQ_COLORS configuration string into cfg.
+// Parameters:
+//   - colors: Colon-separated ANSI color codes for null, false, true, number, string, key, array, object.
+//
+// Returns an error if any color segment is invalid.
+func (cfg *colorConfig) parseColors(colors string) error {
+	var color string
+	for _, target := range []*[]byte{
+		&cfg.nullColor, &cfg.falseColor, &cfg.trueColor, &cfg.numberColor,
+		&cfg.stringColor, &cfg.objectKeyColor, &cfg.arrayColor, &cfg.objectColor,
+	} {
+		color, colors, _ = strings.Cut(colors, ":")
+		if color != "" {
+			if !validColor(color) {
+				return newCliError(ErrKindInvalidColor, exitCodeDefaultErr, fmt.Sprintf("invalid color: %q", color))
+			}
+			*target = newColor(color)
+		} else {
+			*target = nil
+		}
+	}
+	return nil
+}
+
 // newColor constructs an ANSI SGR escape sequence byte slice from a style code string.
 // Parameters:
 //   - c: The ANSI style code string (e.g., "32" or "34;1").
@@ -17,16 +85,6 @@ var noColor bool
 // Returns the formatted ANSI escape sequence bytes.
 func newColor(c string) []byte {
 	return []byte("\x1b[" + c + "m")
-}
-
-// setColor writes the given ANSI color bytes to buf if coloring is enabled.
-// Parameters:
-//   - buf: The target buffer.
-//   - color: The ANSI escape sequence bytes to write.
-func setColor(buf *bytes.Buffer, color []byte) {
-	if !noColor {
-		buf.Write(color)
-	}
 }
 
 var (
@@ -58,28 +116,4 @@ func validColor(x string) bool {
 		}
 	}
 	return num
-}
-
-// setColors parses a colon-delimited GOJQ_COLORS configuration string and updates the color palette.
-// Parameters:
-//   - colors: Colon-separated ANSI color codes for null, false, true, number, string, key, array, object.
-//
-// Returns an error if any color segment is invalid.
-func setColors(colors string) error {
-	var color string
-	for _, target := range []*[]byte{
-		&nullColor, &falseColor, &trueColor, &numberColor,
-		&stringColor, &objectKeyColor, &arrayColor, &objectColor,
-	} {
-		color, colors, _ = strings.Cut(colors, ":")
-		if color != "" {
-			if !validColor(color) {
-				return newCliError(ErrKindInvalidColor, exitCodeDefaultErr, fmt.Sprintf("invalid color: %q", color))
-			}
-			*target = newColor(color)
-		} else {
-			*target = nil
-		}
-	}
-	return nil
 }

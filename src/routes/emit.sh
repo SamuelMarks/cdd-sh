@@ -132,13 +132,13 @@ handle_emit_routes() {
         ([
           $params[] | select(.in == "header") |
           (.name | gsub("-"; "_")) as $varname |
-          "  [ -n \"${\($varname)}\" ] && curl_args=\"${curl_args} -H $(_quote_sh \"\(.name): ${\($varname)}\")\""
+          "  [ -n \"${\($varname)}\" ] && set -- \"$@\" -H \"\(.name): ${\($varname)}\""
         ] | join("\n")) as $headerBuild |
         
         ([
           $params[] | select(.in == "cookie") |
           (.name | gsub("-"; "_")) as $varname |
-          "  [ -n \"${\($varname)}\" ] && curl_args=\"${curl_args} -b $(_quote_sh \"\(.name)=${\($varname)}\")\""
+          "  [ -n \"${\($varname)}\" ] && set -- \"$@\" -b \"\(.name)=${\($varname)}\""
         ] | join("\n")) as $cookieBuild |
         
         (if ($secReqs | length > 0) and $root.components and $root.components.securitySchemes then
@@ -146,11 +146,11 @@ handle_emit_routes() {
           ([
             $schemes[] | $root.components.securitySchemes[.] | select(. != null) |
             if .type == "oauth2" or (.type == "http" and (.scheme | ascii_downcase) == "bearer") then
-              "  if [ -n \"${OAUTH_TOKEN:-}\" ]; then\n    curl_args=\"${curl_args} -H $(_quote_sh \"Authorization: Bearer ${OAUTH_TOKEN}\")\"\n  fi"
+              "  if [ -n \"${OAUTH_TOKEN:-}\" ]; then\n    set -- \"$@\" -H \"Authorization: Bearer ${OAUTH_TOKEN}\"\n  fi"
             elif .type == "http" and (.scheme | ascii_downcase) == "basic" then
-              "  if [ -n \"${BASIC_AUTH:-}\" ]; then\n    curl_args=\"${curl_args} -u $(_quote_sh \"${BASIC_AUTH}\")\"\n  fi"
+              "  if [ -n \"${BASIC_AUTH:-}\" ]; then\n    set -- \"$@\" -u \"${BASIC_AUTH}\"\n  fi"
             elif .type == "apiKey" and .in == "header" then
-              "  if [ -n \"${API_KEY:-}\" ]; then\n    curl_args=\"${curl_args} -H $(_quote_sh \"\(.name): ${API_KEY}\")\"\n  fi"
+              "  if [ -n \"${API_KEY:-}\" ]; then\n    set -- \"$@\" -H \"\(.name): ${API_KEY}\"\n  fi"
             elif .type == "apiKey" and .in == "query" then
               "  if [ -n \"${API_KEY:-}\" ]; then\n    qs=\"${qs}&\(.name)=$(_urlencode \"${API_KEY}\")\"\n  fi"
             else empty end
@@ -159,15 +159,15 @@ handle_emit_routes() {
         
         (if .requestBody then 
           (if .requestBody.content and .requestBody.content["application/json"] then
-            "  [ -n \"${requestBody}\" ] && curl_args=\"${curl_args} -H '\''Content-Type: application/json'\'' -d $(_quote_sh \"${requestBody}\")\""
+            "  [ -n \"${requestBody}\" ] && set -- \"$@\" -H \"Content-Type: application/json\" -d \"${requestBody}\""
           elif .requestBody.content and .requestBody.content["application/x-www-form-urlencoded"] then
-            "  if [ -n \"${requestBody}\" ]; then\n    curl_args=\"${curl_args} -H '\''Content-Type: application/x-www-form-urlencoded'\'' -d $(_quote_sh \"${requestBody}\")\"\n  fi"
+            "  if [ -n \"${requestBody}\" ]; then\n    set -- \"$@\" -H \"Content-Type: application/x-www-form-urlencoded\" -d \"${requestBody}\"\n  fi"
           elif .requestBody.content and .requestBody.content["multipart/form-data"] then
-            "  if [ -n \"${requestBody}\" ]; then\n    curl_args=\"${curl_args} -F $(_quote_sh \"file=@${requestBody}\")\"\n  fi"
+            "  if [ -n \"${requestBody}\" ]; then\n    set -- \"$@\" -F \"file=@${requestBody}\"\n  fi"
           elif .requestBody.content and .requestBody.content["application/octet-stream"] then
-            "  if [ -n \"${requestBody}\" ]; then\n    curl_args=\"${curl_args} -H '\''Content-Type: application/octet-stream'\'' --data-binary $(_quote_sh \"@${requestBody}\")\"\n  fi"
+            "  if [ -n \"${requestBody}\" ]; then\n    set -- \"$@\" -H \"Content-Type: application/octet-stream\" --data-binary \"@${requestBody}\"\n  fi"
           else
-            "  [ -n \"${requestBody}\" ] && curl_args=\"${curl_args} -H '\''Content-Type: application/json'\'' -d $(_quote_sh \"${requestBody}\")\""
+            "  [ -n \"${requestBody}\" ] && set -- \"$@\" -H \"Content-Type: application/json\" -d \"${requestBody}\""
           end)
         else "" end) as $bodyBuild |
         
@@ -180,15 +180,14 @@ handle_emit_routes() {
         (if $pathEncodes != "" then $pathEncodes + "\n" else "" end) +
         "  url=\"${BASE_URL}\($shellPath)\"\n" +
         "  qs=\"\"\n" +
-        "  curl_args=\"\"\n" +
+        "  set -- -s -X \($method | ascii_upcase)\n" +
         (if $securityBuild != "" then $securityBuild + "\n" else "" end) +
         (if $queryBuild != "" then $queryBuild + "\n" else "" end) +
         "  [ -n \"${qs}\" ] && url=\"${url}?${qs#&}\"\n" +
         (if $headerBuild != "" then $headerBuild + "\n" else "" end) +
         (if $cookieBuild != "" then $cookieBuild + "\n" else "" end) +
         (if $bodyBuild != "" then $bodyBuild + "\n" else "" end) +
-        "  # shellcheck disable=SC2086\n" +
-        "  eval curl -s -X \($method | ascii_upcase) ${curl_args} \"$(_quote_sh \"${url}\")\"\n}\n\n"
+        "  curl \"$@\" \"${url}\"\n}\n\n"
       else empty end
     ' "${ast}"
 

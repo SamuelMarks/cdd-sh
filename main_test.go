@@ -652,6 +652,52 @@ func TestFsMiddleware_Dirname(t *testing.T) {
 	}
 }
 
+func TestFsMiddleware_BasenameAndMktemp(t *testing.T) {
+	tempDir := t.TempDir()
+
+	// basename tests
+	out, _, err := runMwScript(t, fsMiddleware, tempDir, "basename /a/b/c.sh .sh")
+	if err != nil || strings.TrimSpace(out) != "c" {
+		t.Errorf("expected 'c', got %q (err=%v)", out, err)
+	}
+	out, _, err = runMwScript(t, fsMiddleware, tempDir, "basename \"\"")
+	if err != nil || strings.TrimSpace(out) != "." {
+		t.Errorf("expected '.', got %q (err=%v)", out, err)
+	}
+	if _, _, err := runMwScript(t, fsMiddleware, tempDir, "basename"); err == nil {
+		t.Errorf("expected error for basename missing operand")
+	}
+
+	// mktemp file and dir tests
+	out, _, err = runMwScript(t, fsMiddleware, tempDir, "mktemp")
+	if err != nil {
+		t.Fatalf("mktemp failed: %v", err)
+	}
+	createdFile := strings.TrimSpace(out)
+	defer os.Remove(createdFile)
+	if info, statErr := os.Stat(createdFile); statErr != nil || info.IsDir() {
+		t.Errorf("expected mktemp file to exist, statErr=%v", statErr)
+	}
+
+	out, _, err = runMwScript(t, fsMiddleware, tempDir, "mktemp -d cdd_test.XXXXXX")
+	if err != nil {
+		t.Fatalf("mktemp -d failed: %v", err)
+	}
+	createdDir := strings.TrimSpace(out)
+	defer os.RemoveAll(createdDir)
+	if info, statErr := os.Stat(createdDir); statErr != nil || !info.IsDir() {
+		t.Errorf("expected mktemp -d directory to exist, statErr=%v", statErr)
+	}
+
+	// mktemp failure when parent directory does not exist
+	if _, _, err := runMwScript(t, fsMiddleware, tempDir, "mktemp nonexistent_parent_xyz/tmp.XXXXXX"); err == nil {
+		t.Errorf("expected mktemp file in nonexistent parent to fail")
+	}
+	if _, _, err := runMwScript(t, fsMiddleware, tempDir, "mktemp -d nonexistent_parent_xyz/tmp.XXXXXX"); err == nil {
+		t.Errorf("expected mktemp -d in nonexistent parent to fail")
+	}
+}
+
 func TestCpOther(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "fsmw_errs_cp")
 	if err != nil {
@@ -825,16 +871,35 @@ func TestInitResolvePath(t *testing.T) {
 	}
 }
 
-func TestGetDirPanic(t *testing.T) {
-	dir := getDir(nil)
-	if dir != "." {
-		t.Errorf("expected '.', got %q", dir)
-	}
-
-	dir2 := getDir(context.Background())
-	if dir2 != "." {
-		t.Errorf("expected '.', got %q", dir2)
-	}
+func TestConcurrentMiddlewares(t *testing.T) {
+	t.Run("awk_1", func(t *testing.T) {
+		t.Parallel()
+		out, _, err := runMwScript(t, awkMiddleware, ".", "awk 'BEGIN { print \"p1\" }'")
+		if err != nil || strings.TrimSpace(out) != "p1" {
+			t.Errorf("expected 'p1', got %q (%v)", out, err)
+		}
+	})
+	t.Run("awk_2", func(t *testing.T) {
+		t.Parallel()
+		out, _, err := runMwScript(t, awkMiddleware, ".", "awk 'BEGIN { print \"p2\" }'")
+		if err != nil || strings.TrimSpace(out) != "p2" {
+			t.Errorf("expected 'p2', got %q (%v)", out, err)
+		}
+	})
+	t.Run("jq_1", func(t *testing.T) {
+		t.Parallel()
+		out, _, err := runMwScript(t, jqMiddleware, ".", "jq -C -n '{\"a\": 1}'")
+		if err != nil || !strings.Contains(out, "1") {
+			t.Errorf("expected jq output with 1, got %q (%v)", out, err)
+		}
+	})
+	t.Run("jq_2", func(t *testing.T) {
+		t.Parallel()
+		out, _, err := runMwScript(t, jqMiddleware, ".", "jq -M -n '{\"b\": 2}'")
+		if err != nil || !strings.Contains(out, "\"b\": 2") {
+			t.Errorf("expected monochrome jq output, got %q (%v)", out, err)
+		}
+	})
 }
 
 func TestResolvePathWorkaround(t *testing.T) {

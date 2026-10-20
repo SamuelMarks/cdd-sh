@@ -8,13 +8,14 @@
 
 MOCK_PORT=""
 SERVER_PID=""
+TEST_MOCK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/cdd_test_mock.XXXXXX")
 
 # cleanup_core_test cleans up temporary files and background processes created by tests/test.sh.
 # @param none
 # @return Returns 0.
 cleanup_core_test() {
 	cleanup_server_pid "${SERVER_PID:-}" "${MOCK_PORT:-}"
-	rm -f /tmp/mock_handler_$$.sh /tmp/nc_pipe_$$
+	rm -rf "${TEST_MOCK_DIR}"
 	rm -f ast.json tests/emitted_*.sh tests/emitted_*.json tests/emitted_*.md tests/emitted_*.txt tests/mocks.sh tests/test_*_out.sh
 }
 trap cleanup_core_test EXIT INT TERM
@@ -151,22 +152,29 @@ fi
 # 11. Execute generated tests
 echo "Running generated tests..."
 MOCK_PORT=$(allocate_free_port 18181)
-cat <<'EOF' >"/tmp/mock_handler_$$.sh"
+cat <<'EOF' >"${TEST_MOCK_DIR}/mock_handler.sh"
 #!/bin/sh
+req_method=""
+req_path=""
 while IFS= read -r line; do
   line=$(printf "%s" "$line" | tr -d '\r')
+  if [ -z "$req_method" ]; then
+    req_method=$(printf "%s" "$line" | cut -d' ' -f1)
+    req_path=$(printf "%s" "$line" | cut -d' ' -f2)
+  fi
   if [ -z "$line" ]; then break; fi
 done
-printf "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{}"
+resp_body=$(printf '{"method":"%s","path":"%s"}' "$req_method" "$req_path")
+resp_len=$(printf "%s" "$resp_body" | wc -c | tr -d ' ')
+printf "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: %s\r\n\r\n%s" "$resp_len" "$resp_body"
 EOF
-chmod +x "/tmp/mock_handler_$$.sh"
+chmod +x "${TEST_MOCK_DIR}/mock_handler.sh"
 if command -v socat >/dev/null 2>&1; then
-	socat "TCP4-LISTEN:${MOCK_PORT},reuseaddr,fork" "EXEC:/tmp/mock_handler_$$.sh" >/dev/null 2>&1 &
+	socat "TCP4-LISTEN:${MOCK_PORT},reuseaddr,fork" "EXEC:${TEST_MOCK_DIR}/mock_handler.sh" >/dev/null 2>&1 &
 else
-	rm -f "/tmp/nc_pipe_$$"
-	mkfifo "/tmp/nc_pipe_$$"
+	mkfifo "${TEST_MOCK_DIR}/nc_pipe"
 	# shellcheck disable=SC2094
-	while true; do nc -l "${MOCK_PORT}" <"/tmp/nc_pipe_$$" | "/tmp/mock_handler_$$.sh" >"/tmp/nc_pipe_$$"; done >/dev/null 2>&1 &
+	while true; do nc -l "${MOCK_PORT}" <"${TEST_MOCK_DIR}/nc_pipe" | "${TEST_MOCK_DIR}/mock_handler.sh" >"${TEST_MOCK_DIR}/nc_pipe"; done >/dev/null 2>&1 &
 fi
 SERVER_PID=$!
 wait_for_port "${MOCK_PORT}" 50

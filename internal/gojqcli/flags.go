@@ -8,6 +8,78 @@ import (
 	"strings"
 )
 
+// assignFlagValue assigns a parsed CLI flag value to the target reflection field `val`.
+// Parameters:
+//   - arg: The flag name being processed (e.g., "-r" or "--raw-output").
+//   - val: The reflection Value of the target field on the options struct.
+//   - args: The full CLI arguments slice.
+//   - idx: Pointer to the current argument index in `args`.
+//   - longToPositional: Set of long flag names marked with `positional:""`.
+//   - positionalVal: Pointer to the active positional slice reflection Value.
+//   - mapKeys: Set of map keys already populated during this flag parse pass.
+//
+// Returns any flag parsing error encountered.
+func assignFlagValue(
+	arg string,
+	val reflect.Value,
+	args []string,
+	idx *int,
+	longToPositional map[string]struct{},
+	positionalVal *reflect.Value,
+	mapKeys map[string]struct{},
+) error {
+	switch val.Kind() {
+	case reflect.Bool:
+		val.SetBool(true)
+	case reflect.String:
+		if *idx++; *idx >= len(args) {
+			return newCliError(ErrKindFlagParse, exitCodeFlagParseErr, fmt.Sprintf("expected argument for flag `%s'", arg))
+		}
+		val.SetString(args[*idx])
+	case reflect.Pointer:
+		if val.Type().Elem().Kind() == reflect.Int {
+			if *idx++; *idx >= len(args) {
+				return newCliError(ErrKindFlagParse, exitCodeFlagParseErr, fmt.Sprintf("expected argument for flag `%s'", arg))
+			}
+			v, err := strconv.Atoi(args[*idx])
+			if err != nil {
+				return newCliError(ErrKindFlagParse, exitCodeFlagParseErr, fmt.Sprintf("invalid argument for flag `%s': %v", arg, err))
+			}
+			val.Set(reflect.New(val.Type().Elem()))
+			val.Elem().SetInt(int64(v))
+		}
+	case reflect.Slice:
+		if len(arg) > 2 && arg[:2] == "--" {
+			if _, isPos := longToPositional[arg[2:]]; isPos {
+				if positionalVal.IsValid() {
+					for positionalVal.Len() > val.Len() {
+						val.Set(reflect.Append(val, reflect.Zero(val.Type().Elem())))
+					}
+				}
+				*positionalVal = val
+				return nil
+			}
+		}
+		if *idx++; *idx >= len(args) {
+			return newCliError(ErrKindFlagParse, exitCodeFlagParseErr, fmt.Sprintf("expected argument for flag `%s'", arg))
+		}
+		val.Set(reflect.Append(val, reflect.ValueOf(args[*idx])))
+	case reflect.Map:
+		if *idx += 2; *idx >= len(args) {
+			return newCliError(ErrKindFlagParse, exitCodeFlagParseErr, fmt.Sprintf("expected 2 arguments for flag `%s'", arg))
+		}
+		if val.IsNil() {
+			val.Set(reflect.MakeMap(val.Type()))
+		}
+		name := args[*idx-1]
+		if _, exists := mapKeys[name]; !exists {
+			mapKeys[name] = struct{}{}
+			val.SetMapIndex(reflect.ValueOf(name), reflect.ValueOf(args[*idx]))
+		}
+	}
+	return nil
+}
+
 // parseFlags parses command-line arguments into the struct pointed to by opts based on struct tags.
 // Parameters:
 //   - args: The slice of CLI arguments to parse.
@@ -38,7 +110,7 @@ func parseFlags[T any](args []string, opts *T) ([]string, error) {
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		var (
-			val       reflect.Value
+			fval      reflect.Value
 			ok        bool
 			shortopts string
 		)
@@ -49,10 +121,10 @@ func parseFlags[T any](args []string, opts *T) ([]string, error) {
 			optsDone = true
 			continue
 		case strings.HasPrefix(arg, "--"):
-			if val, ok = longToValue[arg[2:]]; !ok {
+			if fval, ok = longToValue[arg[2:]]; !ok {
 				if j := strings.IndexByte(arg, '='); j >= 0 {
-					if val, ok = longToValue[arg[2:j]]; ok {
-						if val.Kind() == reflect.Bool {
+					if fval, ok = longToValue[arg[2:j]]; ok {
+						if fval.Kind() == reflect.Bool {
 							return nil, newCliError(ErrKindFlagParse, exitCodeFlagParseErr, fmt.Sprintf("boolean flag `%s' cannot have an argument", arg[:j]))
 						}
 						args[i] = arg[j+1:]
@@ -66,10 +138,10 @@ func parseFlags[T any](args []string, opts *T) ([]string, error) {
 			}
 		case len(arg) > 1 && arg[0] == '-':
 			var skip bool
-			for i := 1; i < len(arg); i++ {
-				opt := arg[i : i+1]
-				if val, ok = shortToValue[opt]; ok {
-					if val.Kind() != reflect.Bool {
+			for k := 1; k < len(arg); k++ {
+				opt := arg[k : k+1]
+				if fval, ok = shortToValue[opt]; ok {
+					if fval.Kind() != reflect.Bool {
 						break
 					}
 				} else if !("A" <= opt && opt <= "Z" || "a" <= opt && opt <= "z") {
@@ -79,72 +151,28 @@ func parseFlags[T any](args []string, opts *T) ([]string, error) {
 			}
 			if !skip && (len(arg) > 2 || !ok) {
 				shortopts = arg[1:]
-				goto L
 			}
 		}
-		if !ok {
-			if positionalVal.IsValid() && len(rest) > 0 {
-				positionalVal.Set(reflect.Append(positionalVal, reflect.ValueOf(arg)))
-			} else {
-				rest = append(rest, arg)
+		if shortopts == "" {
+			if !ok {
+				if positionalVal.IsValid() && len(rest) > 0 {
+					positionalVal.Set(reflect.Append(positionalVal, reflect.ValueOf(arg)))
+				} else {
+					rest = append(rest, arg)
+				}
+				continue
+			}
+			if err := assignFlagValue(arg, fval, args, &i, longToPositional, &positionalVal, mapKeys); err != nil {
+				return nil, err
 			}
 			continue
 		}
-	S:
-		switch val.Kind() {
-		case reflect.Bool:
-			val.SetBool(true)
-		case reflect.String:
-			if i++; i >= len(args) {
-				return nil, newCliError(ErrKindFlagParse, exitCodeFlagParseErr, fmt.Sprintf("expected argument for flag `%s'", arg))
-			}
-			val.SetString(args[i])
-		case reflect.Pointer:
-			if val.Type().Elem().Kind() == reflect.Int {
-				if i++; i >= len(args) {
-					return nil, newCliError(ErrKindFlagParse, exitCodeFlagParseErr, fmt.Sprintf("expected argument for flag `%s'", arg))
-				}
-				v, err := strconv.Atoi(args[i])
-				if err != nil {
-					return nil, newCliError(ErrKindFlagParse, exitCodeFlagParseErr, fmt.Sprintf("invalid argument for flag `%s': %v", arg, err))
-				}
-				val.Set(reflect.New(val.Type().Elem()))
-				val.Elem().SetInt(int64(v))
-			}
-		case reflect.Slice:
-			if _, ok := longToPositional[arg[2:]]; ok {
-				if positionalVal.IsValid() {
-					for positionalVal.Len() > val.Len() {
-						val.Set(reflect.Append(val, reflect.Zero(val.Type().Elem())))
-					}
-				}
-				positionalVal = val
-			} else {
-				if i++; i >= len(args) {
-					return nil, newCliError(ErrKindFlagParse, exitCodeFlagParseErr, fmt.Sprintf("expected argument for flag `%s'", arg))
-				}
-				val.Set(reflect.Append(val, reflect.ValueOf(args[i])))
-			}
-		case reflect.Map:
-			if i += 2; i >= len(args) {
-				return nil, newCliError(ErrKindFlagParse, exitCodeFlagParseErr, fmt.Sprintf("expected 2 arguments for flag `%s'", arg))
-			}
-			if val.IsNil() {
-				val.Set(reflect.MakeMap(val.Type()))
-			}
-			name := args[i-1]
-			if _, ok := mapKeys[name]; !ok {
-				mapKeys[name] = struct{}{}
-				val.SetMapIndex(reflect.ValueOf(name), reflect.ValueOf(args[i]))
-			}
-		}
-	L:
-		if shortopts != "" {
+		for shortopts != "" {
 			opt := shortopts[:1]
-			if val, ok = shortToValue[opt]; !ok {
+			if fval, ok = shortToValue[opt]; !ok {
 				return nil, newCliError(ErrKindFlagParse, exitCodeFlagParseErr, fmt.Sprintf("unknown flag `%s'", opt))
 			}
-			if val.Kind() != reflect.Bool && len(shortopts) > 1 {
+			if fval.Kind() != reflect.Bool && len(shortopts) > 1 {
 				if shortopts[1] == '=' {
 					args[i] = shortopts[2:]
 				} else {
@@ -155,8 +183,9 @@ func parseFlags[T any](args []string, opts *T) ([]string, error) {
 			} else {
 				shortopts = shortopts[1:]
 			}
-			arg = "-" + opt
-			goto S
+			if err := assignFlagValue("-"+opt, fval, args, &i, longToPositional, &positionalVal, mapKeys); err != nil {
+				return nil, err
+			}
 		}
 	}
 	return rest, nil

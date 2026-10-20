@@ -31,8 +31,24 @@ const (
 	ErrCatFailed
 	// ErrDirnameMissingOperand indicates dirname was invoked without an operand.
 	ErrDirnameMissingOperand
+	// ErrBasenameMissingOperand indicates basename was invoked without an operand.
+	ErrBasenameMissingOperand
 	// ErrChmodFailed indicates a file permission update error in the virtualized chmod command.
 	ErrChmodFailed
+	// ErrTouchFailed indicates a file creation error in the virtualized touch command.
+	ErrTouchFailed
+	// ErrMvFailed indicates a file rename error in the virtualized mv command.
+	ErrMvFailed
+	// ErrMkdirFailed indicates a directory creation error in the virtualized mkdir command.
+	ErrMkdirFailed
+	// ErrRmFailed indicates a file or directory removal error in the virtualized rm command.
+	ErrRmFailed
+	// ErrCpFailed indicates a file copy error in the virtualized cp command.
+	ErrCpFailed
+	// ErrMktempFailed indicates a temporary file or directory creation error in the virtualized mktemp command.
+	ErrMktempFailed
+	// ErrReadOnlyEmbeddedFile indicates a write attempt on a read-only embedded file.
+	ErrReadOnlyEmbeddedFile
 )
 
 // RunnerError is a strongly typed error structure implementing error and ExitCode() for the shell runner.
@@ -95,22 +111,6 @@ func init() {
 	gojqcli.SetResolvePath(func(p string) string { return resolvePath(".", p) })
 }
 
-// getDir extracts the current working directory from the interpreter handler context.
-// Parameters:
-//   - ctx: The execution context from mvdan.cc/sh/v3/interp.
-//
-// Returns the context directory or "." if unavailable.
-func getDir(ctx context.Context) (dir string) {
-	dir = "."
-	defer func() { _ = recover() }()
-	if ctx != nil {
-		if hc := interp.HandlerCtx(ctx); hc.Dir != "" {
-			return hc.Dir
-		}
-	}
-	return dir
-}
-
 // readWriteNopCloser wraps an io.Reader to satisfy io.ReadWriteCloser for read-only embedded files.
 type readWriteNopCloser struct {
 	io.Reader
@@ -120,10 +120,10 @@ type readWriteNopCloser struct {
 // Parameters:
 //   - p: The byte slice to write.
 //
-// Returns 0 and a read-only error.
+// Returns 0 and a RunnerError with ErrReadOnlyEmbeddedFile.
 func (readWriteNopCloser) Write(p []byte) (n int, err error) {
 	_ = p
-	return 0, fmt.Errorf("read-only embedded file")
+	return 0, &RunnerError{Kind: ErrReadOnlyEmbeddedFile, Msg: "read-only embedded file", Code: 1}
 }
 
 // Close closes the underlying reader if it implements io.Closer.
@@ -160,10 +160,9 @@ func awkMiddleware(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 	return func(ctx context.Context, args []string) error {
 		if len(args) > 0 && args[0] == "awk" {
 			hc := interp.HandlerCtx(ctx)
-			prev := goawkcli.ResolvePath
-			goawkcli.SetResolvePath(func(p string) string { return resolvePath(hc.Dir, p) })
-			exitCode := goawkcli.RunAwk(args[1:], hc.Stdin, hc.Stdout, hc.Stderr)
-			goawkcli.SetResolvePath(prev)
+			exitCode := goawkcli.RunAwkWithResolver(args[1:], hc.Stdin, hc.Stdout, hc.Stderr, func(p string) string {
+				return resolvePath(hc.Dir, p)
+			})
 			if exitCode == 0 {
 				return nil
 			}
@@ -182,10 +181,9 @@ func jqMiddleware(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 	return func(ctx context.Context, args []string) error {
 		if len(args) > 0 && args[0] == "jq" {
 			hc := interp.HandlerCtx(ctx)
-			prev := gojqcli.ResolvePath
-			gojqcli.SetResolvePath(func(p string) string { return resolvePath(hc.Dir, p) })
-			exitCode := gojqcli.RunJq(args[1:], hc.Stdin, hc.Stdout, hc.Stderr)
-			gojqcli.SetResolvePath(prev)
+			exitCode := gojqcli.RunJqWithResolver(args[1:], hc.Stdin, hc.Stdout, hc.Stderr, func(p string) string {
+				return resolvePath(hc.Dir, p)
+			})
 			if exitCode == 0 {
 				return nil
 			}
@@ -209,7 +207,7 @@ func resolvePath(base, p string) string {
 	joined := filepath.Join(base, p)
 	if workaroundBase != "" && !filepath.IsAbs(joined) {
 		if strings.HasPrefix(joined, "..") {
-			return workaroundBase + "/" + joined
+			return filepath.ToSlash(workaroundBase) + "/" + filepath.ToSlash(joined)
 		}
 		return filepath.Join(workaroundBase, joined)
 	}
@@ -248,7 +246,7 @@ func hostCommandValidator(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 		}
 
 		switch args[0] {
-		case "awk", "jq", "mkdir", "rm", "cp", "cat", "dirname", "mv", "chmod", "touch":
+		case "awk", "jq", "mkdir", "rm", "cp", "cat", "dirname", "basename", "mktemp", "mv", "chmod", "touch":
 			return next(ctx, args)
 		default:
 			hc := interp.HandlerCtx(ctx)
@@ -257,7 +255,7 @@ func hostCommandValidator(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 	}
 }
 
-// fsMiddleware provides basic implementations for standard file system commands like mkdir, rm, cp, cat, dirname, mv, chmod, and touch
+// fsMiddleware provides basic implementations for standard file system commands like mkdir, rm, cp, cat, dirname, basename, mktemp, mv, chmod, and touch
 // so that the script can execute them natively within the WASM environment without external binaries.
 // Parameters:
 //   - next: The next execution handler in the middleware chain.
@@ -273,7 +271,7 @@ func fsMiddleware(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 
 		if args[0] == "chmod" {
 			if len(args) < 3 {
-				return interp.NewExitStatus(1)
+				return failRunner(hc.Stderr, ErrChmodFailed, 1, "chmod: missing operand")
 			}
 			mode, err := parseChmodMode(args[1])
 			if err != nil {
@@ -289,13 +287,13 @@ func fsMiddleware(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 		}
 		if args[0] == "touch" {
 			if len(args) < 2 {
-				return interp.NewExitStatus(1)
+				return failRunner(hc.Stderr, ErrTouchFailed, 1, "touch: missing file operand")
 			}
 			for _, arg := range args[1:] {
 				target := resolvePath(dir, arg)
 				if _, err := os.Stat(target); err != nil {
 					if err := os.WriteFile(target, []byte{}, 0644); err != nil {
-						return interp.NewExitStatus(1)
+						return failRunner(hc.Stderr, ErrTouchFailed, 1, fmt.Sprintf("touch: %v", err))
 					}
 				}
 			}
@@ -304,12 +302,12 @@ func fsMiddleware(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 
 		if args[0] == "mv" {
 			if len(args) != 3 {
-				return interp.NewExitStatus(1)
+				return failRunner(hc.Stderr, ErrMvFailed, 1, "mv: missing file operand")
 			}
 			src := resolvePath(dir, args[1])
 			dst := resolvePath(dir, args[2])
 			if err := os.Rename(src, dst); err != nil {
-				return interp.NewExitStatus(1)
+				return failRunner(hc.Stderr, ErrMvFailed, 1, fmt.Sprintf("mv: %v", err))
 			}
 			return nil
 		}
@@ -355,6 +353,58 @@ func fsMiddleware(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 			return nil
 		}
 
+		if args[0] == "basename" {
+			if len(args) < 2 {
+				return failRunner(hc.Stderr, ErrBasenameMissingOperand, 1, "basename: missing operand")
+			}
+			pathArg := args[1]
+			if pathArg == "" {
+				fmt.Fprintln(hc.Stdout, ".")
+				return nil
+			}
+			base := filepath.Base(pathArg)
+			if len(args) >= 3 && args[2] != "" && base != args[2] && strings.HasSuffix(base, args[2]) {
+				base = strings.TrimSuffix(base, args[2])
+			}
+			fmt.Fprintln(hc.Stdout, base)
+			return nil
+		}
+
+		if args[0] == "mktemp" {
+			makeDir := false
+			var templateArg string
+			for _, arg := range args[1:] {
+				if arg == "-d" {
+					makeDir = true
+				} else if !strings.HasPrefix(arg, "-") {
+					templateArg = arg
+				}
+			}
+			parentDir := os.TempDir()
+			pattern := "cdd_tmp.*"
+			if templateArg != "" {
+				resolvedTpl := resolvePath(dir, templateArg)
+				parentDir = filepath.Dir(resolvedTpl)
+				baseTpl := filepath.Base(resolvedTpl)
+				pattern = strings.ReplaceAll(baseTpl, "XXXXXX", "*")
+			}
+			if makeDir {
+				createdDir, err := os.MkdirTemp(parentDir, pattern)
+				if err != nil {
+					return failRunner(hc.Stderr, ErrMktempFailed, 1, fmt.Sprintf("mktemp: %v", err))
+				}
+				fmt.Fprintln(hc.Stdout, createdDir)
+				return nil
+			}
+			createdFile, err := os.CreateTemp(parentDir, pattern)
+			if err != nil {
+				return failRunner(hc.Stderr, ErrMktempFailed, 1, fmt.Sprintf("mktemp: %v", err))
+			}
+			_ = createdFile.Close()
+			fmt.Fprintln(hc.Stdout, createdFile.Name())
+			return nil
+		}
+
 		if args[0] == "mkdir" {
 			makeParents := false
 			var dirs []string
@@ -371,13 +421,11 @@ func fsMiddleware(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 				target := resolvePath(dir, d)
 				if makeParents {
 					if err := os.MkdirAll(target, 0755); err != nil {
-						fmt.Fprintln(hc.Stderr, "mkdir:", err)
-						return interp.NewExitStatus(1)
+						return failRunner(hc.Stderr, ErrMkdirFailed, 1, fmt.Sprintf("mkdir: %v", err))
 					}
 				} else {
 					if err := os.Mkdir(target, 0755); err != nil {
-						fmt.Fprintln(hc.Stderr, "mkdir:", err)
-						return interp.NewExitStatus(1)
+						return failRunner(hc.Stderr, ErrMkdirFailed, 1, fmt.Sprintf("mkdir: %v", err))
 					}
 				}
 			}
@@ -409,8 +457,7 @@ func fsMiddleware(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 					err = os.Remove(target)
 				}
 				if err != nil && !force && !os.IsNotExist(err) {
-					fmt.Fprintln(hc.Stderr, "rm:", err)
-					return interp.NewExitStatus(1)
+					return failRunner(hc.Stderr, ErrRmFailed, 1, fmt.Sprintf("rm: %v", err))
 				}
 			}
 			return nil
@@ -430,8 +477,7 @@ func fsMiddleware(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 					src := resolvePath(dir, s)
 					input, err := os.ReadFile(src)
 					if err != nil {
-						fmt.Fprintln(hc.Stderr, "cp:", err)
-						return interp.NewExitStatus(1)
+						return failRunner(hc.Stderr, ErrCpFailed, 1, fmt.Sprintf("cp: %v", err))
 					}
 					info, err := os.Stat(src)
 					perm := os.FileMode(0644)
@@ -446,8 +492,7 @@ func fsMiddleware(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 					}
 
 					if err := os.WriteFile(dstPath, input, perm); err != nil {
-						fmt.Fprintln(hc.Stderr, "cp:", err)
-						return interp.NewExitStatus(1)
+						return failRunner(hc.Stderr, ErrCpFailed, 1, fmt.Sprintf("cp: %v", err))
 					}
 				}
 			}
@@ -525,8 +570,7 @@ func runMain(scriptOverride string, args []string, exitFunc func(int)) {
 			if err == nil {
 				return info, nil
 			}
-			resolvedName := resolvePath(getDir(ctx), name)
-			return interp.DefaultStatHandler()(ctx, resolvedName, followSymlinks)
+			return interp.DefaultStatHandler()(ctx, name, followSymlinks)
 		}),
 		interp.OpenHandler(func(ctx context.Context, path string, flag int, perm os.FileMode) (io.ReadWriteCloser, error) {
 			cleanName := filepath.Clean(path)
@@ -537,8 +581,7 @@ func runMain(scriptOverride string, args []string, exitFunc func(int)) {
 					return readWriteNopCloser{file}, nil
 				}
 			}
-			resolvedPath := resolvePath(getDir(ctx), path)
-			return interp.DefaultOpenHandler()(ctx, resolvedPath, flag, perm)
+			return interp.DefaultOpenHandler()(ctx, path, flag, perm)
 		}),
 	)
 	if err != nil {
@@ -553,7 +596,7 @@ func runMain(scriptOverride string, args []string, exitFunc func(int)) {
 			exitFunc(int(status))
 			return
 		}
-		fmt.Println(err)
+		fmt.Fprintln(os.Stderr, err)
 		exitFunc(1)
 	}
 }

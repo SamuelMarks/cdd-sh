@@ -232,4 +232,17 @@ if [ ! -f "${TMP_COV}/dir_oas.json" ]; then
 	exit 1
 fi
 
+echo "Testing generated CLI operation execution with routes.sh..."
+sh "${LIBSCRIPT_ROOT_DIR}/cdd.sh" from_openapi to_sdk_cli -i tests/test.json -o "${TMP_COV}/sdk_dir"
+cat <<'MOCK_ROUTE' >>"${TMP_COV}/sdk_dir/src/routes.sh"
+getUsers() {
+  echo "{\"invoked_route\":\"getUsers\",\"base_url\":\"${BASE_URL:-}\"}"
+}
+MOCK_ROUTE
+cli_exec_out=$("${TMP_COV}/sdk_dir/bin/sdk-cli" --server "http://localhost:9999" get_users)
+if ! printf '%s' "${cli_exec_out}" | jq -e '.invoked_route == "getUsers" and .base_url == "http://localhost:9999"' >/dev/null 2>&1; then
+	echo "FAIL: generated CLI did not invoke getUsers route function: ${cli_exec_out}"
+	exit 1
+fi
+
 echo "All exhaustive coverage tests passed!"

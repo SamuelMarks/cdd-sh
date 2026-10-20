@@ -10,10 +10,6 @@ import (
 )
 
 func TestEncoder(t *testing.T) {
-	origNoColor := noColor
-	noColor = true
-	defer func() { noColor = origNoColor }()
-
 	tests := []struct {
 		name     string
 		val      any
@@ -54,7 +50,7 @@ func TestEncoder(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			e := newEncoder(tt.tab, tt.indent)
+			e := newEncoderWithColors(tt.tab, tt.indent, defaultColorConfig(true))
 			var buf bytes.Buffer
 			err := e.marshal(tt.val, &buf)
 			if err != nil {
@@ -67,19 +63,21 @@ func TestEncoder(t *testing.T) {
 	}
 }
 
-func TestEncoderPanic(t *testing.T) {
-	defer func() {
-		if r := recover(); r == nil {
-			t.Errorf("expected panic, got nil")
-		}
-	}()
+func TestEncoderUnsupportedType(t *testing.T) {
 	e := newEncoder(false, 0)
 	var buf bytes.Buffer
-	_ = e.marshal(func() {}, &buf)
+	err := e.marshal(func() {}, &buf)
+	if err == nil {
+		t.Fatalf("expected error for unsupported type, got nil")
+	}
+	var ce *cliError
+	if !errors.As(err, &ce) || ce.kind != ErrKindUnsupportedType {
+		t.Errorf("expected ErrKindUnsupportedType, got %T (%v)", err, err)
+	}
 }
 
 func TestEncoderFlushBufferLimit(t *testing.T) {
-	e := newEncoder(false, 0)
+	e := newEncoderWithColors(false, 0, defaultColorConfig(true))
 	var buf bytes.Buffer
 
 	// generate a large array to trigger flush
@@ -101,14 +99,14 @@ func (w *errWriter) Write(p []byte) (n int, err error) {
 }
 
 func TestEncoderErrors(t *testing.T) {
-	e := newEncoder(false, 0)
+	e := newEncoderWithColors(false, 0, defaultColorConfig(true))
 	largeStr := string(make([]byte, 8193))
 	err := e.marshal([]any{largeStr, largeStr}, &errWriter{})
 	if err == nil {
 		t.Fatalf("expected error, got nil")
 	}
 
-	e2 := newEncoder(false, 0)
+	e2 := newEncoderWithColors(false, 0, defaultColorConfig(true))
 	err2 := e2.marshal(map[string]any{"a": largeStr, "b": largeStr}, &errWriter{})
 	if err2 == nil {
 		t.Fatalf("expected error, got nil")
@@ -116,42 +114,20 @@ func TestEncoderErrors(t *testing.T) {
 }
 
 func TestEncoderColors(t *testing.T) {
-	origNoColor := noColor
-	noColor = false
+	cfg := colorConfig{
+		noColor:        false,
+		nullColor:      []byte("N"),
+		trueColor:      []byte("T"),
+		falseColor:     []byte("F"),
+		numberColor:    []byte("#"),
+		stringColor:    []byte("S"),
+		arrayColor:     []byte("A"),
+		objectColor:    []byte("O"),
+		objectKeyColor: []byte("K"),
+		resetColor:     []byte("R"),
+	}
 
-	origNullColor := nullColor
-	origTrueColor := trueColor
-	origFalseColor := falseColor
-	origNumberColor := numberColor
-	origStringColor := stringColor
-	origArrayColor := arrayColor
-	origObjectColor := objectColor
-	origObjectKeyColor := objectKeyColor
-
-	nullColor = []byte("N")
-	trueColor = []byte("T")
-	falseColor = []byte("F")
-	numberColor = []byte("#")
-	stringColor = []byte("S")
-	arrayColor = []byte("A")
-	objectColor = []byte("O")
-	objectKeyColor = []byte("K")
-	resetColor = []byte("R")
-
-	defer func() {
-		noColor = origNoColor
-		nullColor = origNullColor
-		trueColor = origTrueColor
-		falseColor = origFalseColor
-		numberColor = origNumberColor
-		stringColor = origStringColor
-		arrayColor = origArrayColor
-		objectColor = origObjectColor
-		objectKeyColor = origObjectKeyColor
-		resetColor = []byte("\x1b[0m")
-	}()
-
-	e := newEncoder(false, 0)
+	e := newEncoderWithColors(false, 0, cfg)
 	var buf bytes.Buffer
 
 	val := []any{nil, true, false, 1, 1.2, map[string]any{"a": "b"}}

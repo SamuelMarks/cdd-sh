@@ -50,6 +50,13 @@ func TestRunAwk(t *testing.T) {
 			outContain: "b\n",
 		},
 		{
+			name:       "with attached -F,",
+			args:       []string{"-F,", "{print $2}"},
+			stdinStr:   "a,b,c",
+			expected:   0,
+			outContain: "b\n",
+		},
+		{
 			name:       "missing -F arg",
 			args:       []string{"-F"},
 			expected:   1,
@@ -62,6 +69,18 @@ func TestRunAwk(t *testing.T) {
 			outContain: "val\n",
 		},
 		{
+			name:       "with attached -vVAR=val",
+			args:       []string{"-vVAR=val", "--", "BEGIN {print VAR}"},
+			expected:   0,
+			outContain: "val\n",
+		},
+		{
+			name:       "invalid -v without equals",
+			args:       []string{"-v", "INVALID_VAR", "BEGIN {print 1}"},
+			expected:   1,
+			errContain: "awk: invalid -v assignment: INVALID_VAR",
+		},
+		{
 			name:       "missing -v arg",
 			args:       []string{"-v"},
 			expected:   1,
@@ -70,6 +89,12 @@ func TestRunAwk(t *testing.T) {
 		{
 			name:       "with -f",
 			args:       []string{"-f", progFile},
+			expected:   0,
+			outContain: "hello\n",
+		},
+		{
+			name:       "with attached -f",
+			args:       []string{"-f" + progFile},
 			expected:   0,
 			outContain: "hello\n",
 		},
@@ -146,6 +171,15 @@ func TestRunAwk(t *testing.T) {
 		}
 		if !bytes.Contains(stdout.Bytes(), []byte("embedded\n")) {
 			t.Errorf("expected 'embedded\\n', got %q", stdout.String())
+		}
+	})
+
+	t.Run("RunAwkWithResolver nil resolver", func(t *testing.T) {
+		var stdout, stderr bytes.Buffer
+		stdin := bytes.NewBufferString("")
+		exitCode := RunAwkWithResolver([]string{"-f", progFile}, stdin, &stdout, &stderr, nil)
+		if exitCode != 0 {
+			t.Errorf("expected 0, got %d. stderr: %s", exitCode, stderr.String())
 		}
 	})
 }

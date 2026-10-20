@@ -82,6 +82,7 @@ handle_emit_tests() {
         elif content_type == "application/x-www-form-urlencoded" then
           (if $schema."$ref" then root.components.schemas[$schema."$ref" | sub("^#/components/schemas/"; "")] else $schema end) as $s |
           (($s.properties // {}) | to_entries | map("\(.key)=test_string") | join("&")) | @json
+        elif content_type == "multipart/form-data" or content_type == "application/octet-stream" then "\"${CDD_TEST_FIXTURE_FILE:-test_string}\""
         elif $schema.type == "integer" or $schema.type == "number" then "1"
         elif $schema.type == "boolean" then "true"
         elif $schema.format == "date-time" then "\"2024-01-01T00:00:00Z\""
@@ -119,13 +120,13 @@ handle_emit_tests() {
           "  echo \"Testing \(.id)\"\n" +
           "  out=$(\(.id) \(.args | join(" ")))\n" +
           "  if [ -n \"$out\" ]; then\n" +
-          "    echo \"$out\" | jq empty >/dev/null || { echo \"Failed to deserialize\"; exit 1; }\n" +
+          "    printf \"%s\\n\" \"$out\" | jq empty >/dev/null || { echo \"Failed to deserialize\"; exit 1; }\n" +
           "  fi\n" +
           "}\n"
         ] | join("\n")) +
-        "\n# run_all_tests executes all generated route unit tests.\n# @param none\nrun_all_tests() {\n  touch test_string\n  trap '\''rm -f test_string'\'' EXIT\n" +
+        "\n# run_all_tests executes all generated route unit tests.\n# @param none\nrun_all_tests() {\n  CDD_TEST_FIXTURE_FILE=$(mktemp \"${TMPDIR:-/tmp}/cdd_test_fixture.XXXXXX\")\n  export CDD_TEST_FIXTURE_FILE\n  trap '\''rm -f \"${CDD_TEST_FIXTURE_FILE}\"'\'' EXIT\n" +
         ([ $ops[] | "  test_\(.id)" ] | join("\n")) +
-        "\n  rm -f test_string\n}\n\n" +
+        "\n  rm -f \"${CDD_TEST_FIXTURE_FILE}\"\n}\n\n" +
         "if ! (return 0 2>/dev/null); then\n  run_all_tests \"$@\"\nfi\n"
       else empty end
     ' "${ast}"

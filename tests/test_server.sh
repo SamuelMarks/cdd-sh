@@ -123,8 +123,7 @@ if ! echo "$res_stub" | grep -q "isError\": true"; then
   exit 1
 fi
 
-export DATABASE_URL="/tmp/cdd_test_db_$$"
-mkdir -p "$DATABASE_URL"
+export DATABASE_URL=$(mktemp -d "${TMPDIR:-/tmp}/cdd_test_db.XXXXXX")
 res_concrete=$(CDD_SSE_PATH="/mcp/message" CDD_SSE_METHOD="POST" CDD_SSE_AUTH="" CDD_SSE_BODY='{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_users","arguments":{}}}' sh tests/out/src/server.sh --handler || true)
 if echo "$res_concrete" | grep -q "isError\": true"; then
   echo "FAIL: Concrete DAO DI injection failed."
@@ -143,13 +142,12 @@ set -e
 # shellcheck disable=SC1091
 . "$(cd "$(dirname -- "$0")/../../.." && pwd)/tests/test_helpers.sh"
 
-export DATABASE_URL="/tmp/cdd_test_db_$$"
-mkdir -p "$DATABASE_URL"
+export DATABASE_URL=$(mktemp -d "${TMPDIR:-/tmp}/cdd_test_db.XXXXXX")
 
 PORT=$(allocate_free_port 18105)
 PORT="${PORT}" CDD_EPHEMERAL="1" CDD_SEED="1" sh tests/out/src/server.sh --seed --ephemeral --handler </dev/null >/dev/null 2>&1 || true
 
-GENERATED_DB_DIR=$(ls -td /tmp/cdd_ephemeral_db_* 2>/dev/null | head -n 1)
+GENERATED_DB_DIR=$(ls -td "${TMPDIR:-/tmp}"/cdd_ephemeral_db_* /tmp/cdd_ephemeral_db_* 2>/dev/null | head -n 1)
 
 if [ -z "$GENERATED_DB_DIR" ] || [ ! -f "$GENERATED_DB_DIR/seed.sql" ]; then
   echo "FAIL: Seed script was not generated in $GENERATED_DB_DIR"
@@ -158,6 +156,11 @@ fi
 
 if ! grep -q "INSERT INTO users" "$GENERATED_DB_DIR/seed.sql"; then
   echo "FAIL: Seed script missing INSERT logic"
+  exit 1
+fi
+
+if ! grep -q "CREATE TABLE IF NOT EXISTS user" "$GENERATED_DB_DIR/schema.sql"; then
+  echo "FAIL: Schema script missing dynamic table creation from OpenAPI components.schemas"
   exit 1
 fi
 

@@ -60,8 +60,8 @@ echo "Testing SDK against generated server ($BASE_URL)..."
 . "$OUT_SDK/src/routes.sh"
 
 res=$(findPetsByStatus "available" 2>&1 || echo "ERROR")
-if ! printf "%s" "$res" | grep -q "{"; then
-	echo "FAIL: SDK findPetsByStatus against generated server did not return {} (returned: $res)"
+if ! printf "%s" "$res" | jq -e 'type == "object" or type == "array"' >/dev/null 2>&1; then
+	echo "FAIL: SDK findPetsByStatus against generated server did not return valid JSON object/array (returned: $res)"
 	exit 1
 fi
 

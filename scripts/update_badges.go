@@ -74,10 +74,11 @@ func getColor(pct int) string {
 }
 
 var (
-	shFuncRe      = regexp.MustCompile(`(?m)^[ \t]*(?:function[ \t]+)?([a-zA-Z_0-9]+)\(\)[ \t]*\{`)
+	shFuncRe      = regexp.MustCompile(`(?m)^[ \t]*(?:function[ \t]+)?([a-zA-Z_0-9]+)\(\)[ \t]*\{[ \t]*$`)
+	shBodyArgRe   = regexp.MustCompile(`(?m)^[ \t]*(?:[a-zA-Z_0-9]+="\$\{?[1-9]|\bshift\b|.*\$\{?[1-9][0-9]*:-|\bfor[ \t]+[^\n]+\bin[ \t]+"\$@")`)
 	awkFuncRe     = regexp.MustCompile(`(?m)^[ \t]*function[ \t]+([a-zA-Z_0-9]+)\s*\(([^)]*)\)`)
 	jqDefRe       = regexp.MustCompile(`(?m)^[ \t]*def[ \t]+([a-zA-Z_0-9]+)(?:\(([^)]*)\))?:`)
-	goFuncRe      = regexp.MustCompile(`(?m)^func\s+(?:\([^)]+\)\s+)?([a-zA-Z_0-9]+)\s*(?:\[[^\]]+\])?\s*\(([^)]*)\)`)
+	goFuncRe      = regexp.MustCompile(`(?m)^func\s+(?:\([^)]+\)\s+)?([a-zA-Z_0-9]+)\s*(?:\[[^\]]+\])?\s*\(([^)]*)\)\s*([^{\n]*)`)
 	goTypeRe      = regexp.MustCompile(`(?m)^type\s+([a-zA-Z_0-9]+)\s+`)
 	placeholderRe = regexp.MustCompile(`(?i)^(?://|#)\s*[a-zA-Z_0-9]+\s+is\s+a\s+(?:function|type|struct)\s*$`)
 )
@@ -113,7 +114,27 @@ func extractPrecedingDocBlock(content string, start int, prefix string) (string,
 	return strings.Join(lines, "\n"), true
 }
 
-// auditFileDocCoverage counts total and documented file headers, functions, parameters, and types for a single file.
+// auditAwkFunctions counts function and parameter documentation for AWK functions within content.
+// Parameters:
+//   - content: The text containing AWK function declarations.
+//
+// Returns the total and documented items for AWK functions.
+func auditAwkFunctions(content string) (total, documented int) {
+	matches := awkFuncRe.FindAllStringSubmatchIndex(content, -1)
+	for _, m := range matches {
+		total += 2
+		docBlock, ok := extractPrecedingDocBlock(content, m[0], "#")
+		if ok {
+			documented++
+		}
+		if strings.Contains(docBlock, "@param") {
+			documented++
+		}
+	}
+	return total, documented
+}
+
+// auditFileDocCoverage counts total and documented file headers, functions, parameters, returns, and types for a single file.
 // Parameters:
 //   - name: The base filename.
 //   - content: The file text content.
@@ -122,89 +143,86 @@ func extractPrecedingDocBlock(content string, start int, prefix string) (string,
 func auditFileDocCoverage(name, content string) (total, documented int) {
 	trimmed := strings.TrimSpace(content)
 	if strings.HasSuffix(name, ".sh") || name == "cdd.sh" {
-		if strings.Contains(content, "@file") {
-			total++
-			if strings.Contains(content, "# @file") && strings.Contains(content, "# @description") {
+		total++
+		if strings.Contains(content, "# @file") && strings.Contains(content, "# @description") {
+			documented++
+		}
+		matches := shFuncRe.FindAllStringSubmatchIndex(content, -1)
+		for idx, m := range matches {
+			total += 2
+			docBlock, ok := extractPrecedingDocBlock(content, m[0], "#")
+			if ok {
+				documented++
+			}
+			bodyEnd := len(content)
+			if idx+1 < len(matches) {
+				bodyEnd = matches[idx+1][0]
+			}
+			fnBody := content[m[1]:bodyEnd]
+			if closeIdx := strings.Index(fnBody, "\n}"); closeIdx >= 0 {
+				fnBody = fnBody[:closeIdx]
+			}
+			usesArgs := shBodyArgRe.MatchString(fnBody)
+			if strings.Contains(docBlock, "@param") && (!usesArgs || !strings.Contains(docBlock, "@param none")) {
 				documented++
 			}
 		}
-		matches := shFuncRe.FindAllStringSubmatchIndex(content, -1)
+		awkTot, awkDoc := auditAwkFunctions(content)
+		total += awkTot
+		documented += awkDoc
+	}
+
+	if strings.HasSuffix(name, ".awk") {
+		total++
+		if strings.Contains(content, "# @file") && strings.Contains(content, "# @description") {
+			documented++
+		}
+		awkTot, awkDoc := auditAwkFunctions(content)
+		total += awkTot
+		documented += awkDoc
+	}
+
+	if strings.HasSuffix(name, ".jq") {
+		total++
+		if strings.Contains(content, "# @file") && strings.Contains(content, "# @description") {
+			documented++
+		}
+		matches := jqDefRe.FindAllStringSubmatchIndex(content, -1)
 		for _, m := range matches {
-			total++
+			total += 3
 			docBlock, ok := extractPrecedingDocBlock(content, m[0], "#")
 			if ok {
 				documented++
 			}
 			if strings.Contains(docBlock, "@param") {
-				total++
 				documented++
 			}
-		}
-	}
-
-	if strings.HasSuffix(name, ".awk") {
-		if strings.Contains(content, "@file") {
-			total++
-			if strings.Contains(content, "# @file") && strings.Contains(content, "# @description") {
+			if strings.Contains(docBlock, "@return") {
 				documented++
-			}
-		}
-		matches := awkFuncRe.FindAllStringSubmatchIndex(content, -1)
-		for _, m := range matches {
-			total++
-			docBlock, ok := extractPrecedingDocBlock(content, m[0], "#")
-			if ok {
-				documented++
-			}
-			params := strings.TrimSpace(content[m[4]:m[5]])
-			if params != "" || strings.Contains(docBlock, "@param") {
-				total++
-				if strings.Contains(docBlock, "@param") {
-					documented++
-				}
-			}
-		}
-	}
-
-	if strings.HasSuffix(name, ".jq") {
-		total++
-		if strings.HasPrefix(trimmed, "#") {
-			documented++
-		}
-		matches := jqDefRe.FindAllStringSubmatchIndex(content, -1)
-		for _, m := range matches {
-			total++
-			docBlock, ok := extractPrecedingDocBlock(content, m[0], "#")
-			if ok {
-				documented++
-			}
-			params := ""
-			if m[4] >= 0 && m[5] >= 0 {
-				params = strings.TrimSpace(content[m[4]:m[5]])
-			}
-			if params != "" || strings.Contains(docBlock, "@param") {
-				total++
-				if strings.Contains(docBlock, "@param") {
-					documented++
-				}
 			}
 		}
 	}
 
 	if strings.HasSuffix(name, ".go") && !strings.HasSuffix(name, "_test.go") {
+		total++
 		if strings.HasPrefix(trimmed, "// Package ") {
-			total++
 			documented++
 		}
 		for _, m := range goFuncRe.FindAllStringSubmatchIndex(content, -1) {
-			total++
+			total += 2
 			docBlock, ok := extractPrecedingDocBlock(content, m[0], "//")
 			if ok {
 				documented++
 			}
 			if strings.Contains(docBlock, "Parameters:") {
-				total++
 				documented++
+			}
+			retSig := strings.TrimSpace(content[m[6]:m[7]])
+			if retSig != "" {
+				total++
+				if strings.Contains(docBlock, "Returns ") {
+					documented++
+				}
 			}
 		}
 		for _, m := range goTypeRe.FindAllStringIndex(content, -1) {
@@ -238,6 +256,7 @@ func runUpdateBadges(args []string) error {
 	}
 
 	testCov := 0
+	testCovFloat := 0.0
 	if os.Getenv("SKIP_GO_TEST") == "" {
 		cmdStr := "go test -coverprofile=coverage.out ./..."
 		if errTest := exec.Command("sh", "-c", cmdStr).Run(); errTest != nil && checkMode {
@@ -251,6 +270,7 @@ func runUpdateBadges(args []string) error {
 		match := re.FindStringSubmatch(string(out))
 		if len(match) > 1 {
 			if f, parseErr := strconv.ParseFloat(match[1], 64); parseErr == nil {
+				testCovFloat = f
 				testCov = int(f)
 			}
 		}
@@ -312,10 +332,10 @@ func runUpdateBadges(args []string) error {
 	if ioErr := cmp.Or(walkErr, readErr, writeErr); ioErr != nil && checkMode {
 		return &BadgeError{Kind: ErrBadgeIO, Msg: ioErr.Error()}
 	}
-	if checkMode && (docCov < 100 || (os.Getenv("SKIP_GO_TEST") == "" && testCov < 100)) {
+	if checkMode && (documentedItems < totalItems || docCov < 100 || (os.Getenv("SKIP_GO_TEST") == "" && testCovFloat < 100.0)) {
 		return &BadgeError{
 			Kind: ErrBadgeCoverageBelow100,
-			Msg:  fmt.Sprintf("coverage below 100%% (test=%d%%, doc=%d%% [%d/%d])", testCov, docCov, documentedItems, totalItems),
+			Msg:  fmt.Sprintf("coverage below 100%% (test=%.1f%%, doc=%d%% [%d/%d])", testCovFloat, docCov, documentedItems, totalItems),
 		}
 	}
 	return nil

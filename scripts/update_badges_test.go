@@ -63,22 +63,61 @@ func TestAuditFileDocCoverage(t *testing.T) {
 		t.Errorf("expected 3/3 for sh, got %d/%d", doc, tot)
 	}
 
+	// Undocumented .sh file without @file or @param should fail 100% check
+	undocSh := "#!/bin/sh\n# fn doc\nfn() {\n :\n}\n"
+	tot, doc = auditFileDocCoverage("s_undoc.sh", undocSh)
+	if tot != 3 || doc != 1 {
+		t.Errorf("expected 1/3 for undoc sh, got %d/%d", doc, tot)
+	}
+
 	awkContent := "# @file a.awk\n# @description d\n# fn doc\n# @param x\nfunction fn(x) { return x }\n"
 	tot, doc = auditFileDocCoverage("a.awk", awkContent)
 	if tot != 3 || doc != 3 {
 		t.Errorf("expected 3/3 for awk, got %d/%d", doc, tot)
 	}
 
-	jqContent := "# @file f.jq\n# @description d\n# fn doc\n# @param $x\ndef fn($x): $x;\n"
-	tot, doc = auditFileDocCoverage("f.jq", jqContent)
-	if tot != 3 || doc != 3 {
-		t.Errorf("expected 3/3 for jq, got %d/%d", doc, tot)
+	undocAwk := "function fn(x) { return x }\n"
+	tot, doc = auditFileDocCoverage("a_undoc.awk", undocAwk)
+	if tot != 3 || doc != 0 {
+		t.Errorf("expected 0/3 for undoc awk, got %d/%d", doc, tot)
 	}
 
-	goContent := "// Package p docs\npackage p\n// T docs\ntype T int\n// F docs\n// Parameters:\n// - x: int\nfunc F(x int) {}\n"
-	tot, doc = auditFileDocCoverage("f.go", goContent)
+	jqContent := "# @file f.jq\n# @description d\n# fn doc\n# @param $x\n# @return $x\ndef fn($x): $x;\n"
+	tot, doc = auditFileDocCoverage("f.jq", jqContent)
 	if tot != 4 || doc != 4 {
-		t.Errorf("expected 4/4 for go, got %d/%d", doc, tot)
+		t.Errorf("expected 4/4 for jq, got %d/%d", doc, tot)
+	}
+
+	undocJq := "# arbitrary comment\ndef fn($x): $x;\n"
+	tot, doc = auditFileDocCoverage("f_undoc.jq", undocJq)
+	if tot != 4 || doc != 1 {
+		t.Errorf("expected 1/4 for undoc jq, got %d/%d", doc, tot)
+	}
+
+	// Shell function using $1 but claiming @param none should fail parameter doc check
+	mismatchSh := "#!/bin/sh\n# @file s.sh\n# @description d\n# fn doc\n# @param none\nfn() {\n x=\"$1\"\n}\n"
+	tot, doc = auditFileDocCoverage("s_mismatch.sh", mismatchSh)
+	if tot != 3 || doc != 2 {
+		t.Errorf("expected 2/3 for mismatch sh, got %d/%d", doc, tot)
+	}
+
+	// Multiple shell functions in a file
+	multiSh := "#!/bin/sh\n# @file m.sh\n# @description d\n# f1 doc\n# @param $1\nf1() {\n echo \"$1\"\n}\n# f2 doc\n# @param none\nf2() {\n :\n}\n"
+	tot, doc = auditFileDocCoverage("m.sh", multiSh)
+	if tot != 5 || doc != 5 {
+		t.Errorf("expected 5/5 for multi sh, got %d/%d", doc, tot)
+	}
+
+	goContent := "// Package p docs\npackage p\n// T docs\ntype T int\n// F docs\n// Parameters:\n// - x: int\n// Returns int.\nfunc F(x int) int { return x }\n"
+	tot, doc = auditFileDocCoverage("f.go", goContent)
+	if tot != 5 || doc != 5 {
+		t.Errorf("expected 5/5 for go, got %d/%d", doc, tot)
+	}
+
+	undocGo := "package p\ntype T int\nfunc F(x int) int { return x }\n"
+	tot, doc = auditFileDocCoverage("f_undoc.go", undocGo)
+	if tot != 5 || doc != 0 {
+		t.Errorf("expected 0/5 for undoc go, got %d/%d", doc, tot)
 	}
 }
 
@@ -212,7 +251,7 @@ func TestMainFunc_NoReadme(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(tmp, "README.md"), []byte(sampleReadme), 0644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(tmp, "code.go"), []byte("// Package main docs\npackage main\n// ExportedFunc docs\nfunc ExportedFunc() {}\n"), 0644); err != nil {
+	if err := os.WriteFile(filepath.Join(tmp, "code.go"), []byte("// Package main docs\npackage main\n// ExportedFunc docs\n// Parameters:\n// - none\nfunc ExportedFunc() {}\n"), 0644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -244,7 +283,7 @@ func TestMainFunc_WithTypes(t *testing.T) {
 
 	os.WriteFile("README.md", []byte(sampleReadme), 0644)
 	os.WriteFile("go.mod", []byte("module testmod\n\ngo 1.21\n"), 0644)
-	os.WriteFile("dummy.go", []byte("// Package main docs\npackage main\n// Dummy type docs\ntype Dummy int\n// GetDummy docs\nfunc GetDummy() Dummy { return 1 }\n"), 0644)
+	os.WriteFile("dummy.go", []byte("// Package main docs\npackage main\n// Dummy type docs\ntype Dummy int\n// GetDummy docs\n// Parameters:\n// - none\n// Returns Dummy.\nfunc GetDummy() Dummy { return 1 }\n"), 0644)
 	os.WriteFile("dummy_test.go", []byte("package main\nimport \"testing\"\nfunc TestGetDummy(t *testing.T) { if GetDummy() != 1 { t.Fail() } }\n"), 0644)
 
 	main()

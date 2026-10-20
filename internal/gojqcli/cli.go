@@ -53,6 +53,20 @@ type cli struct {
 
 	outputYAMLSeparator bool
 	exitCodeError       error
+	colors              colorConfig
+	resolvePath         func(string) string
+}
+
+// resolveFilePath resolves a file path using the CLI's scoped resolver or falls back to resolveJqPath.
+// Parameters:
+//   - p: The file path to resolve.
+//
+// Returns the resolved file path string.
+func (cli *cli) resolveFilePath(p string) string {
+	if cli.resolvePath != nil {
+		return cli.resolvePath(p)
+	}
+	return resolveJqPath(p)
 }
 
 // flagopts defines the command-line flags accepted by the gojq CLI.
@@ -139,18 +153,19 @@ Usage:
 		cli.outputCompact, cli.outputIndent, cli.outputTab, cli.outputYAML =
 		opts.OutputRaw, opts.OutputRaw0, opts.OutputJoin,
 		opts.OutputCompact, opts.OutputIndent, opts.OutputTab, opts.OutputYAML
-	defer func(x bool) { noColor = x }(noColor)
+	var disableColor bool
 	if opts.OutputColor || opts.OutputMono {
-		noColor = opts.OutputMono
+		disableColor = opts.OutputMono
 	} else if os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb" {
-		noColor = true
+		disableColor = true
 	} else {
 		f, ok := cli.outStream.(interface{ Fd() uintptr })
-		noColor = !(ok && (isatty.IsTerminal(f.Fd()) || isatty.IsCygwinTerminal(f.Fd())))
+		disableColor = !(ok && (isatty.IsTerminal(f.Fd()) || isatty.IsCygwinTerminal(f.Fd())))
 	}
-	if !noColor {
+	cli.colors = defaultColorConfig(disableColor)
+	if !cli.colors.noColor {
 		if colors := os.Getenv("GOJQ_COLORS"); colors != "" {
-			if err := setColors(colors); err != nil {
+			if err := cli.colors.parseColors(colors); err != nil {
 				return err
 			}
 		}
@@ -180,7 +195,7 @@ Usage:
 		cli.argvalues = append(cli.argvalues, val)
 	}
 	for k, v := range opts.SlurpFile {
-		val, err := slurpFile(v)
+		val, err := cli.slurpFile(v)
 		if err != nil {
 			return err
 		}
@@ -198,7 +213,7 @@ Usage:
 			val, err = fs.ReadFile(EmbeddedFS, cleanName)
 		}
 		if err != nil || EmbeddedFS == nil {
-			val, err = os.ReadFile(resolveJqPath(v))
+			val, err = os.ReadFile(cli.resolveFilePath(v))
 		}
 		if err != nil {
 			return err
@@ -244,7 +259,7 @@ Usage:
 			src, err = fs.ReadFile(EmbeddedFS, cleanName)
 		}
 		if err != nil || EmbeddedFS == nil {
-			src, err = os.ReadFile(resolveJqPath(args[0]))
+			src, err = os.ReadFile(cli.resolveFilePath(args[0]))
 		}
 		if err != nil {
 			return err
@@ -318,9 +333,9 @@ Usage:
 //   - name: Path to the JSON file to slurp.
 //
 // Returns the slice of parsed JSON values and any file or parse error.
-func slurpFile(name string) (any, error) {
+func (cli *cli) slurpFile(name string) (any, error) {
 	iter := newSlurpInputIter(
-		newFilesInputIter(newJSONInputIter, []string{name}, nil),
+		newFilesInputIterWithResolver(newJSONInputIter, []string{name}, nil, cli.resolveFilePath),
 	)
 	defer iter.Close()
 	val, _ := iter.Next()
@@ -363,7 +378,7 @@ func (cli *cli) createInputIter(args []string) (iter inputIter) {
 	if len(args) == 0 {
 		return newIter(cli.inStream, "<stdin>")
 	}
-	return newFilesInputIter(newIter, args, cli.inStream)
+	return newFilesInputIterWithResolver(newIter, args, cli.inStream, cli.resolveFilePath)
 }
 
 // process iterates over all input values, evaluates the compiled jq code, and prints output values.
@@ -450,6 +465,9 @@ func (cli *cli) printValues(iter gojq.Iter) error {
 }
 
 // createMarshaler selects and configures the output marshaler based on CLI formatting flags.
+// Parameters:
+//   - none
+//
 // Returns the configured marshaler instance.
 func (cli *cli) createMarshaler() marshaler {
 	if cli.outputYAML {
@@ -463,7 +481,7 @@ func (cli *cli) createMarshaler() marshaler {
 	} else if i := cli.outputIndent; i != nil {
 		indent = *i
 	}
-	f := newEncoder(cli.outputTab, indent)
+	f := newEncoderWithColors(cli.outputTab, indent, cli.colors)
 	if cli.outputRaw || cli.outputRaw0 || cli.outputJoin {
 		return &rawMarshaler{f, cli.outputRaw0}
 	}
@@ -476,7 +494,7 @@ func (cli *cli) createMarshaler() marshaler {
 //
 // Returns v unchanged or an error if writing to errStream fails.
 func (cli *cli) funcDebug(v any, _ []any) any {
-	if err := newEncoder(false, -1).
+	if err := newEncoderWithColors(false, -1, cli.colors).
 		marshal([]any{"DEBUG:", v}, cli.errStream); err != nil {
 		return err
 	}
@@ -492,7 +510,7 @@ func (cli *cli) funcDebug(v any, _ []any) any {
 //
 // Returns v unchanged or an error if writing to errStream fails.
 func (cli *cli) funcStderr(v any, _ []any) any {
-	if err := (&rawMarshaler{m: newEncoder(false, -1)}).
+	if err := (&rawMarshaler{m: newEncoderWithColors(false, -1, cli.colors)}).
 		marshal(v, cli.errStream); err != nil {
 		return err
 	}

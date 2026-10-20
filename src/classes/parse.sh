@@ -14,11 +14,14 @@ handle_parse_classes() {
 
 	parsed_classes=$(awk '
 	# @function json_esc
-	# @description Escapes backslashes and double quotes for safe JSON string interpolation.
+	# @description Escapes backslashes, double quotes, and control characters for safe JSON string interpolation.
 	# @param s - Input string to escape.
 	function json_esc(s) {
 	  gsub(/\\/, "\\\\", s)
 	  gsub(/"/, "\\\"", s)
+	  gsub(/\t/, "\\t", s)
+	  gsub(/\r/, "\\r", s)
+	  gsub(/\n/, "\\n", s)
 	  return s
 	}
 	# @function finish_class
