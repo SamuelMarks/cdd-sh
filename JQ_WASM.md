@@ -2,7 +2,7 @@
 
 This plan outlines the steps required to use the pure-JavaScript `@michaelhomer/jqjs` implementation within the `cdd-sh` Go/WASM shell interpreter. 
 
-Because `cdd-sh` compiles its Bash environment to WebAssembly via Go (`mvdan.cc/sh/v3/interp`), calling `jq` inside the shell script currently fails if a native `jq` binary isn't present in the WASM filesystem. To use a JavaScript implementation, we must create a bridge between the Go interpreter and the JavaScript host.
+Because `cdd-sh` compiles its POSIX `/bin/sh` environment to WebAssembly via Go (`mvdan.cc/sh/v3/interp`), calling `jq` inside the shell script currently fails if a native `jq` binary isn't present in the WASM filesystem. To use a JavaScript implementation, we must create a bridge between the Go interpreter and the JavaScript host.
 
 ## 1. JavaScript Host Setup
 - [x] Set up a Node.js or Browser host environment capable of loading the `wasm_build/cdd-sh.wasm` file.
@@ -36,7 +36,7 @@ The Go shell interpreter needs to catch calls to `jq` and redirect them to your 
 - [x] Execute `test.sh` inside the WASM environment utilizing the new bridge.
 - [x] Validate AST merging works (tests multiple `--slurpfile` loads).
 - [x] Validate URL encoding (`@uri`) and `gsub` functions behave identically to native C `jq`.
-- [x] Validate that errors and exit codes appropriately fail the Bash `if` statements (e.g., `if ! jq -e ...`).
+- [x] Validate that errors and exit codes appropriately fail the POSIX `/bin/sh` `if` statements (e.g., `if ! jq -e ...`).
 
 ---
 

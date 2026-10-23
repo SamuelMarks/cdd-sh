@@ -66,7 +66,7 @@ The Frontend's responsibility is to read an input source and translate it into t
 The Intermediate Representation is the crucial "glue" of the architecture. It is a normalized, language-agnostic data structure (`ast.json`) that represents concepts like:
 * **Models**: Entities containing typed properties, required fields, defaults, and descriptions.
 * **Endpoints / Operations**: HTTP verbs, paths, path/query/body parameters, and responses. In the IR, an operation is an abstract concept that can represent *either* a Server Route receiving a request *or* an API Client dispatching a request.
-* **Workflows (Arazzo 1.1.0)**: Multi-step API orchestration graphs (`workflows[]`, `steps[]`, `dependsOn`, `inputs`, `outputs`, `successCriteria`, `onSuccess`, `onFailure`, and `sourceDescriptions`) cross-linked to OpenAPI operations.
+* **Workflows (Arazzo 1.1.0)**: Multi-step API orchestration graphs (`workflows`, `steps`, `dependsOn`, `inputs`, `outputs`, `successCriteria`, `onSuccess`, `onFailure`, and `sourceDescriptions`) cross-linked to OpenAPI operations.
 * **Metadata**: Tooling hints, docstrings, and validations.
 
 By standardizing on a single IR (heavily inspired by OpenAPI / JSON Schema primitives), the system guarantees that parsing logic and emitting logic remain completely decoupled.

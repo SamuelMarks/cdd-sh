@@ -101,3 +101,21 @@ if ! printf "%s\n" "$res" | grep -q 'Workspace'; then
 	echo "FAIL: mcp_get_roots did not return valid result"
 	exit 1
 fi
+
+res=$(mcp_get_tools "next")
+if ! printf "%s\n" "$res" | grep -q '\[\]'; then
+	echo "FAIL: mcp_get_tools with cursor did not return empty array"
+	exit 1
+fi
+
+res=$(mcp_get_prompts "next")
+if ! printf "%s\n" "$res" | grep -q '\[\]'; then
+	echo "FAIL: mcp_get_prompts with cursor did not return empty array"
+	exit 1
+fi
+
+res=$(mcp_get_prompt "test_prompt" '{"arg1":"val1"}')
+if ! printf "%s\n" "$res" | grep -q 'Please test this'; then
+	echo "FAIL: mcp_get_prompt with arguments did not return valid result"
+	exit 1
+fi

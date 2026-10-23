@@ -171,10 +171,30 @@ def eval_simple_criterion($expr):
     eval_simple_atom($expr)
   end;
 
-# apply_payload_replacement($t; $v) sets path $t to value $v inside a JSON request payload.
+# apply_payload_replacement($t; $v; $stype) sets path $t to value $v inside a JSON request payload using the specified targetSelectorType dialect.
+# @param $t - Target JSON Pointer or JSONPath string.
+# @param $v - Replacement value string or JSON.
+# @param $stype - Target selector dialect (jsonpointer, rfc6901, jsonpath, rfc9535, or empty for auto-detect).
+# @return Updated JSON payload object.
+def apply_payload_replacement($t; $v; $stype):
+  (($v | fromjson?) // $v) as $parsed_v |
+  if $stype == "jsonpointer" or $stype == "rfc6901" or ($stype == "" and (($t | startswith("/")) or ($t | startswith("#/")))) then
+    ($t | ltrimstr("#") | ltrimstr("/") | if . == "" then [] else (split("/") | map(gsub("~1"; "/") | gsub("~0"; "~") | (tonumber? // .))) end) as $path |
+    setpath($path; $parsed_v)
+  elif ($t | startswith("$..")) then
+    ($t | ltrimstr("$..")) as $key |
+    reduce paths(objects | select(has($key))) as $p (.; setpath($p + [$key]; $parsed_v))
+  elif $stype == "jsonpath" or $stype == "rfc9535" or $stype == "draft-goessner-dispatch-jsonpath-00" or ($t | startswith("$")) then
+    ($t | ltrimstr("$") | ltrimstr(".") | split("[") | join(".") | split("]") | join("") | if . == "" then [] else (split(".") | map(select(. != "") | (tonumber? // .))) end) as $path |
+    setpath($path; $parsed_v)
+  else
+    ($t | ltrimstr("$") | ltrimstr(".") | ltrimstr("#") | ltrimstr("/") | split("[") | join("/") | split("]") | join("") | split(".") | join("/") | split("/") | map(select(. != "") | gsub("~1"; "/") | gsub("~0"; "~") | (tonumber? // .))) as $path |
+    setpath($path; $parsed_v)
+  end;
+
+# apply_payload_replacement($t; $v) sets path $t to value $v inside a JSON request payload using auto-detected selector dialect.
 # @param $t - Target JSON Pointer or JSONPath string.
 # @param $v - Replacement value string or JSON.
 # @return Updated JSON payload object.
 def apply_payload_replacement($t; $v):
-  ($t | ltrimstr("$") | ltrimstr(".") | ltrimstr("#") | ltrimstr("/") | split("[") | join("/") | split("]") | join("") | split(".") | join("/") | split("/") | map(select(. != "") | gsub("~1"; "/") | gsub("~0"; "~") | (tonumber? // .))) as $path |
-  setpath($path; (($v | fromjson?) // $v));
+  apply_payload_replacement($t; $v; "");

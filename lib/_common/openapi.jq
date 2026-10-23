@@ -44,19 +44,23 @@ def get_docs_op_id($method; $path):
 # @param none
 # @return JSON array of MCP Tool Objects.
 def emit_mcp_tools:
+  . as $root |
   if .paths then
     [
-      .paths | to_entries[] | .key as $path | .value | to_entries[] |
-      select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers") |
+      .paths | to_entries[] | .key as $path |
+      (if .value."$ref" and $root.components and $root.components.pathItems then ($root.components.pathItems[.value."$ref" | sub("^#/components/pathItems/"; "")] // .value) else .value end) |
+      ((to_entries | map(select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers" and .key != "$ref" and .key != "additionalOperations"))) +
+       (if .additionalOperations then (.additionalOperations | to_entries) else [] end))[] |
       .key as $method | .value |
       get_op_id($method; $path) as $opId |
       {
         name: $opId,
-        description: (.summary // "Call \($method) \($path)"),
+        description: (.summary // .description // "Call \($method) \($path)"),
         inputSchema: {
           type: "object",
           properties: (
-            ((.parameters // []) | map({(.name): {type: (.schema.type // "string")}})) | add // {}
+            (((.parameters // []) | map({(.name): ({type: (.schema.type // "string"), description: .description} | with_entries(select(.value != null)))})) | add // {}) +
+            (if .requestBody then {"body": {"type": "string", "description": (.requestBody.description // "Request body payload")}} else {} end)
           ),
           required: (
             ((.parameters // []) | map(select(.required == true) | .name)) // []

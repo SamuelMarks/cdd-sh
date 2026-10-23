@@ -62,6 +62,35 @@ export WORKFLOW_STATE_JSON
 arazzo_eval_criterion '{"condition":"$statusCode == 201 && $inputs.quantity >= 2","type":"simple"}'
 arazzo_eval_criterion '{"context":"$statusCode","condition":"^20[01]$","type":"regex"}'
 arazzo_eval_criterion '{"context":"$response.body","condition":"$[?(@.status == '\''available'\'')]","type":"jsonpath"}'
+arazzo_eval_criterion '{"context":"<order><status>available</status></order>","condition":"/order/status/text()","type":{"type":"xpath","version":"xpath-30"}}'
+
+# Test Payload Replacement Object targetSelectorType (jsonpointer, jsonpath recursive & direct, xpath element & attribute)
+rb_json_out=$(arazzo_build_request_body '{
+  "contentType": "application/json",
+  "payload": {
+    "meta": {"dotted.key": "old", "qty": 0, "tag": "t0"},
+    "nested": {"tag": "t0"}
+  },
+  "replacements": [
+    {"target": "/meta/dotted.key", "targetSelectorType": {"type": "jsonpointer", "version": "rfc6901"}, "value": "$inputs.username"},
+    {"target": "$.meta.qty", "targetSelectorType": {"type": "jsonpath", "version": "rfc9535"}, "value": "$inputs.quantity"},
+    {"target": "$..tag", "targetSelectorType": "jsonpath", "value": "updated-tag"}
+  ]
+}')
+[ "$(printf '%s' "${rb_json_out}" | jq -r '.meta["dotted.key"]')" = "bob" ]
+[ "$(printf '%s' "${rb_json_out}" | jq -r '.meta.qty')" = "3" ]
+[ "$(printf '%s' "${rb_json_out}" | jq -r '.meta.tag')" = "updated-tag" ]
+[ "$(printf '%s' "${rb_json_out}" | jq -r '.nested.tag')" = "updated-tag" ]
+
+rb_xml_out=$(arazzo_build_request_body '{
+  "contentType": "application/xml",
+  "payload": "<order id=\"0\"><buyer>placeholder</buyer></order>",
+  "replacements": [
+    {"target": "/order/@id", "targetSelectorType": {"type": "xpath", "version": "xpath-30"}, "value": "99"},
+    {"target": "/order/buyer/text()", "targetSelectorType": "xpath", "value": "$inputs.username"}
+  ]
+}')
+[ "${rb_xml_out}" = '<order id="99"><buyer>bob</buyer></order>' ]
 
 echo "2. Testing cdd-sh parse arazzo & emit arazzo lossless round-tripping..."
 export CDD_AST_PATH="${TMP_ARAZZO_DIR}/ast.json"
@@ -124,6 +153,8 @@ sh "${ROOT_DIR}/cdd.sh" to_arazzo -i "${SDK_OUT}/src/workflows.sh" -o "${TMP_ARA
 [ "$(jq -r '.workflows[1].workflowId' "${TMP_ARAZZO_DIR}/from_sdk_arazzo.json")" = "orderCheckoutFlow" ]
 [ "$(jq -r '.workflows[1].dependsOn[0]' "${TMP_ARAZZO_DIR}/from_sdk_arazzo.json")" = "authSetupFlow" ]
 [ "$(jq -r '.workflows[1].steps[0].requestBody.replacements | length' "${TMP_ARAZZO_DIR}/from_sdk_arazzo.json")" = "2" ]
+[ "$(jq -r '.workflows[1].steps[0].requestBody.replacements[0].targetSelectorType.type' "${TMP_ARAZZO_DIR}/from_sdk_arazzo.json")" = "jsonpointer" ]
+[ "$(jq -r '.workflows[1].steps[0].requestBody.replacements[1].targetSelectorType.type' "${TMP_ARAZZO_DIR}/from_sdk_arazzo.json")" = "jsonpath" ]
 [ "$(jq -r '.workflows[1].steps[1].channelPath' "${TMP_ARAZZO_DIR}/from_sdk_arazzo.json")" = "/orders/created" ]
 
 echo "5. Testing heuristic AST extraction from unannotated shell workflow functions..."
@@ -182,9 +213,10 @@ DOCS_OUT="${TMP_ARAZZO_DIR}/docs_out"
 sh "${ROOT_DIR}/cdd.sh" from_arazzo to_docs_json -i "${ROOT_DIR}/tests/test_arazzo.json" -o "${DOCS_OUT}"
 [ "$(jq -r '.workflows.orderCheckoutFlow' "${DOCS_OUT}/docs.json" | grep -c 'workflow_order_checkout_flow')" -ge 1 ]
 
-echo "8. Testing CLI workflow run flags (--step, --format yaml/table, --verbose, --input-file) and error branches..."
+echo "8. Testing CLI workflow run flags (--step, --format yaml/table, --verbose, --input-file, --data-file) and error branches..."
 printf '{"username":"charlie","itemName":"Bulldog","quantity":1}\n' >"${TMP_ARAZZO_DIR}/wf_inputs.json"
 "${CLI_OUT}/bin/sdk-cli" workflow run authSetupFlow --input-file "${TMP_ARAZZO_DIR}/wf_inputs.json" --step loginStep --format yaml -v | grep -q "authToken:"
+"${CLI_OUT}/bin/sdk-cli" workflow run authSetupFlow --data-file "${TMP_ARAZZO_DIR}/wf_inputs.json" --step loginStep --format json | grep -q "authToken"
 "${CLI_OUT}/bin/sdk-cli" workflow run authSetupFlow --username charlie --format table | grep -q "authToken"
 
 # Test MCP tools/call for workflow_authSetupFlow

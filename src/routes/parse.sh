@@ -29,7 +29,8 @@ handle_parse_routes() {
     /^handle_callback_/ { if (in_callback) { printf "CALLBACK:{\"name\": \"%s\", \"method\": \"%s\", \"summary\": \"%s\"}\n", json_esc(callbackName), json_esc(method), json_esc(summary); in_callback = 0 } }
     /^# @webhook / { webhookName = $3; method = ""; summary = ""; in_webhook = 1; in_func = 0 }
     /^handle_webhook_/ { if (in_webhook) { printf "WEBHOOK:{\"name\": \"%s\", \"method\": \"%s\", \"summary\": \"%s\"}\n", json_esc(webhookName), json_esc(method), json_esc(summary); in_webhook = 0 } }
-    /^# @function / { operationId = $3; if (operationId ~ /^auth_login_/) { in_func = 0; next }; method = ""; path = ""; summary = ""; reqBody = "false"; reqBodyType = "application/json"; param_count = 0; delete params; openapi_json = ""; extUrl = ""; extDesc = ""; in_func = 1; in_webhook = 0 }
+    /^# @function / { operationId = $3; if (operationId ~ /^auth_(login|password|device)_/) { in_func = 0; next }; method = ""; path = ""; summary = ""; deprecated = "false"; reqBody = "false"; reqBodyType = "application/json"; param_count = 0; delete params; openapi_json = ""; extUrl = ""; extDesc = ""; in_func = 1; in_webhook = 0 }
+    /^# @deprecated / { if (in_func && $3 == "true") deprecated = "true" }
     /^# @externalDocs / { if (in_func) { extUrl = $3; extDesc = substr($0, length($1) + length($2) + length($3) + 4); } }
     /^# @openapi_json / { if (in_func) { openapi_json = substr($0, 16); } }
     /^# @param/ {
@@ -54,7 +55,7 @@ handle_parse_routes() {
     /set -- -s -X|curl -s -X/ {
       if (in_func) {
         for (i=1; i<=NF; i++) { if ($i == "-X") method = tolower($(i+1)) }
-        printf "OP:{\"path\": \"%s\", \"method\": \"%s\", \"operationId\": \"%s\", \"summary\": \"%s\", \"extUrl\": \"%s\", \"extDesc\": \"%s\"", json_esc(path), json_esc(method), json_esc(operationId), json_esc(summary), json_esc(extUrl), json_esc(extDesc)
+        printf "OP:{\"path\": \"%s\", \"method\": \"%s\", \"operationId\": \"%s\", \"summary\": \"%s\", \"extUrl\": \"%s\", \"extDesc\": \"%s\", \"deprecated\": %s", json_esc(path), json_esc(method), json_esc(operationId), json_esc(summary), json_esc(extUrl), json_esc(extDesc), deprecated
         if (openapi_json != "") { printf ", \"openapi_json\": %s", openapi_json }
         if (param_count > 0) {
           printf ", \"parameters\": ["
@@ -82,6 +83,7 @@ handle_parse_routes() {
           value: ({
             operationId: .operationId,
             summary: .summary,
+            deprecated: (if .deprecated == true then true else null end),
             parameters: .parameters,
             requestBody: .requestBody,
             externalDocs: (if .extUrl != "" then {url: .extUrl, description: .extDesc} else null end)

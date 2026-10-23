@@ -15,6 +15,25 @@ def rewrite_refs_to_swagger2:
     else . end
   );
 
+# denormalize_oas_security_scheme converts an OpenAPI 3.2.0 Security Scheme Object back into Swagger 2.0 format.
+# @param none
+# @return The Swagger 2.0 Security Scheme Object.
+def denormalize_oas_security_scheme:
+  if .type == "oauth2" and (.flows | type) == "object" then
+    if .flows.implicit then
+      .flow = "implicit" | .authorizationUrl = .flows.implicit.authorizationUrl | .scopes = (.flows.implicit.scopes // {})
+    elif .flows.password then
+      .flow = "password" | .tokenUrl = .flows.password.tokenUrl | .scopes = (.flows.password.scopes // {})
+    elif .flows.clientCredentials then
+      .flow = "application" | .tokenUrl = .flows.clientCredentials.tokenUrl | .scopes = (.flows.clientCredentials.scopes // {})
+    elif .flows.authorizationCode then
+      .flow = "accessCode" | .authorizationUrl = .flows.authorizationCode.authorizationUrl | .tokenUrl = .flows.authorizationCode.tokenUrl | .scopes = (.flows.authorizationCode.scopes // {})
+    else . end |
+    del(.flows)
+  elif .type == "http" and (.scheme | ascii_downcase) == "basic" then
+    .type = "basic" | del(.scheme)
+  else . end;
+
 # denormalize_oas_operation converts an OpenAPI 3.x Operation Object (requestBody and response content) back into Swagger 2.0 format.
 # @param none
 # @return The Swagger 2.0 Operation Object.
@@ -22,7 +41,7 @@ def denormalize_oas_operation:
   (if (.parameters | type) == "array" then
     .parameters |= map(
       if (.schema | type) == "object" and .in != "body" and (."$ref" == null) and (.schema."$ref" == null) then
-        . + (.schema | with_entries(select(.key | IN("type", "format", "items", "enum", "default", "minimum", "maximum")))) | del(.schema)
+        . + (.schema | with_entries(select(.key | IN("type", "format", "items", "enum", "default", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "minLength", "maxLength", "pattern", "minItems", "maxItems", "uniqueItems", "multipleOf")))) | del(.schema)
       else . end
     )
   else . end) |
@@ -88,7 +107,7 @@ else
     )
   else . end) |
   (if .components.schemas then .definitions = .components.schemas else . end) |
-  (if .components.securitySchemes then .securityDefinitions = .components.securitySchemes else . end) |
+  (if .components.securitySchemes then .securityDefinitions = (.components.securitySchemes | with_entries(.value |= denormalize_oas_security_scheme)) else . end) |
   (if .components.parameters then .parameters = .components.parameters else . end) |
   (if .components.responses then .responses = .components.responses else . end) |
   del(.openapi, .servers, .components) |

@@ -29,14 +29,14 @@ handle_parse_classes() {
 	# @param none
 	function finish_class() {
 	if (class_name == "") return
-	printf "{\"name\": \"%s\", \"description\": \"%s\", \"required\": \"%s\", \"properties\": {", json_esc(class_name), json_esc(desc), json_esc(req)
+	printf "{\"name\": \"%s\", \"description\": \"%s\", \"required\": \"%s\", \"discriminator\": %s, \"xml\": %s, \"properties\": {", json_esc(class_name), json_esc(desc), json_esc(req), (disc != "" ? disc : "null"), (xml_obj != "" ? xml_obj : "null")
 	for (i=0; i<prop_count; i++) {
 	printf "\"%s\": {\"type\": \"%s\"}", json_esc(props[i, "name"]), json_esc(props[i, "type"])
 	if (i < prop_count - 1) printf ", "
 	}
 	printf "}}\n"
 	}
-	BEGIN { in_class = 0; class_name = ""; desc = ""; req = ""; prop_count = 0 }
+	BEGIN { in_class = 0; class_name = ""; desc = ""; req = ""; disc = ""; xml_obj = ""; prop_count = 0 }
 	/^# @class / {
 	if (in_class) {
 	finish_class()
@@ -44,12 +44,20 @@ handle_parse_classes() {
 	class_name = $3
 	desc = ""
 	req = ""
+	disc = ""
+	xml_obj = ""
 	delete props
 	prop_count = 0
 	in_class = 1
 	}
 	/^# @description / {
 	if (in_class) desc = substr($0, 16)
+	}
+	/^# @discriminator / {
+	if (in_class) disc = substr($0, 18)
+	}
+	/^# @xml / {
+	if (in_class) xml_obj = substr($0, 8)
 	}
 	/^# @property / {
 	if (in_class) {
@@ -76,6 +84,8 @@ handle_parse_classes() {
           {
             type: "object",
             description: (if $item.description != "" then $item.description else null end),
+            discriminator: $item.discriminator,
+            xml: $item.xml,
             properties: (if ($item.properties | length) > 0 then $item.properties else null end),
             required: (if $item.required != "" then ($item.required | split(", ") | map(gsub("^[ \t]+|[ \t]+$";""))) else null end)
           } | with_entries(select(.value != null))

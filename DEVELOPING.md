@@ -11,14 +11,14 @@ Dependencies:
 - `go` (for building the self-contained cross-platform/WASM runner and running Go tests)
 
 To install dependencies, build, and run tests:
-```bash
+```sh
 make deps
 make build
 make test
 ```
 
 To build the WebAssembly (`wasip1/wasm`) binary:
-```bash
+```sh
 make build_wasm
 ```
 

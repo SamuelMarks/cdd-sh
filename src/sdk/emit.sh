@@ -19,9 +19,14 @@ handle_emit_sdk() {
 # @openapi_sdk_start
 MCP_CLI_BIN="./bin/sdk-cli"
 # mcp_get_tools retrieves the list of available MCP tools from the CLI server.
-# @param none
+# @param $1: cursor - Optional pagination cursor.
 mcp_get_tools() {
-  echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | $MCP_CLI_BIN mcp | jq -r '.result.tools'
+  cursor="${1:-}"
+  if [ -n "$cursor" ]; then
+    jq -c -n --arg cursor "$cursor" '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"cursor":$cursor}}' | $MCP_CLI_BIN mcp | jq -r '.result.tools'
+  else
+    echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | $MCP_CLI_BIN mcp | jq -r '.result.tools'
+  fi
 }
 # mcp_execute_tool invokes a named MCP tool with a JSON arguments object.
 # @param $1: tool_name - The name of the MCP tool to call.
@@ -76,20 +81,28 @@ mcp_ping() {
   echo '{"jsonrpc":"2.0","id":1,"method":"ping"}' | $MCP_CLI_BIN mcp | jq -r '.result | if . == {} then "ok" else "error" end'
 }
 # mcp_get_prompts retrieves the list of available MCP prompts.
-# @param none
+# @param $1: cursor - Optional pagination cursor.
 mcp_get_prompts() {
-  echo '{"jsonrpc":"2.0","id":1,"method":"prompts/list"}' | $MCP_CLI_BIN mcp | jq -r '.result.prompts'
+  cursor="${1:-}"
+  if [ -n "$cursor" ]; then
+    jq -c -n --arg cursor "$cursor" '{"jsonrpc":"2.0","id":1,"method":"prompts/list","params":{"cursor":$cursor}}' | $MCP_CLI_BIN mcp | jq -r '.result.prompts'
+  else
+    echo '{"jsonrpc":"2.0","id":1,"method":"prompts/list"}' | $MCP_CLI_BIN mcp | jq -r '.result.prompts'
+  fi
 }
 # mcp_get_roots retrieves the list of configured workspace roots from the MCP server.
 # @param none
 mcp_get_roots() {
   echo '{"jsonrpc":"2.0","id":1,"method":"roots/list"}' | $MCP_CLI_BIN mcp | jq -r '.result.roots'
 }
-# mcp_get_prompt fetches a specific prompt template by name.
+# mcp_get_prompt fetches a specific prompt template by name and optional arguments JSON.
 # @param $1: name - The prompt name to retrieve.
+# @param $2: arguments - Optional JSON object of prompt arguments.
 mcp_get_prompt() {
   name="$1"
-  jq -c -n --arg name "$name" '{"jsonrpc":"2.0","id":1,"method":"prompts/get","params":{"name":$name}}' | $MCP_CLI_BIN mcp | jq -c '.result // .error'
+  args="${2:-}"
+  if [ -z "$args" ]; then args="{}"; fi
+  jq -c -n --arg name "$name" --argjson args "$args" '{"jsonrpc":"2.0","id":1,"method":"prompts/get","params":{"name":$name,"arguments":$args}}' | $MCP_CLI_BIN mcp | jq -c '.result // .error'
 }
 # mcp_complete requests argument autocompletion suggestions from the MCP server.
 # @param $1: ref_type - Reference type (e.g. ref/prompt or ref/resource).
@@ -106,10 +119,12 @@ mcp_complete() {
 # mcp_create_message sends a sampling/createMessage request to the MCP server.
 # @param $1: messages - JSON array of conversation messages.
 # @param $2: max_tokens - Maximum tokens to sample.
+# @param $3: system_prompt - Optional system prompt string.
 mcp_create_message() {
   messages="$1"
   max_tokens="$2"
-  jq -c -n --argjson messages "$messages" --argjson max_tokens "$max_tokens" '{"jsonrpc":"2.0","id":1,"method":"sampling/createMessage","params":{"messages":$messages,"maxTokens":$max_tokens}}' | $MCP_CLI_BIN mcp | jq -c '.result'
+  sys_prompt="${3:-You are a helpful assistant}"
+  jq -c -n --argjson messages "$messages" --argjson max_tokens "$max_tokens" --arg sp "$sys_prompt" '{"jsonrpc":"2.0","id":1,"method":"sampling/createMessage","params":{"messages":$messages,"maxTokens":$max_tokens,"systemPrompt":$sp,"includeContext":"thisServer","temperature":0.7,"stopSequences":["STOP"],"metadata":{}}}' | $MCP_CLI_BIN mcp | jq -c '.result'
 }
 # mcp_set_logging_level sets the minimum logging level on the MCP server.
 # @param $1: level - The log level string (e.g. info, debug, error).

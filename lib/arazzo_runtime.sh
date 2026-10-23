@@ -110,6 +110,59 @@ arazzo_xpath_extract() {
 	'
 }
 
+# arazzo_xpath_replace replaces an XML node text or attribute value matched by an XPath expression using pure AWK.
+# @param $1: xml_str - The XML document string.
+# @param $2: xpath_expr - The XPath expression (e.g., /order/id, //item[1]/name/text(), /order/@id).
+# @param $3: new_val - The replacement value string.
+# @return Prints the updated XML string to stdout.
+arazzo_xpath_replace() {
+	_xml_in="${1:-}"
+	_xp="${2:-}"
+	_nval="${3:-}"
+	printf '%s\n' "${_xml_in}" | awk -v xp="${_xp}" -v nval="${_nval}" '
+	BEGIN {
+		gsub(/^\/+/, "", xp)
+		sub(/\/text\(\)$/, "", xp)
+		n = split(xp, parts, "/")
+		target = parts[n]
+		attr = ""
+		if (index(target, "@") == 1) {
+			attr = substr(target, 2)
+			target = (n > 1) ? parts[n - 1] : ""
+		}
+		sub(/\[[0-9]+\]$/, "", target)
+		replaced = 0
+		dq = sprintf("%c", 34)
+		out = ""
+	}
+	{
+		line = $0
+		if (!replaced && attr != "") {
+			pat = attr "=" dq "[^" dq "]*" dq
+			if (match(line, pat)) {
+				line = substr(line, 1, RSTART - 1) attr "=" dq nval dq substr(line, RSTART + RLENGTH)
+				replaced = 1
+			}
+		} else if (!replaced && target != "") {
+			open_pat = "<" target "[^>]*>"
+			close_pat = "</" target ">"
+			if (match(line, open_pat)) {
+				open_end = RSTART + RLENGTH
+				rest = substr(line, open_end)
+				if (match(rest, close_pat)) {
+					line = substr(line, 1, open_end - 1) nval substr(rest, RSTART)
+					replaced = 1
+				}
+			}
+		}
+		out = (NR == 1) ? line : (out "\n" line)
+	}
+	END {
+		printf "%s", out
+	}
+	'
+}
+
 # arazzo_eval_expr evaluates a single Arazzo 1.1.0 runtime expression against WORKFLOW_STATE_JSON.
 # Supports all 17 runtime expression roots ($url, $method, $statusCode, $request.*, $response.*,
 # $message.*, $inputs.*, $outputs.*, $steps.*, $workflows.*, $sourceDescriptions.*, $components.*, $self).
@@ -300,10 +353,18 @@ EOF
 		while IFS= read -r _repl; do
 			[ -z "${_repl}" ] && continue
 			_target=$(printf '%s' "${_repl}" | jq -r '.target // ""')
+			_sel_type=$(printf '%s' "${_repl}" | jq -r 'if (.targetSelectorType | type) == "object" then (.targetSelectorType.type // "") elif (.targetSelectorType | type) == "string" then .targetSelectorType else "" end' | tr '[:upper:]' '[:lower:]')
 			_raw_val=$(printf '%s' "${_repl}" | jq -r 'if (.value | type) == "string" then .value else (.value | tojson) end')
 			_resolved_val=$(arazzo_eval_expr "${_raw_val}")
 			if [ -n "${_target}" ]; then
-				_body_json=$(printf '%s' "${_body_json}" | jq -c --arg t "${_target}" --arg v "${_resolved_val}" "$(_arazzo_jq_defs) apply_payload_replacement(\$t; \$v)" 2>/dev/null || printf '%s' "${_body_json}")
+				case "${_sel_type}" in
+				xpath*)
+					_body_json=$(arazzo_xpath_replace "${_body_json}" "${_target}" "${_resolved_val}")
+					;;
+				*)
+					_body_json=$(printf '%s' "${_body_json}" | jq -c --arg t "${_target}" --arg v "${_resolved_val}" --arg st "${_sel_type}" "$(_arazzo_jq_defs) apply_payload_replacement(\$t; \$v; \$st)" 2>/dev/null || printf '%s' "${_body_json}")
+					;;
+				esac
 			fi
 		done <<EOF
 ${_repl_list}

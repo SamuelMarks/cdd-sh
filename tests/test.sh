@@ -124,7 +124,7 @@ fi
 
 # 10. Verify outputs using Shellcheck on generated shells
 echo "Shellchecking generated scripts..."
-shellcheck tests/emitted_routes.sh tests/emitted_classes.sh tests/emitted_tests.sh
+shellcheck -s sh tests/emitted_routes.sh tests/emitted_classes.sh tests/emitted_tests.sh
 
 # 10.5 Test Swagger 2.0 conversion
 echo "Testing Swagger 2.0 Parse..."

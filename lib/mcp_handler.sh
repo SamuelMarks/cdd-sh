@@ -31,7 +31,7 @@ mcp_handle_common() {
 
 	case "$mcp_method" in
 	initialize)
-		printf '{"jsonrpc":"2.0","id":%s,"result":{"protocolVersion":"2024-11-05","capabilities":{"tools":{"listChanged":true},"resources":{"listChanged":true,"subscribe":true},"logging":{},"prompts":{"listChanged":true}},"serverInfo":{"name":"%s","version":"%s"}}}\n' "$mcp_id" "$mcp_srv_name" "$mcp_srv_ver"
+		printf '{"jsonrpc":"2.0","id":%s,"result":{"protocolVersion":"2024-11-05","capabilities":{"experimental":{},"tools":{"listChanged":true},"resources":{"listChanged":true,"subscribe":true},"logging":{},"prompts":{"listChanged":true}},"serverInfo":{"name":"%s","version":"%s"},"instructions":"Use MCP tools and resources to interact with %s"}}\n' "$mcp_id" "$mcp_srv_name" "$mcp_srv_ver" "$mcp_srv_name"
 		return 0
 		;;
 	notifications/initialized | initialized | notifications/tools/list_changed | notifications/resources/list_changed | notifications/prompts/list_changed | notifications/roots/list_changed | notifications/resources/updated | notifications/cancelled | notifications/progress)
@@ -39,8 +39,13 @@ mcp_handle_common() {
 		;;
 	notifications/message)
 		mcp_level=$(printf '%s\n' "$mcp_req" | jq -r '.params.level // "info"')
+		mcp_logger=$(printf '%s\n' "$mcp_req" | jq -r '.params.logger // ""')
 		mcp_msg=$(printf '%s\n' "$mcp_req" | jq -r '.params.data // ""')
-		printf '[%s] %s\n' "$mcp_level" "$mcp_msg" >&2
+		if [ -n "$mcp_logger" ]; then
+			printf '[%s:%s] %s\n' "$mcp_level" "$mcp_logger" "$mcp_msg" >&2
+		else
+			printf '[%s] %s\n' "$mcp_level" "$mcp_msg" >&2
+		fi
 		return 0
 		;;
 	ping | logging/setLevel | resources/subscribe | resources/unsubscribe)
@@ -52,8 +57,13 @@ mcp_handle_common() {
 		return 0
 		;;
 	prompts/list)
-		mcp_prompts="${MCP_PROMPTS_JSON:-$mcp_default_prompts}"
-		printf '{"jsonrpc":"2.0","id":%s,"result":{"prompts":%s}}\n' "$mcp_id" "$mcp_prompts"
+		mcp_cursor=$(printf '%s\n' "$mcp_req" | jq -r '.params.cursor // empty')
+		if [ "$mcp_cursor" = "next" ]; then
+			printf '{"jsonrpc":"2.0","id":%s,"result":{"prompts":[]}}\n' "$mcp_id"
+		else
+			mcp_prompts="${MCP_PROMPTS_JSON:-$mcp_default_prompts}"
+			printf '{"jsonrpc":"2.0","id":%s,"result":{"prompts":%s,"nextCursor":"next"}}\n' "$mcp_id" "$mcp_prompts"
+		fi
 		return 0
 		;;
 	prompts/get)
@@ -61,9 +71,9 @@ mcp_handle_common() {
 		mcp_prompts="${MCP_PROMPTS_JSON:-$mcp_default_prompts}"
 		if printf '%s\n' "$mcp_prompts" | jq -e --arg n "$mcp_pname" 'any(.[]; .name == $n)' >/dev/null 2>&1; then
 			mcp_pdesc=$(printf '%s\n' "$mcp_prompts" | jq -r --arg n "$mcp_pname" 'first(.[] | select(.name == $n) | .description) // "A test prompt"')
-			printf '{"jsonrpc":"2.0","id":%s,"result":{"description":"%s","messages":[{"role":"user","content":{"type":"text","text":"Please test this"}}]}}\n' "$mcp_id" "$mcp_pdesc"
+			printf '{"jsonrpc":"2.0","id":%s,"result":{"description":"%s","messages":[{"role":"user","content":{"type":"text","text":"Please test this","annotations":{"audience":["user","assistant"],"priority":1.0}}}]}}\n' "$mcp_id" "$mcp_pdesc"
 		else
-			printf '{"jsonrpc":"2.0","id":%s,"error":{"code":-32602,"message":"Invalid prompt"}}\n' "$mcp_id"
+			printf '{"jsonrpc":"2.0","id":%s,"error":{"code":-32602,"message":"Invalid prompt","data":{"name":"%s"}}}\n' "$mcp_id" "$mcp_pname"
 		fi
 		return 0
 		;;
@@ -73,7 +83,7 @@ mcp_handle_common() {
 		;;
 	sampling/createMessage)
 		mcp_model="${MCP_MODEL_NAME:-test-model}"
-		printf '{"jsonrpc":"2.0","id":%s,"result":{"role":"assistant","content":{"type":"text","text":"Sampled message"},"model":"%s","stopReason":"endTurn"}}\n' "$mcp_id" "$mcp_model"
+		printf '{"jsonrpc":"2.0","id":%s,"result":{"role":"assistant","content":{"type":"text","text":"Sampled message","annotations":{"audience":["user"],"priority":1.0}},"model":"%s","stopReason":"endTurn"}}\n' "$mcp_id" "$mcp_model"
 		return 0
 		;;
 	resources/list)
@@ -81,12 +91,18 @@ mcp_handle_common() {
 		if [ "$mcp_cursor" = "next" ]; then
 			printf '{"jsonrpc":"2.0","id":%s,"result":{"resources":[]}}\n' "$mcp_id"
 		else
-			printf '{"jsonrpc":"2.0","id":%s,"result":{"resources":[{"uri":"%s","name":"%s","mimeType":"application/json"}],"nextCursor":"next"}}\n' "$mcp_id" "$mcp_res_uri" "$mcp_res_name"
+			mcp_rsize=${#mcp_res_text}
+			printf '{"jsonrpc":"2.0","id":%s,"result":{"resources":[{"uri":"%s","name":"%s","description":"Specification resource for %s","mimeType":"application/json","size":%d,"annotations":{"audience":["user","assistant"],"priority":1.0}}],"nextCursor":"next"}}\n' "$mcp_id" "$mcp_res_uri" "$mcp_res_name" "$mcp_srv_name" "$mcp_rsize"
 		fi
 		return 0
 		;;
 	resources/templates/list)
-		printf '{"jsonrpc":"2.0","id":%s,"result":{"resourceTemplates":[]}}\n' "$mcp_id"
+		mcp_cursor=$(printf '%s\n' "$mcp_req" | jq -r '.params.cursor // empty')
+		if [ "$mcp_cursor" = "next" ]; then
+			printf '{"jsonrpc":"2.0","id":%s,"result":{"resourceTemplates":[]}}\n' "$mcp_id"
+		else
+			printf '{"jsonrpc":"2.0","id":%s,"result":{"resourceTemplates":[{"uriTemplate":"%s/{path}","name":"%s Template","description":"Parameterized resource template","mimeType":"application/json","annotations":{"audience":["assistant"],"priority":0.8}}],"nextCursor":"next"}}\n' "$mcp_id" "$mcp_res_uri" "$mcp_res_name"
+		fi
 		return 0
 		;;
 	resources/read)
@@ -95,7 +111,7 @@ mcp_handle_common() {
 			mcp_escaped=$(printf '%s' "$mcp_res_text" | jq -R -s '.')
 			printf '{"jsonrpc":"2.0","id":%s,"result":{"contents":[{"uri":"%s","mimeType":"application/json","text":%s}]}}\n' "$mcp_id" "$mcp_res_uri" "$mcp_escaped"
 		else
-			printf '{"jsonrpc":"2.0","id":%s,"error":{"code":-32602,"message":"Invalid URI"}}\n' "$mcp_id"
+			printf '{"jsonrpc":"2.0","id":%s,"error":{"code":-32602,"message":"Invalid URI","data":{"uri":"%s"}}}\n' "$mcp_id" "$mcp_uri"
 		fi
 		return 0
 		;;

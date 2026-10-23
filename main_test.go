@@ -28,7 +28,7 @@ func runMwScript(t *testing.T, mw func(interp.ExecHandlerFunc) interp.ExecHandle
 		t.Fatalf("failed to create runner: %v", err)
 	}
 
-	f, err := syntax.NewParser().Parse(strings.NewReader(script), "")
+	f, err := syntax.NewParser(syntax.Variant(syntax.LangPOSIX)).Parse(strings.NewReader(script), "")
 	if err != nil {
 		t.Fatalf("failed to parse script: %v", err)
 	}
@@ -1032,5 +1032,31 @@ func TestRunMain_ArazzoRoundTrip(t *testing.T) {
 	}
 	if !strings.Contains(string(data), "\"orderCheckoutFlow\"") {
 		t.Errorf("expected roundtrip.arazzo.json to contain orderCheckoutFlow, got %s", string(data))
+	}
+}
+
+func TestPOSIXShellSyntaxAudit(t *testing.T) {
+	parser := syntax.NewParser(syntax.Variant(syntax.LangPOSIX))
+	dirs := []string{"cdd.sh", "test.sh", "run_in_dash.sh", "setup_boiler.sh", "update_shields.sh", "lib", "src", "tests"}
+	for _, root := range dirs {
+		err := filepath.Walk(root, func(path string, info os.FileInfo, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if info.IsDir() || !strings.HasSuffix(path, ".sh") {
+				return nil
+			}
+			content, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			if _, err := parser.Parse(bytes.NewReader(content), path); err != nil {
+				t.Errorf("POSIX /bin/sh syntax error in %s: %v", path, err)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("failed walking %s: %v", root, err)
+		}
 	}
 }

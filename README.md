@@ -239,8 +239,8 @@ go test -v -coverprofile=coverage.out ./...
 sh ./test.sh
 
 # Format and lint POSIX Shell and Go sources
-shfmt -w -s -ln bash cdd.sh src/ lib/ tests/
-shellcheck cdd.sh src/**/*.sh lib/**/*.sh tests/*.sh
+shfmt -w -s -ln posix cdd.sh src/ lib/ tests/
+shellcheck -s sh cdd.sh src/*/*.sh lib/*.sh tests/*.sh
 go vet ./...
 ```
 

@@ -549,7 +549,7 @@ var osExit = os.Exit
 // Returns nothing.
 func runMain(scriptOverride string, args []string, exitFunc func(int)) {
 	r := strings.NewReader(scriptOverride)
-	f, err := syntax.NewParser().Parse(r, "")
+	f, err := syntax.NewParser(syntax.Variant(syntax.LangPOSIX)).Parse(r, "")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		exitFunc(1)

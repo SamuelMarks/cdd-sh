@@ -245,4 +245,75 @@ if ! printf '%s' "${cli_exec_out}" | jq -e '.invoked_route == "getUsers" and .ba
 	exit 1
 fi
 
+echo "Testing OpenAPI 3.2.0 advanced features (pathItems, requestBodies, additionalOperations, deprecated, allowReserved, allowEmptyValue, discriminator, xml, OAuth2 flows)..."
+cat <<'OAS32_ADV' >"${TMP_COV}/oas32_adv.json"
+{
+  "openapi": "3.2.0",
+  "info": {"title": "Adv OAS 3.2", "version": "1.0.0"},
+  "components": {
+    "schemas": {
+      "Vehicle": {
+        "type": "object",
+        "description": "Polymorphic vehicle",
+        "discriminator": {"propertyName": "vehicleType", "mapping": {"car": "#/components/schemas/Car"}, "defaultMapping": "#/components/schemas/Car"},
+        "xml": {"name": "vehicle", "namespace": "https://example.com/ns", "prefix": "v", "nodeType": "element"},
+        "properties": {"vehicleType": {"type": "string"}},
+        "required": ["vehicleType"]
+      }
+    },
+    "requestBodies": {
+      "SharedBody": {
+        "required": true,
+        "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Vehicle"}}}
+      }
+    },
+    "pathItems": {
+      "SharedPath": {
+        "get": {
+          "operationId": "getShared",
+          "deprecated": true,
+          "parameters": [
+            {"name": "rawFilter", "in": "query", "allowReserved": true, "allowEmptyValue": true, "schema": {"type": "string"}}
+          ],
+          "responses": {"200": {"description": "OK"}}
+        },
+        "additionalOperations": {
+          "PURGE": {
+            "operationId": "purgeShared",
+            "requestBody": {"$ref": "#/components/requestBodies/SharedBody"},
+            "responses": {"200": {"description": "Purged"}}
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "oauthPass": {
+        "type": "oauth2",
+        "flows": {
+          "password": {"tokenUrl": "https://auth.example.com/token", "scopes": {"read": "Read"}},
+          "deviceAuthorization": {"deviceAuthorizationUrl": "https://auth.example.com/device", "tokenUrl": "https://auth.example.com/token", "scopes": {}}
+        }
+      }
+    }
+  },
+  "paths": {
+    "/shared": {"$ref": "#/components/pathItems/SharedPath"}
+  }
+}
+OAS32_ADV
+
+sh "${LIBSCRIPT_ROOT_DIR}/cdd.sh" from_openapi to_sdk -i "${TMP_COV}/oas32_adv.json" -o "${TMP_COV}/adv_sdk"
+grep -q "getShared()" "${TMP_COV}/adv_sdk/src/routes.sh"
+grep -q "purgeShared()" "${TMP_COV}/adv_sdk/src/routes.sh"
+grep -q "auth_password_oauthPass()" "${TMP_COV}/adv_sdk/src/routes.sh"
+grep -q "auth_device_oauthPass()" "${TMP_COV}/adv_sdk/src/routes.sh"
+grep -q "@deprecated true" "${TMP_COV}/adv_sdk/src/routes.sh"
+grep -q "@discriminator" "${TMP_COV}/adv_sdk/src/classes.sh"
+grep -q "@xml" "${TMP_COV}/adv_sdk/src/classes.sh"
+
+sh "${LIBSCRIPT_ROOT_DIR}/cdd.sh" to_openapi -i "${TMP_COV}/adv_sdk" -o "${TMP_COV}/adv_roundtrip.json"
+jq -e '.components.schemas.Vehicle.discriminator.propertyName == "vehicleType"' "${TMP_COV}/adv_roundtrip.json" >/dev/null
+jq -e '.components.schemas.Vehicle.xml.name == "vehicle"' "${TMP_COV}/adv_roundtrip.json" >/dev/null
+jq -e '.paths["/shared"].get.deprecated == true' "${TMP_COV}/adv_roundtrip.json" >/dev/null
+
 echo "All exhaustive coverage tests passed!"

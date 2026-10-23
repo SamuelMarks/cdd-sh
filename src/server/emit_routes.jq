@@ -3,6 +3,7 @@
 include "openapi";
 
 if .paths then
+  . as $root |
   "###FILE###router.sh\n" +
   "# @file router.sh\n" +
   "# @description Generated HTTP route dispatcher.\n" +
@@ -11,7 +12,14 @@ if .paths then
   "# @param $method: The HTTP request method\n" +
   "router_dispatch() {\n" +
   "  matched_req_model=\"\"\n" +
-  ([ .paths | to_entries[] | .key as $path | .value | to_entries[] | select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers") | .key as $method | .value |
+  ([ .paths | to_entries[] | .key as $path |
+  (if .value."$ref" and $root.components and $root.components.pathItems then ($root.components.pathItems[.value."$ref" | sub("^#/components/pathItems/"; "")] // .value) else .value end) |
+  ((to_entries | map(select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers" and .key != "$ref" and .key != "additionalOperations"))) +
+   (if .additionalOperations then (.additionalOperations | to_entries) else [] end))[] |
+  .key as $method | .value |
+  (if .requestBody and .requestBody."$ref" and $root.components and $root.components.requestBodies then
+    .requestBody = ($root.components.requestBodies[.requestBody."$ref" | sub("^#/components/requestBodies/"; "")] // .requestBody)
+  else . end) |
   get_op_id($method; $path) as $opId |
   ($path | gsub("\\{[^}]+\\}"; "*")) as $pathPattern |
   (

@@ -24,12 +24,8 @@ handle_emit_server() {
 		cat <<'INNER_EOF'
 PORT="${PORT:-8080}"
 
-INNER_EOF
-
-		if [ "${CDD_EPHEMERAL:-0}" = "1" ] || [ "${CDD_SEED:-0}" = "1" ] || [ "${CDD_STRICT_VALIDATION:-0}" = "1" ] || [ "${CDD_ENFORCE_AUTH:-0}" = "1" ] || [ "${CDD_START_AUTH_SERVER:-0}" = "1" ]; then
-			cat <<'INNER_EOF'
-EPHEMERAL=false
-SEED=false
+EPHEMERAL="${CDD_EPHEMERAL:-false}"
+SEED="${CDD_SEED:-false}"
 HANDLER_MODE=false
 STRICT_VALIDATION="${CDD_STRICT_VALIDATION:-false}"
 ENFORCE_AUTH="${CDD_ENFORCE_AUTH:-false}"
@@ -45,66 +41,61 @@ for arg in "$@"; do
   esac
 done
 
-if [ "$EPHEMERAL" = "true" ] || [ -n "${DATABASE_URL:-}" ]; then
+if [ "$EPHEMERAL" = "true" ] || [ "$EPHEMERAL" = "1" ] || [ -n "${DATABASE_URL:-}" ]; then
   ACTIVE_DAO="concrete"
 else
   ACTIVE_DAO="stub"
 fi
-INNER_EOF
-		else
-			cat <<'INNER_EOF'
-ACTIVE_DAO="stub"
-INNER_EOF
-		fi
 
-		if [ "${CDD_EPHEMERAL:-0}" = "1" ]; then
-			cat <<'INNER_EOF'
 # EPHEMERAL Database Connection Setup
-# If EPHEMERAL=true, we override DATABASE_URL to a clean temp directory.
-if [ "$EPHEMERAL" = "true" ]; then
+# If EPHEMERAL=true and we are not a per-request child of _sse_sh, override DATABASE_URL to a clean temp directory.
+if ( [ "$EPHEMERAL" = "true" ] || [ "$EPHEMERAL" = "1" ] ) && [ "${_CDD_SRV_HANDLING:-0}" != "1" ]; then
   export DATABASE_URL=$(mktemp -d "${TMPDIR:-/tmp}/cdd_ephemeral_db_XXXXXX")
 fi
 INNER_EOF
-		fi
 
-		if [ "${CDD_SEED:-0}" = "1" ]; then
-			schema_sql=$(jq -r '
-				"CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT, email TEXT);" +
-				(if .components and .components.schemas then
-					([ .components.schemas | to_entries[] | select(.value.properties != null) |
-						(.key | ascii_downcase | gsub("[^a-z0-9_]"; "_")) as $tbl |
-						([ .value.properties | keys[] | gsub("[^a-zA-Z0-9_]"; "_") + " TEXT" ] | join(", ")) as $cols |
-						if $cols != "" then "\nCREATE TABLE IF NOT EXISTS \($tbl) (\($cols));" else empty end
-					] | join(""))
-				else "" end)
-			' "${ast}")
-			cat <<INNER_EOF
-if [ "\$SEED" = "true" ] && [ "\$ACTIVE_DAO" = "concrete" ]; then
-  echo "Seeding database at \$DATABASE_URL"
-  # initialize_db_schema executes DB schema migrations for the Concrete DAOs.
-  cat << 'SCHEMA_EOF' > "\$DATABASE_URL/schema.sql"
+		schema_sql=$(jq -r '
+			"CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT, email TEXT);\n" +
+			"CREATE TABLE IF NOT EXISTS posts (id TEXT PRIMARY KEY, user_id TEXT REFERENCES users(id), title TEXT);\n" +
+			"CREATE TABLE IF NOT EXISTS comments (id TEXT PRIMARY KEY, post_id TEXT REFERENCES posts(id), user_id TEXT REFERENCES users(id), body TEXT);" +
+			(if .components and .components.schemas then
+				([ .components.schemas | to_entries[] | select(.value.properties != null) |
+					(.key | ascii_downcase | gsub("[^a-z0-9_]"; "_")) as $tbl |
+					([ .value.properties | keys[] | gsub("[^a-zA-Z0-9_]"; "_") + " TEXT" ] | join(", ")) as $cols |
+					if $cols != "" then "\nCREATE TABLE IF NOT EXISTS \($tbl) (\($cols));" else empty end
+				] | join(""))
+			else "" end)
+		' "${ast}")
+
+		cat <<INNER_EOF
+# seed_database executes DB schema migrations and populates the relational dependency graph (Users -> Posts -> Comments).
+# @param \$1: db_dir - Path to the database directory.
+# @return Returns 0 on success.
+seed_database() {
+  _db_dir="\${1:-\$DATABASE_URL}"
+  mkdir -p "\$_db_dir"
+  echo "Seeding database at \$_db_dir"
+  cat << 'SCHEMA_EOF' > "\$_db_dir/schema.sql"
 ${schema_sql}
 SCHEMA_EOF
-  # Documentation: The seeder module is responsible for initializing the Faker library
-  # and batch inserting fake data to maintain referential integrity in the ephemeral DB.
   _faker_script=\$(mktemp "\${TMPDIR:-/tmp}/cdd_faker.XXXXXX")
   cat << 'FAKER_EOF' > "\$_faker_script"
 INNER_EOF
-			cat "${LIBSCRIPT_ROOT_DIR}/src/server/seeder/faker.awk"
-			cat <<'INNER_EOF'
+		cat "${LIBSCRIPT_ROOT_DIR}/src/server/seeder/faker.awk"
+		cat <<'INNER_EOF'
 BEGIN {
     srand()
-    for(i=0; i<10; i++) {
-        id=fake_uuid()
-        print "INSERT INTO users (id, name, email) VALUES ('" id "', '" fake_name() "', '" fake_email() "');"
-    }
+    seed_relational_graph(10, 50, 200)
 }
 FAKER_EOF
-  awk -f "$_faker_script" > "$DATABASE_URL/seed.sql" || true
+  awk -f "$_faker_script" > "$_db_dir/seed.sql" || true
   rm -f "$_faker_script"
+}
+
+if ( [ "$SEED" = "true" ] || [ "$SEED" = "1" ] ) && [ "$ACTIVE_DAO" = "concrete" ] && [ -n "${DATABASE_URL:-}" ] && [ ! -f "$DATABASE_URL/seed.sql" ]; then
+  seed_database "$DATABASE_URL"
 fi
 INNER_EOF
-		fi
 
 		cat <<'INNER_EOF'
 # Load generated models
@@ -186,7 +177,7 @@ if [ "$path" = "/mcp/sse" ] && [ "$method" = "GET" ]; then
   printf "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\nAccess-Control-Allow-Origin: *\r\n\r\nevent: endpoint\ndata: /mcp/message\n\n"
   while true; do sleep 10; done
 else
-  sh "$1" --handler
+  _CDD_SRV_HANDLING=1 sh "$1" --handler
 fi
 SH_EOF
   chmod +x "$_sse_sh"

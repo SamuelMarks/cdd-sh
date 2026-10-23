@@ -93,7 +93,11 @@ INNER_EOF
       include "openapi";
       . as $root |
       if .paths then
-      .paths | to_entries[] | .key as $path | .value | to_entries[] | select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers") | .key as $method | .value |
+      .paths | to_entries[] | .key as $path |
+      (if .value."$ref" and $root.components and $root.components.pathItems then ($root.components.pathItems[.value."$ref" | sub("^#/components/pathItems/"; "")] // .value) else .value end) |
+      ((to_entries | map(select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers" and .key != "$ref" and .key != "additionalOperations"))) +
+       (if .additionalOperations then (.additionalOperations | to_entries) else [] end))[] |
+      .key as $method | .value |
       get_op_id($method; $path) as $opId |
       (if .summary == null then "Call \($method | ascii_upcase) \($path)" else .summary end) as $desc |
       "  echo \"  \($opId) - \($desc)\""
@@ -157,7 +161,7 @@ INNER_EOF
               _run_inputs="$2"
               shift 2
               ;;
-            --input-file)
+            --input-file|--data-file)
               if [ ! -f "$2" ]; then echo "Error: input file $2 not found" >&2; exit 1; fi
               _run_inputs=$(cat "$2")
               shift 2
@@ -229,10 +233,17 @@ INNER_EOF
       include "openapi";
       . as $root |
       if .paths then
-      .paths | to_entries[] | .key as $path | .value | to_entries[] | select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers") | .key as $method | .value |
+      .paths | to_entries[] | .key as $path |
+      (if .value."$ref" and $root.components and $root.components.pathItems then ($root.components.pathItems[.value."$ref" | sub("^#/components/pathItems/"; "")] // .value) else .value end) as $pathItem |
+      ($pathItem | (to_entries | map(select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers" and .key != "$ref" and .key != "additionalOperations"))) +
+       (if .additionalOperations then (.additionalOperations | to_entries) else [] end))[] |
+      .key as $method | .value |
+      (if .requestBody and .requestBody."$ref" and $root.components and $root.components.requestBodies then
+        .requestBody = ($root.components.requestBodies[.requestBody."$ref" | sub("^#/components/requestBodies/"; "")] // .requestBody)
+      else . end) |
       get_op_id($method; $path) as $opId |
       get_raw_op_id($method; $path) as $rawOpId |
-      ((.parameters // []) + ($root.paths[$path].parameters // []) | map(if ."$ref" then ($root.components.parameters[."$ref" | sub("^#/components/parameters/"; "")] // .) else . end)) as $params |
+      ((.parameters // []) + ($pathItem.parameters // []) | map(if ."$ref" then ($root.components.parameters[."$ref" | sub("^#/components/parameters/"; "")] // .) else . end)) as $params |
       ([
         ($params[] | "\"${\(.name | gsub("-"; "_")):-}\""),
         (if .requestBody then "\"${requestBody:-}\"" else empty end)

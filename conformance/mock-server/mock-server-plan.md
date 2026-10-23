@@ -6,14 +6,14 @@ This document provides a granular, step-by-step checklist to implement an orthog
 
 ## Phase 1: Dependencies & Project Setup
 - [x] Review the package manifest (`package.json`, `Cargo.toml`, `requirements.txt`, `go.mod`, etc.) for the target language.
-- [ ] Identify the idiomatic Faker library (e.g., `@faker-js/faker`, `fake`, `faker`, `gofakeit`).
-- [ ] Identify the idiomatic DB ORM / Query Builder (e.g., `Prisma`/`Drizzle`, `SeaORM`/`Diesel`, `SQLAlchemy`, `GORM`).
-- [ ] Add the Faker library as a dependency.
-- [ ] Add the ORM / Query Builder as a dependency.
+- [x] Identify the idiomatic Faker library (e.g., `@faker-js/faker`, `fake`, `faker`, `gofakeit`).
+- [x] Identify the idiomatic DB ORM / Query Builder (e.g., `Prisma`/`Drizzle`, `SeaORM`/`Diesel`, `SQLAlchemy`, `GORM`).
+- [x] Add the Faker library as a dependency.
+- [x] Add the ORM / Query Builder as a dependency.
 - [x] Add the appropriate database drivers:
-  - [ ] Standard driver (e.g., PostgreSQL).
-  - [ ] Ephemeral provisioning driver if required (e.g., SQLite for flexible ORMs, or testcontainer utilities for strict ORMs like `diesel`).
-- [ ] Update dependency lockfiles.
+  - [x] Standard driver (e.g., PostgreSQL).
+  - [x] Ephemeral provisioning driver if required (e.g., SQLite for flexible ORMs, or testcontainer utilities for strict ORMs like `diesel`).
+- [x] Update dependency lockfiles.
 
 ## Phase 2: Architectural Scaffolding & DAO Abstraction
 - [x] Create a `repository` or `dao` module/namespace to isolate data access logic.
@@ -46,7 +46,7 @@ This document provides a granular, step-by-step checklist to implement an orthog
 - [x] Initialize the Faker library instance and configure it with the appropriate locale.
 - [x] Create mapping functions/factories for domain entities (emails, names, phone numbers).
 - [x] **100% Doc Coverage:** Document every mapping function.
-- [ ] **Relational Data & Dependency Graph Generation:**
+- [x] **Relational Data & Dependency Graph Generation:**
   - [x] Map out the topological sort order of the CDD domain models (e.g., `User` -> `Post` -> `Comment`).
   - [x] Implement an `Entity Pool` to cache the IDs of successfully generated records in memory.
   - [x] Program the factories to randomly select valid foreign keys from the parent's `Entity Pool` to maintain referential integrity.
@@ -86,7 +86,7 @@ This document provides a granular, step-by-step checklist to implement an orthog
   - [x] **Category 2: Stub Tests:** Run against `start` (no DB). Verify the server safely yields `NotImplementedError` or 501 HTTP status codes for all endpoints.
   - [x] **Category 3: Stateful Ephemeral Tests:** Run against `start --ephemeral`. Verifies writing to a clean slate.
   - [x] **Category 4: Seeded Mock Tests:** Run against `start --ephemeral --seed`. Verifies reading and traversing pre-populated relational graphs.
-- [ ] **Topologically Sorted Integration Testing & Teardown:**
+- [x] **Topologically Sorted Integration Testing & Teardown:**
   - [x] When writing tests for the empty Stateful Ephemeral mode, structure the test execution order (or setup fixtures) topologically to prevent cascading false-negative failures.
   - [x] *Creation Tier 1 (Independent):* Test `User` CRUD endpoints first.
   - [x] *Creation Tier 2 (Dependent):* Use the client SDK to successfully create `User`s, then test `Post` CRUD endpoints.

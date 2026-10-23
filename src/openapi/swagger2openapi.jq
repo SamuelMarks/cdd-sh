@@ -15,6 +15,30 @@ def rewrite_refs_to_oas3:
     else . end
   );
 
+# normalize_swagger_security_scheme converts a Swagger 2.0 Security Scheme Object into an OpenAPI 3.2.0 Security Scheme Object.
+# @param none
+# @return The normalized OpenAPI 3.2.0 Security Scheme Object.
+def normalize_swagger_security_scheme:
+  if .type == "oauth2" and (.flow != null) then
+    (.flow) as $flow |
+    ({
+      authorizationUrl: .authorizationUrl,
+      tokenUrl: .tokenUrl,
+      refreshUrl: .refreshUrl,
+      scopes: (.scopes // {})
+    } | with_entries(select(.value != null))) as $flowObj |
+    .flows = (
+      if $flow == "implicit" then {implicit: $flowObj}
+      elif $flow == "password" then {password: $flowObj}
+      elif $flow == "application" or $flow == "clientCredentials" then {clientCredentials: $flowObj}
+      elif $flow == "accessCode" or $flow == "authorizationCode" then {authorizationCode: $flowObj}
+      else {($flow): $flowObj} end
+    ) |
+    del(.flow, .authorizationUrl, .tokenUrl, .refreshUrl, .scopes)
+  elif .type == "basic" then
+    .type = "http" | .scheme = "basic"
+  else . end;
+
 # normalize_swagger_param converts a Swagger 2.0 non-body Parameter Object into an OpenAPI 3.x Parameter Object.
 # @param none
 # @return The normalized OpenAPI 3.x Parameter Object.
@@ -29,9 +53,18 @@ def normalize_swagger_param:
         enum: .enum,
         default: .default,
         minimum: .minimum,
-        maximum: .maximum
+        maximum: .maximum,
+        exclusiveMinimum: .exclusiveMinimum,
+        exclusiveMaximum: .exclusiveMaximum,
+        minLength: .minLength,
+        maxLength: .maxLength,
+        pattern: .pattern,
+        minItems: .minItems,
+        maxItems: .maxItems,
+        uniqueItems: .uniqueItems,
+        multipleOf: .multipleOf
       } | with_entries(select(.value != null))
-    ) | del(.type, .format, .items, .enum, .default, .minimum, .maximum, .collectionFormat)
+    ) | del(.type, .format, .items, .enum, .default, .minimum, .maximum, .exclusiveMinimum, .exclusiveMaximum, .minLength, .maxLength, .pattern, .minItems, .maxItems, .uniqueItems, .multipleOf, .collectionFormat)
   else . end;
 
 # normalize_swagger_operation converts a Swagger 2.0 Operation Object (body/formData parameters and response schemas) into OpenAPI 3.x.
@@ -109,7 +142,7 @@ if .swagger == "2.0" then
     )
   else . end) |
   (if .definitions then .components.schemas = .definitions | del(.definitions) else . end) |
-  (if .securityDefinitions then .components.securitySchemes = .securityDefinitions | del(.securityDefinitions) else . end) |
+  (if .securityDefinitions then .components.securitySchemes = (.securityDefinitions | with_entries(.value |= normalize_swagger_security_scheme)) | del(.securityDefinitions) else . end) |
   (if .parameters then .components.parameters = (.parameters | with_entries(.value |= normalize_swagger_param)) | del(.parameters) else . end) |
   (if .responses then .components.responses = .responses | del(.responses) else . end) |
   del(.swagger, .host, .basePath, .schemes, .consumes, .produces) |

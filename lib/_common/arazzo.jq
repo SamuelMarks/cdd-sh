@@ -81,6 +81,27 @@ def resolve_operation_path($root; $opPath):
 def resolve_channel_path($root; $channelPath; $action; $correlationId):
   "_async_" + (($action // "send") | ascii_downcase) + "_" + (($channelPath // "channel") | gsub("[^a-zA-Z0-9_]"; "_") | sub("^_+"; ""));
 
+# normalize_payload_replacement normalizes an Arazzo 1.1.0 Payload Replacement Object, preserving or inferring targetSelectorType.
+# @param none
+# @return The normalized Payload Replacement Object.
+def normalize_payload_replacement:
+  if (type == "object") and has("target") then
+    if has("targetSelectorType") and .targetSelectorType != null then
+      .
+    else
+      . + {
+        targetSelectorType: (
+          if (.target | startswith("$")) then "jsonpath"
+          elif (.target | contains("@")) or (.target | endswith("/text()")) then "xpath"
+          else "jsonpointer"
+          end
+        )
+      }
+    end
+  else
+    .
+  end;
+
 # normalize_arazzo_root normalizes an Arazzo 1.0.x / 1.1.0 document for merging into the unified CDD AST.
 # @param none
 # @return The normalized Arazzo AST fragment object.
@@ -104,7 +125,17 @@ def normalize_arazzo_root:
         [{"name": "default", "url": "./openapi.json", "type": "openapi"}]
       end
     ),
-    workflows: ($doc.workflows // []),
+    workflows: (
+      ($doc.workflows // []) | map(
+        if (.steps | type) == "array" then
+          .steps |= map(
+            if (.requestBody | type) == "object" and (.requestBody.replacements | type) == "array" then
+              .requestBody.replacements |= map(normalize_payload_replacement)
+            else . end
+          )
+        else . end
+      )
+    ),
     arazzoComponents: ($doc.components // {}),
     arazzoExtensions: ($doc | with_entries(select(.key | startswith("x-"))))
   } | with_entries(select(.value != null));
@@ -134,7 +165,17 @@ def extract_arazzo_spec:
           [{"name": "default", "url": "./openapi.json", "type": "openapi"}]
         end
       ),
-      workflows: ($root.workflows // []),
+      workflows: (
+        ($root.workflows // []) | map(
+          if (.steps | type) == "array" then
+            .steps |= map(
+              if (.requestBody | type) == "object" and (.requestBody.replacements | type) == "array" then
+                .requestBody.replacements |= map(normalize_payload_replacement)
+              else . end
+            )
+          else . end
+        )
+      ),
       components: (
         ($root.arazzoComponents // (
           if $root.components then

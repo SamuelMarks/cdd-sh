@@ -5,6 +5,8 @@ if .components and .components.schemas then
   
   "# @class \($className)\n" +
   (if $schema.description then "# @description \($schema.description)\n" else "# @description Generated model for \($className)\n" end) +
+  (if $schema.discriminator then "# @discriminator \($schema.discriminator | tojson)\n" else "" end) +
+  (if $schema.xml then "# @xml \($schema.xml | tojson)\n" else "" end) +
   (
     if $schema.properties then
       ([$schema.properties | to_entries[] | 

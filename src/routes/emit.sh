@@ -38,17 +38,41 @@ handle_emit_routes() {
 		jq -r '
       if .components and .components.securitySchemes then
         .components.securitySchemes | to_entries[] |
-        if .value.type == "oauth2" and .value.flows and .value.flows.clientCredentials then
-          .value.flows.clientCredentials.tokenUrl as $tokenUrl |
-          "# @function auth_login_\(.key)\n" +
-          "# @description Fetch OAuth2 Token using clientCredentials\n" +
-          "# @param $1: client_id\n" +
-          "# @param $2: client_secret\n" +
-          "auth_login_\(.key)() {\n" +
-          "  client_id=\"${1:-}\"\n" +
-          "  client_secret=\"${2:-}\"\n" +
-          "  curl -s -X POST \"\($tokenUrl)\" -d \"grant_type=client_credentials&client_id=${client_id}&client_secret=${client_secret}\" | jq -r .access_token\n" +
-          "}\n\n"
+        if .value.type == "oauth2" and .value.flows then
+          (if .value.flows.clientCredentials then
+            .value.flows.clientCredentials.tokenUrl as $tokenUrl |
+            "# @function auth_login_\(.key)\n" +
+            "# @description Fetch OAuth2 Token using clientCredentials\n" +
+            "# @param $1: client_id\n" +
+            "# @param $2: client_secret\n" +
+            "auth_login_\(.key)() {\n" +
+            "  client_id=\"${1:-}\"\n" +
+            "  client_secret=\"${2:-}\"\n" +
+            "  curl -s -X POST \"\($tokenUrl)\" -d \"grant_type=client_credentials&client_id=${client_id}&client_secret=${client_secret}\" | jq -r .access_token\n" +
+            "}\n\n"
+          else "" end) +
+          (if .value.flows.password then
+            .value.flows.password.tokenUrl as $tokenUrl |
+            "# @function auth_password_\(.key)\n" +
+            "# @description Fetch OAuth2 Token using Resource Owner Password flow\n" +
+            "# @param $1: username\n" +
+            "# @param $2: password\n" +
+            "auth_password_\(.key)() {\n" +
+            "  username=\"${1:-}\"\n" +
+            "  password=\"${2:-}\"\n" +
+            "  curl -s -X POST \"\($tokenUrl)\" -d \"grant_type=password&username=${username}&password=${password}\" | jq -r .access_token\n" +
+            "}\n\n"
+          else "" end) +
+          (if .value.flows.deviceAuthorization then
+            (.value.flows.deviceAuthorization.deviceAuthorizationUrl // .value.flows.deviceAuthorization.tokenUrl) as $devUrl |
+            "# @function auth_device_\(.key)\n" +
+            "# @description Initiate OAuth2 Device Authorization flow\n" +
+            "# @param $1: client_id\n" +
+            "auth_device_\(.key)() {\n" +
+            "  client_id=\"${1:-}\"\n" +
+            "  curl -s -X POST \"\($devUrl)\" -d \"client_id=${client_id}\" | jq -r .device_code\n" +
+            "}\n\n"
+          else "" end)
         else empty end
       else empty end
     ' "${ast}"
@@ -57,7 +81,15 @@ handle_emit_routes() {
       include "openapi";
       . as $root |
       if .paths then
-        .paths | to_entries[] | .key as $path | .value | (.parameters // []) as $pathParams | to_entries[] | select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers") | .key as $method | .value |
+        .paths | to_entries[] | .key as $path |
+        (if .value."$ref" and $root.components and $root.components.pathItems then ($root.components.pathItems[.value."$ref" | sub("^#/components/pathItems/"; "")] // .value) else .value end) |
+        (.parameters // []) as $pathParams |
+        ((to_entries | map(select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers" and .key != "$ref" and .key != "additionalOperations"))) +
+         (if .additionalOperations then (.additionalOperations | to_entries) else [] end))[] |
+        .key as $method | .value |
+        (if .requestBody and .requestBody."$ref" and $root.components and $root.components.requestBodies then
+          .requestBody = ($root.components.requestBodies[.requestBody."$ref" | sub("^#/components/requestBodies/"; "")] // .requestBody)
+        else . end) |
         (if .summary == null then "Call \($method | ascii_upcase) \($path)" else .summary end) as $desc |
         ((.parameters // []) + $pathParams | map(if ."$ref" then ($root.components.parameters[."$ref" | sub("^#/components/parameters/"; "")] // .) else . end)) as $params |
         (.security // $root.security // []) as $secReqs |
@@ -113,9 +145,13 @@ handle_emit_routes() {
           (.name | gsub("-"; "_")) as $varname |
           (.style // "form") as $style |
           (.explode // true) as $explode |
-          "  if [ -n \"${\($varname)}\" ]; then\n" +
+          (.allowReserved // false) as $allowReserved |
+          (.allowEmptyValue // false) as $allowEmpty |
+          (if $allowEmpty == true then "  if [ -n \"${\($varname)+x}\" ]; then\n" else "  if [ -n \"${\($varname)}\" ]; then\n" end) +
           (
-            if $style == "form" and $explode == true then
+            if $allowReserved == true then
+              "    qs=\"${qs}&\(.name)=${\($varname)}\""
+            elif $style == "form" and $explode == true then
               "    qs=\"${qs}&\(.name)=$(_urlencode \"${\($varname)}\")\""
             elif $style == "form" and $explode == false then
               "    qs=\"${qs}&\(.name)=$(printf \"%s\" \"${\($varname)}\" | jq -s -R -r '\''split(\",\") | map(@uri) | join(\",\")'\'')\""
@@ -172,6 +208,7 @@ handle_emit_routes() {
         else "" end) as $bodyBuild |
         
         "# @function \($opId)\n# @description \($desc)" +
+        (if .deprecated == true then "\n# @deprecated true" else "" end) +
         (if $paramDocs != "" then "\n" + $paramDocs else "" end) +
         (if $reqBodyDoc != "" then "\n" + $reqBodyDoc else "" end) +
         "\n\($opId)() {\n" +

@@ -159,6 +159,14 @@ if ! grep -q "INSERT INTO users" "$GENERATED_DB_DIR/seed.sql"; then
   exit 1
 fi
 
+user_seed_cnt=$(grep -c "INSERT INTO users" "$GENERATED_DB_DIR/seed.sql" || echo 0)
+post_seed_cnt=$(grep -c "INSERT INTO posts" "$GENERATED_DB_DIR/seed.sql" || echo 0)
+comment_seed_cnt=$(grep -c "INSERT INTO comments" "$GENERATED_DB_DIR/seed.sql" || echo 0)
+if [ "$user_seed_cnt" -ne 10 ] || [ "$post_seed_cnt" -ne 50 ] || [ "$comment_seed_cnt" -ne 200 ]; then
+  echo "FAIL: Expected 10:50:200 relational ratios, got ${user_seed_cnt}:${post_seed_cnt}:${comment_seed_cnt}"
+  exit 1
+fi
+
 if ! grep -q "CREATE TABLE IF NOT EXISTS user" "$GENERATED_DB_DIR/schema.sql"; then
   echo "FAIL: Schema script missing dynamic table creation from OpenAPI components.schemas"
   exit 1
@@ -171,3 +179,38 @@ echo "Server SEED generation test passed!"
 MOCK_SEED
 
 sh tests/out/src/server_seed_test.sh || exit 1
+
+cat <<'REL_OAS' >tests/out/relational_spec.json
+{
+  "openapi": "3.2.0",
+  "info": {"title": "Relational Blog API", "version": "1.0.0"},
+  "paths": {
+    "/comments": {
+      "post": {"operationId": "createComment", "summary": "Create comment"},
+      "delete": {"operationId": "deleteComments", "summary": "Delete comments"}
+    },
+    "/posts": {
+      "post": {"operationId": "createPost", "summary": "Create post"},
+      "delete": {"operationId": "deletePosts", "summary": "Delete posts"}
+    },
+    "/users": {
+      "post": {"operationId": "createUser", "summary": "Create user"},
+      "get": {"operationId": "getUsers", "summary": "List users"},
+      "delete": {"operationId": "deleteUsers", "summary": "Delete users"}
+    }
+  }
+}
+REL_OAS
+
+./bin/cdd-sh from_openapi to_server --ephemeral -i tests/out/relational_spec.json -o tests/out/rel_srv
+
+TOPO_PORT=$(allocate_free_port 18106)
+TOPO_DB=$(mktemp -d "${TMPDIR:-/tmp}/cdd_topo_db.XXXXXX")
+PORT="${TOPO_PORT}" DATABASE_URL="${TOPO_DB}" sh tests/out/rel_srv/src/server.sh >/dev/null 2>&1 &
+TOPO_PID=$!
+wait_for_port "${TOPO_PORT}" 50
+
+BASE_URL="http://127.0.0.1:${TOPO_PORT}" DATABASE_URL="${TOPO_DB}" VERIFY_CLEAN_STATE="1" sh tests/out/rel_srv/tests/run_all.sh
+cleanup_server_pid "${TOPO_PID}" "${TOPO_PORT}"
+rm -rf "${TOPO_DB}"
+echo "Topologically sorted integration & teardown tests passed!"

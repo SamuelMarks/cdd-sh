@@ -209,6 +209,28 @@ if ! grep -q "\[info\] A test message" tests/out/mcp_err.txt; then
 	exit 1
 fi
 
+echo '{"jsonrpc": "2.0", "method": "notifications/message", "params": {"level": "info", "logger": "auth", "data": "Logger message"}}' >tests/out/mcp_in.txt
+tests/out/bin/sdk-cli mcp <tests/out/mcp_in.txt 2>tests/out/mcp_err2.txt >/dev/null
+if ! grep -q "\[info:auth\] Logger message" tests/out/mcp_err2.txt; then
+	echo "FAIL: notifications/message with logger did not log [info:auth]"
+	cat tests/out/mcp_err2.txt
+	exit 1
+fi
+
+echo '{"jsonrpc": "2.0", "id": 12.1, "method": "prompts/list", "params": {"cursor": "next"}}' >tests/out/mcp_in.txt
+res=$(tests/out/bin/sdk-cli mcp <tests/out/mcp_in.txt)
+if ! printf "%s\n" "$res" | grep -q '"prompts":\[\]'; then
+	echo "FAIL: prompts/list with cursor"
+	exit 1
+fi
+
+echo '{"jsonrpc": "2.0", "id": 14.1, "method": "resources/templates/list", "params": {"cursor": "next"}}' >tests/out/mcp_in.txt
+res=$(tests/out/bin/sdk-cli mcp <tests/out/mcp_in.txt)
+if ! printf "%s\n" "$res" | grep -q '"resourceTemplates":\[\]'; then
+	echo "FAIL: resources/templates/list with cursor"
+	exit 1
+fi
+
 # Unknown / Invalid method
 echo '{"jsonrpc": "2.0", "id": 5, "method": "unknown_method"}' >tests/out/mcp_in.txt
 res=$(tests/out/bin/sdk-cli mcp <tests/out/mcp_in.txt)
