@@ -220,6 +220,21 @@ if [ ! -f "${TMP_COV}/docs_out/docs.json" ] || ! jq -e '.endpoints["/users"].get
 fi
 
 sh "${LIBSCRIPT_ROOT_DIR}/cdd.sh" from_openapi to_sdk --tests -i tests/test.json -o "${TMP_COV}/sdk_dir" --no-github-actions --no-installable-package
+if [ ! -x "${TMP_COV}/sdk_dir/tests/test_routes.sh" ]; then
+	echo "FAIL: generated tests/test_routes.sh is not executable with --tests"
+	exit 1
+fi
+CDD_TESTS=1 sh "${LIBSCRIPT_ROOT_DIR}/cdd.sh" from_openapi to_sdk -i tests/test.json -o "${TMP_COV}/sdk_dir_env_tests" --no-github-actions --no-installable-package
+if [ ! -x "${TMP_COV}/sdk_dir_env_tests/tests/test_routes.sh" ]; then
+	echo "FAIL: generated tests/test_routes.sh is not executable with CDD_TESTS=1"
+	exit 1
+fi
+rm -f "${LIBSCRIPT_ROOT_DIR}/bin/cdd-sh"
+sh "${LIBSCRIPT_ROOT_DIR}/src/main.sh" --version >/dev/null
+if [ ! -x "${LIBSCRIPT_ROOT_DIR}/bin/cdd-sh" ]; then
+	echo "FAIL: bin/cdd-sh was not automatically built by cdd.sh/src/main.sh"
+	exit 1
+fi
 sh "${LIBSCRIPT_ROOT_DIR}/cdd.sh" from_openapi to_openapi -i "${TMP_COV}/sdk_dir" -o "${TMP_COV}/extracted_oas"
 if [ ! -f "${TMP_COV}/extracted_oas/spec.json" ]; then
 	echo "FAIL: from_openapi to_openapi did not produce spec.json"

@@ -132,5 +132,5 @@ handle_emit_tests() {
     ' "${ast}"
 	} >"${file_path}.tmp"
 
-	merge_or_move_emitted_file "${file_path}" "0"
+	merge_or_move_emitted_file "${file_path}" "1"
 }

@@ -22,9 +22,22 @@ if [ -z "${LIBSCRIPT_ROOT_DIR:-}" ]; then
 fi
 export LIBSCRIPT_ROOT_DIR
 
+# ensure_cdd_bin ensures bin/cdd-sh exists and has 0755 permissions when invoked before make build.
+# @param none
+# @return Returns 0.
+ensure_cdd_bin() {
+	if [ ! -x "${LIBSCRIPT_ROOT_DIR}/bin/cdd-sh" ] && [ -f "${LIBSCRIPT_ROOT_DIR}/cdd.sh" ]; then
+		mkdir -p "${LIBSCRIPT_ROOT_DIR}/bin" 2>/dev/null || true
+		if cp "${LIBSCRIPT_ROOT_DIR}/cdd.sh" "${LIBSCRIPT_ROOT_DIR}/bin/cdd-sh" 2>/dev/null; then
+			chmod 0755 "${LIBSCRIPT_ROOT_DIR}/bin/cdd-sh" 2>/dev/null || true
+		fi
+	fi
+}
+ensure_cdd_bin
+
 # merge_or_move_emitted_file merges `${file_path}.tmp` into an existing `${file_path}` via `merge.awk` or moves it into place.
 # @param $1: file_path - Destination file path.
-# @param $2: make_exec - Optional "1" to mark the output file executable.
+# @param $2: make_exec - Optional "1" to mark the output file executable (0755).
 # @return Returns 0 on success.
 merge_or_move_emitted_file() {
 	_m_path="$1"
@@ -37,7 +50,7 @@ merge_or_move_emitted_file() {
 		mv "${_m_path}.tmp" "${_m_path}"
 	fi
 	if [ "${_m_exec}" = "1" ]; then
-		chmod +x "${_m_path}"
+		chmod 0755 "${_m_path}"
 	fi
 }
 
@@ -51,7 +64,7 @@ emit_split_files() {
 	set +f
 	for _split_f in "${_split_dir}"/*.sh; do
 		if [ -f "${_split_f}" ]; then
-			chmod +x "${_split_f}"
+			chmod 0755 "${_split_f}"
 		fi
 	done
 	set -f

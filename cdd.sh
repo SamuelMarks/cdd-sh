@@ -861,6 +861,7 @@ from_openapi)
 				mkdir -p "$OUT/tests" "$OUT/mocks"
 				. "${LIBSCRIPT_ROOT_DIR:-.}/src/tests/emit.sh"
 				handle_emit_tests "$OUT/tests/test_routes.sh" "../src/routes.sh"
+				chmod 0755 "$OUT/tests/test_routes.sh"
 				. "${LIBSCRIPT_ROOT_DIR:-.}/src/mocks/emit.sh"
 				handle_emit_mocks "$OUT/mocks/mocks.json"
 			fi
