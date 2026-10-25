@@ -180,6 +180,19 @@ SERVER_PID=$!
 wait_for_port "${MOCK_PORT}" 50
 
 BASE_URL="http://127.0.0.1:${MOCK_PORT}/v2" sh tests/emitted_tests.sh
+
+echo "Testing default from_openapi subcommand routing and generated test_routes.sh execution..."
+CDD_TESTS=1 ./cdd.sh from_openapi -i tests/test.json -o "${TEST_MOCK_DIR}/sh-client" --no-github-actions --no-installable-package
+if [ ! -f "${TEST_MOCK_DIR}/sh-client/src/routes.sh" ] || [ ! -f "${TEST_MOCK_DIR}/sh-client/src/sdk.sh" ]; then
+	echo "FAIL: default from_openapi did not generate SDK files"
+	exit 1
+fi
+if [ ! -x "${TEST_MOCK_DIR}/sh-client/tests/test_routes.sh" ]; then
+	echo "FAIL: generated sh-client/tests/test_routes.sh is not executable"
+	exit 1
+fi
+BASE_URL="http://127.0.0.1:${MOCK_PORT}/v2" "${TEST_MOCK_DIR}/sh-client/tests/test_routes.sh"
+
 cleanup_server_pid "${SERVER_PID}" "${MOCK_PORT}"
 SERVER_PID=""
 

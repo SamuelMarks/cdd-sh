@@ -15,6 +15,7 @@ handle_emit_routes() {
 		printf "#!/bin/sh\n# @file %s\n# @description Auto-generated API Client\nset -eu\n\n" "${file_path##*/}"
 		BASE_URL=$(jq -r '.servers[0] | if .variables then reduce (.variables | to_entries[]) as $var (.url; gsub("\\{" + $var.key + "\\}"; $var.value.default)) else .url end // ""' "${ast}")
 		printf "BASE_URL=\"\${BASE_URL:-%s}\"\nOAUTH_TOKEN=\"\${OAUTH_TOKEN:-}\"\nAPI_KEY=\"\${API_KEY:-}\"\n\n" "${BASE_URL}"
+		printf "# http_request executes an HTTP request using curl.\n# @param \$@: args - Arguments forwarded to curl.\nif ! type http_request >/dev/null 2>&1; then\n  http_request() {\n    curl \"\$@\"\n  }\nfi\n\n"
 		printf "# _urlencode percent-encodes a string for URLs.\n# @param \$1: value - Raw string to URL-encode.\n_urlencode() {\n  printf '%%s' \"\$1\" | jq -s -R -r '@uri'\n}\n\n"
 		printf "# _quote_sh safely escapes a string for shell evaluation.\n# @param \$1: value - Raw string to escape.\n_quote_sh() {\n  printf '%%s' \"\$1\" | jq -s -R -r '@sh'\n}\n\n"
 

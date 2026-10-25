@@ -26,6 +26,12 @@ handle_emit_tests() {
 		printf 'export API_KEY="special-key"\n'
 		printf 'export OAUTH_TOKEN="special-key"\n'
 		printf 'export BASIC_AUTH="user:pass"\n\n'
+		printf "# shellcheck disable=SC1090,SC1091,SC2034\n"
+		printf 'if [ -f "${DIR}/../src/sdk.sh" ]; then\n'
+		printf '  . "${DIR}/../src/sdk.sh"\n'
+		printf 'elif [ -f "${DIR}/sdk.sh" ]; then\n'
+		printf '  . "${DIR}/sdk.sh"\n'
+		printf 'fi\n\n'
 		printf '# curl is a wrapper around the system curl command that asserts 2xx/3xx HTTP status codes.\n'
 		printf '# @param $@: args - Arguments forwarded to command curl.\n'
 		printf 'curl() {\n'
@@ -37,6 +43,11 @@ handle_emit_tests() {
 		printf '    echo "HTTP error: $status" >&2\n'
 		printf '    exit 1\n'
 		printf '  fi\n'
+		printf '}\n\n'
+		printf '# http_request executes an HTTP request and asserts a valid HTTP status code (< 400).\n'
+		printf '# @param $@: args - Arguments forwarded to curl.\n'
+		printf 'http_request() {\n'
+		printf '  curl "$@"\n'
 		printf '}\n'
 		printf "# shellcheck disable=SC1090,SC1091,SC2034\n"
 		printf ". \"\${DIR}/%s\"\n\n" "${routes_source_path}"

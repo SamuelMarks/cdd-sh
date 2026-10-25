@@ -15,8 +15,13 @@ handle_emit_sdk() {
 		cat <<'EOF'
 #!/bin/sh
 # @file sdk.sh
-# @description Auto-generated MCP client SDK bindings.
+# @description Auto-generated HTTP transport and MCP client SDK bindings.
 # @openapi_sdk_start
+# http_request executes an HTTP request using curl.
+# @param $@: args - Arguments forwarded to curl.
+http_request() {
+  curl "$@"
+}
 MCP_CLI_BIN="./bin/sdk-cli"
 # mcp_get_tools retrieves the list of available MCP tools from the CLI server.
 # @param $1: cursor - Optional pagination cursor.
