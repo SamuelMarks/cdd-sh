@@ -3,7 +3,6 @@ package gojqcli
 import (
 	"encoding/json"
 	"errors"
-	"github.com/itchyny/go-yaml"
 	"github.com/itchyny/gojq"
 	"io"
 	"strings"
@@ -73,27 +72,6 @@ func TestError_JsonParseError(t *testing.T) {
 		line:     2,
 	}
 	if !strings.Contains(je2.Error(), "invalid json: file.json") {
-		t.Errorf("missing string")
-	}
-}
-
-func TestError_YamlParseError(t *testing.T) {
-	ye := &yamlParseError{
-		fname:    "file.yaml",
-		contents: "a: b\n c: d",
-		err:      &yaml.ParserError{Index: 2, Message: "test message"},
-	}
-	if !strings.Contains(ye.Error(), "invalid yaml:") {
-		t.Errorf("missing string")
-	}
-
-	ue := &yaml.UnmarshalError{Index: 1, Err: errors.New("unmarshal err")}
-	ye2 := &yamlParseError{
-		fname:    "file.yaml",
-		contents: "a: b\n c: d",
-		err:      &yaml.TypeError{Errors: []*yaml.UnmarshalError{ue}},
-	}
-	if !strings.Contains(ye2.Error(), "invalid yaml:") {
 		t.Errorf("missing string")
 	}
 }

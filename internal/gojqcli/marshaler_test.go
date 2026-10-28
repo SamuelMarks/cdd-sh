@@ -20,17 +20,3 @@ func TestRawMarshaler(t *testing.T) {
 		t.Errorf("unexpected error: %v", err)
 	}
 }
-
-type failingWriter struct{}
-
-func (failingWriter) Write(p []byte) (n int, err error) {
-	return 0, io.ErrShortWrite
-}
-
-func TestYamlMarshalerError(t *testing.T) {
-	m := yamlFormatter(nil)
-	err := m.marshal(map[string]string{"foo": "bar"}, failingWriter{})
-	if err == nil {
-		t.Errorf("expected error, got nil")
-	}
-}

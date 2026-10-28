@@ -16,16 +16,6 @@ func TestJSONInputIterNameClose(t *testing.T) {
 	}
 }
 
-func TestStreamInputIterNameClose(t *testing.T) {
-	iter := newStreamInputIter(strings.NewReader(""), "stream.json")
-	if iter.Name() != "stream.json" {
-		t.Errorf("expected stream.json, got %q", iter.Name())
-	}
-	if err := iter.Close(); err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
-}
-
 func TestFilesInputIterNameClose(t *testing.T) {
 	iter := newFilesInputIter(newJSONInputIter, []string{"nonexistent.json"}, nil)
 	if iter.Name() != "" {
@@ -49,16 +39,6 @@ func TestRawInputIterNameClose(t *testing.T) {
 	iter := newRawInputIter(strings.NewReader("hello"), "test.txt")
 	if iter.Name() != "test.txt" {
 		t.Errorf("expected test.txt, got %q", iter.Name())
-	}
-	if err := iter.Close(); err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
-}
-
-func TestYAMLInputIterNameClose(t *testing.T) {
-	iter := newYAMLInputIter(strings.NewReader(""), "test.yaml")
-	if iter.Name() != "test.yaml" {
-		t.Errorf("expected test.yaml, got %q", iter.Name())
 	}
 	if err := iter.Close(); err != nil {
 		t.Errorf("unexpected error: %v", err)
@@ -98,9 +78,7 @@ func TestSlurpRawInputIterNameClose(t *testing.T) {
 func TestInputsNextAfterError(t *testing.T) {
 	iters := []inputIter{
 		newJSONInputIter(strings.NewReader(""), ""),
-		newStreamInputIter(strings.NewReader(""), ""),
 		newRawInputIter(strings.NewReader(""), ""),
-		newYAMLInputIter(strings.NewReader(""), ""),
 		newReadAllIter(strings.NewReader(""), ""),
 		newSlurpInputIter(newJSONInputIter(strings.NewReader(""), "")),
 		newSlurpRawInputIter(newRawInputIter(strings.NewReader(""), "")),

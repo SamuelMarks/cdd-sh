@@ -1,12 +1,10 @@
-// Package gojqcli implements output marshalers for JSON, raw string, and YAML formats.
+// Package gojqcli implements output marshalers for JSON and raw string formats.
 package gojqcli
 
 import (
 	"fmt"
 	"io"
 	"strings"
-
-	"github.com/itchyny/go-yaml"
 )
 
 // marshaler defines the interface for serializing a jq evaluation value to an io.Writer.
@@ -35,37 +33,4 @@ func (m *rawMarshaler) marshal(v any, w io.Writer) error {
 		return err
 	}
 	return m.m.marshal(v, w)
-}
-
-// yamlFormatter creates a new yamlMarshaler with the specified indentation level.
-// Parameters:
-//   - indent: Optional pointer to the number of indentation spaces.
-//
-// Returns a configured yamlMarshaler pointer.
-func yamlFormatter(indent *int) *yamlMarshaler {
-	return &yamlMarshaler{indent}
-}
-
-// yamlMarshaler serializes jq values into YAML format.
-type yamlMarshaler struct {
-	indent *int
-}
-
-// marshal encodes v as YAML into w.
-// Parameters:
-//   - v: The value to serialize.
-//   - w: The destination writer.
-//
-// Returns any encoding or stream close error.
-func (m *yamlMarshaler) marshal(v any, w io.Writer) error {
-	enc := yaml.NewEncoder(w)
-	if i := m.indent; i != nil {
-		enc.SetIndent(*i)
-	} else {
-		enc.SetIndent(2)
-	}
-	if err := enc.Encode(v); err != nil {
-		return err
-	}
-	return enc.Close()
 }

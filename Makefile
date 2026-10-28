@@ -28,11 +28,14 @@ build:
 	mkdir -p bin
 	cp cdd.sh bin/cdd-sh
 	chmod +x bin/cdd-sh
-	go build -o bin/cdd-sh-runner main.go
+	GOEXPERIMENT=nojsonv2 go build -ldflags="-s -w" -trimpath -o bin/cdd-sh-runner main.go
 
 build_wasm:
 	mkdir -p wasm_build
-	GOOS=wasip1 GOARCH=wasm go build -o wasm_build/cdd-sh.wasm main.go
+	GOEXPERIMENT=nojsonv2 GOOS=wasip1 GOARCH=wasm go build -ldflags="-s -w" -trimpath -o wasm_build/cdd-sh.wasm main.go
+	@if command -v wasm-opt >/dev/null 2>&1; then \
+		wasm-opt -Oz --strip-debug --strip-dwarf --strip-producers --enable-bulk-memory --enable-nontrapping-float-to-int --enable-sign-ext --enable-mutable-globals wasm_build/cdd-sh.wasm -o wasm_build/cdd-sh.wasm; \
+	fi
 
 clean:
 	rm -rf bin wasm_build

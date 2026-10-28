@@ -1,4 +1,4 @@
-// Package gojqcli implements input readers and iterators for JSON, YAML, raw text, and slurped files.
+// Package gojqcli implements input readers and iterators for JSON, raw text, and slurped files.
 package gojqcli
 
 import (
@@ -8,10 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-
 	"strings"
-
-	"github.com/itchyny/go-yaml"
 
 	"github.com/itchyny/gojq"
 )
@@ -40,8 +37,8 @@ func newInputReader(r io.Reader) *inputReader {
 
 // getContents returns the buffered or seeked source text window around the given byte offset and updates line count.
 // Parameters:
-//   - offset: Optional pointer to the byte offset of the parse error.
-//   - line: Optional pointer to the accumulated line number.
+//   - offset: Pointer to the byte offset of the parse error.
+//   - line: Pointer to the accumulated line number.
 //
 // Returns the relevant source text slice as a string.
 func (ir *inputReader) getContents(offset *int64, line *int) string {
@@ -64,13 +61,7 @@ func (ir *inputReader) getContents(offset *int64, line *int) string {
 			break
 		}
 	}
-	var r io.Reader
-	if offset == nil {
-		r = ir.rs
-	} else {
-		r = io.LimitReader(ir.rs, bufSize)
-	}
-	_, _ = io.Copy(&buf, r)
+	_, _ = io.Copy(&buf, io.LimitReader(ir.rs, bufSize))
 	return buf.String()
 }
 
@@ -158,19 +149,6 @@ func (i *jsonInputIter) Close() error {
 // Returns the source file name string.
 func (i *jsonInputIter) Name() string {
 	return i.fname
-}
-
-// newStreamInputIter creates an inputIter that decodes JSON in streaming path-value mode (`--stream`).
-// Parameters:
-//   - r: The input stream to decode.
-//   - fname: The display name or file path of the input source.
-//
-// Returns the initialized streaming inputIter.
-func newStreamInputIter(r io.Reader, fname string) inputIter {
-	ir := newInputReader(r)
-	dec := json.NewDecoder(ir)
-	dec.UseNumber()
-	return &jsonInputIter{next: newJSONStream(dec).next, ir: ir, fname: fname}
 }
 
 // nullInputIter yields a single nil value (`jq -n`).
@@ -404,66 +382,6 @@ func (i *rawInputIter) Close() error {
 //
 // Returns the source file name string.
 func (i *rawInputIter) Name() string {
-	return i.fname
-}
-
-// yamlInputIter decodes sequential YAML documents from an inputReader (`jq --yaml-input`).
-type yamlInputIter struct {
-	dec   *yaml.Decoder
-	ir    *inputReader
-	fname string
-	err   error
-}
-
-// newYAMLInputIter creates an inputIter that decodes YAML documents from r.
-// Parameters:
-//   - r: The YAML input stream.
-//   - fname: The display name of the input source.
-//
-// Returns the initialized yamlInputIter.
-func newYAMLInputIter(r io.Reader, fname string) inputIter {
-	ir := newInputReader(r)
-	dec := yaml.NewDecoder(ir)
-	return &yamlInputIter{dec: dec, ir: ir, fname: fname}
-}
-
-// Next decodes and returns the next YAML document or a yamlParseError on failure.
-// Parameters:
-//   - none
-//
-// Returns the decoded YAML value and true if available.
-func (i *yamlInputIter) Next() (any, bool) {
-	if i.err != nil {
-		return nil, false
-	}
-	var v any
-	if err := i.dec.Decode(&v); err != nil {
-		if err == io.EOF {
-			i.err = err
-			return nil, false
-		}
-		i.err = &yamlParseError{i.fname, i.ir.getContents(nil, nil), err}
-		return i.err, true
-	}
-	return v, true
-}
-
-// Close marks the yamlInputIter as exhausted.
-// Parameters:
-//   - none
-//
-// Returns nil.
-func (i *yamlInputIter) Close() error {
-	i.err = io.EOF
-	return nil
-}
-
-// Name returns the source file name for this yamlInputIter.
-// Parameters:
-//   - none
-//
-// Returns the source file name string.
-func (i *yamlInputIter) Name() string {
 	return i.fname
 }
 

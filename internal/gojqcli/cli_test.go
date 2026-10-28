@@ -54,10 +54,7 @@ func TestRunJqFiles(t *testing.T) {
 		{"read file", []string{".", "test.json"}, `{"a": 1}`, 0, "{\n  \"a\": 1\n}\n"},
 		{"slurp file", []string{"-s", ".", "test.json"}, `{"a": 1}`, 0, "[\n  {\n    \"a\": 1\n  }\n]\n"},
 		{"slurp raw file", []string{"-sR", ".", "test.json"}, `hello`, 0, "\"hello\"\n"},
-		{"yaml file", []string{"--yaml-input", ".", "test.yaml"}, `a: 1`, 0, "{\n  \"a\": 1\n}\n"},
 		{"multiple files", []string{".", "test.json", "test.json"}, `{"a": 1}`, 0, "{\n  \"a\": 1\n}\n{\n  \"a\": 1\n}\n"},
-		{"stream file", []string{"-c", "--stream", ".", "test.json"}, `[1, 2]`, 0, "[[0],1]\n[[1],2]\n"}, {"stream scalar", []string{"-c", "--stream", ".", "test.json"}, `123`, 0, "[[],123]\n"},
-		{"stream incomplete", []string{"-c", "--stream", ".", "test.json"}, `[1, 2`, 5, ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -87,9 +84,6 @@ func TestRunJqFlags(t *testing.T) {
 		{"-R", []string{"-R", "-n", "1"}, 0},
 		{"-s", []string{"-s", "-n", "1"}, 0},
 		{"-e", []string{"-e", "-n", "1"}, 0},
-		{"--stream", []string{"--stream", "-n", "1"}, 0},
-		{"--yaml-input", []string{"--yaml-input", "-n", "1"}, 0},
-		{"--yaml-output", []string{"--yaml-output", "-n", "1"}, 0},
 		{"--indent", []string{"--indent", "4", "-n", "1"}, 0},
 		{"--indent invalid", []string{"--indent", "invalid", "-n", "1"}, 2},
 		{"--tab", []string{"--tab", "-n", "1"}, 0},
@@ -137,7 +131,6 @@ func TestRunJqBasic(t *testing.T) {
 		{"exit status non-zero", []string{"-e", "-n", "false"}, "", 1, "false\n", ""},
 		{"raw output", []string{"-r", "-n", "\"hello\""}, "", 0, "hello\n", ""},
 		{"compact output", []string{"-c", "-n", "[1,2,3]"}, "", 0, "[1,2,3]\n", ""},
-		{"yaml output", []string{"--yaml-output", "-n", `{"a": 1}`}, "", 0, "a: 1\n", ""},
 		{"raw input", []string{"-R", "."}, "hello\nworld", 0, "\"hello\"\n\"world\"\n", ""},
 		{"slurp input", []string{"-s", "."}, "1\n2\n", 0, "[\n  1,\n  2\n]\n", ""},
 		{"slurp raw input", []string{"-sR", "."}, "hello\nworld\n", 0, "\"hello\\nworld\\n\"\n", ""},
@@ -185,9 +178,6 @@ func TestRunJqMoreBranches(t *testing.T) {
 	runCli([]string{"--indent", "10", "-n", "1"}, "")
 	runCli([]string{"--indent", "-1", "-n", "1"}, "")
 
-	// yaml output with tab
-	runCli([]string{"--yaml-output", "--tab", "-n", "1"}, "")
-
 	// invalid json in argjson
 	runCli([]string{"--argjson", "x", "{", "-n", "1"}, "")
 
@@ -211,9 +201,6 @@ func TestRunJqMoreBranches(t *testing.T) {
 	// input_filename
 	runCli([]string{"-n", "input_filename"}, "")
 	runCli([]string{"input_filename"}, "1")
-
-	// Print value error handling
-	runCli([]string{"-n", "--yaml-output", "debug"}, "")
 }
 
 func TestRunJqEvenMoreBranches(t *testing.T) {
@@ -244,9 +231,6 @@ func TestRunJqEvenMoreBranches(t *testing.T) {
 	os.WriteFile("bad_mod.json", []byte("{invalid"), 0644)
 	runCli([]string{"-L", ".", `import "bad_mod" as $bad; 1`}, "")
 	os.Remove("bad_mod.json")
-	// YAML separator
-	runCli([]string{"--yaml-output", "-n", "1, 2"}, "")
-	runCli([]string{"--yaml-output", "--indent", "4", "-n", `{"a": 1}`}, "")
 	// Exit code error with multiple values
 	runCli([]string{"-e", "-n", "1, false"}, "")
 	runCli([]string{"-e", "-n", "false, 1"}, "")
@@ -272,9 +256,6 @@ func TestRunJqEvenMoreBranches(t *testing.T) {
 
 	// Large JSON from stdin to cover non-seekable inputs
 	runCli([]string{"."}, strings.Repeat(" ", 20000)+"{}")
-	os.WriteFile("bad.yaml", []byte("[bad"), 0644)
-	runCli([]string{"--yaml-input", ".", "bad.yaml"}, "")
-	os.Remove("bad.yaml")
 	// Explicitly cover isEmptyError
 	(&emptyError{}).isEmptyError()
 	(&exitCodeError{}).isEmptyError()
@@ -293,9 +274,8 @@ func TestRunJqErrorWriter(t *testing.T) {
 		errStream: &errorWriter{},
 	}
 	// trigger error in printValues -> marshal
-	cli.outputYAML = true
-	if code := cli.run([]string{"-n", "1"}); code == 0 {
-		t.Errorf("expected non-zero exit code for errorWriter on YAML output")
+	if code := cli.run([]string{"-r", "-n", `"hello"`}); code == 0 {
+		t.Errorf("expected non-zero exit code for errorWriter on raw output")
 	}
 
 	// trigger error in funcDebug

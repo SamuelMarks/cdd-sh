@@ -10,9 +10,6 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/itchyny/go-yaml"
-	"github.com/mattn/go-runewidth"
-
 	"github.com/itchyny/gojq"
 )
 
@@ -40,8 +37,6 @@ const (
 	ErrKindCompile
 	// ErrKindInvalidIndent represents an out-of-range indentation count.
 	ErrKindInvalidIndent
-	// ErrKindYAMLTab represents an incompatible --yaml-output and --tab combination.
-	ErrKindYAMLTab
 	// ErrKindMissingFlagFile represents a missing file argument for -f.
 	ErrKindMissingFlagFile
 	// ErrKindInvalidColor represents a malformed GOJQ_COLORS specification.
@@ -256,38 +251,6 @@ func (err *jsonParseError) Error() string {
 		err.fname, linestr, column+1, '^', err.err)
 }
 
-// yamlParseError represents a syntax or unmarshaling error encountered while decoding YAML input.
-type yamlParseError struct {
-	fname, contents string
-	err             error
-}
-
-// Error formats the YAML parse error with file, line, and caret pointer context.
-// Parameters:
-//   - none
-//
-// Returns the formatted YAML parse error string.
-func (err *yamlParseError) Error() string {
-	var index int
-	var message string
-	var pe *yaml.ParserError
-	var te *yaml.TypeError
-	if errors.As(err.err, &pe) {
-		index, message = pe.Index, pe.Message
-	} else if errors.As(err.err, &te) {
-		var ue *yaml.UnmarshalError
-		for _, e := range te.Errors {
-			if errors.As(e, &ue) {
-				index, message = ue.Index, ue.Err.Error()
-				break
-			}
-		}
-	}
-	linestr, line, column := getLineByOffset(err.contents, index+1)
-	return fmt.Sprintf("invalid yaml: %s:%d\n%s  %s",
-		err.fname, line, formatLineInfo(linestr, line, column), message)
-}
-
 // getLineByOffset extracts the relevant line snippet, 1-based line number, and display column for a byte offset.
 // Parameters:
 //   - str: The source text content.
@@ -321,7 +284,7 @@ func getLineByOffset(str string, offset int) (linestr string, line, column int) 
 	} else {
 		offset = len(linestr)
 	}
-	column = runewidth.StringWidth(linestr[:offset])
+	column = utf8.RuneCountInString(linestr[:offset])
 	return
 }
 

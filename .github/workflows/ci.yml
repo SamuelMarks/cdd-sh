@@ -65,6 +65,11 @@ jobs:
         with:
           go-version-file: 'go.mod'
 
+      - name: Install binaryen for WASM size optimization
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y binaryen
+
       - name: Build WASM and Binary
         run: |
           make build

@@ -1,4 +1,4 @@
-// Package cli implements the gojq command.
+// Package gojqcli implements the internal gojq command.
 package gojqcli
 
 import (
@@ -9,8 +9,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-
-	"github.com/mattn/go-isatty"
 
 	"github.com/itchyny/gojq"
 )
@@ -42,19 +40,15 @@ type cli struct {
 	outputCompact bool
 	outputIndent  *int
 	outputTab     bool
-	outputYAML    bool
 	inputRaw      bool
-	inputStream   bool
-	inputYAML     bool
 	inputSlurp    bool
 
 	argnames  []string
 	argvalues []any
 
-	outputYAMLSeparator bool
-	exitCodeError       error
-	colors              colorConfig
-	resolvePath         func(string) string
+	exitCodeError error
+	colors        colorConfig
+	resolvePath   func(string) string
 }
 
 // resolveFilePath resolves a file path using the CLI's scoped resolver or falls back to resolveJqPath.
@@ -77,13 +71,10 @@ type flagopts struct {
 	OutputCompact bool              `short:"c" long:"compact-output" description:"output without pretty-printing"`
 	OutputIndent  *int              `long:"indent" args:"number" description:"number of spaces for indentation"`
 	OutputTab     bool              `long:"tab" description:"use tabs for indentation"`
-	OutputYAML    bool              `long:"yaml-output" description:"output in YAML format"`
 	OutputColor   bool              `short:"C" long:"color-output" description:"output with colors even if piped"`
 	OutputMono    bool              `short:"M" long:"monochrome-output" description:"output without colors"`
 	InputNull     bool              `short:"n" long:"null-input" description:"use null as input value"`
 	InputRaw      bool              `short:"R" long:"raw-input" description:"read input as raw strings"`
-	InputStream   bool              `long:"stream" description:"parse input in stream fashion"`
-	InputYAML     bool              `long:"yaml-input" description:"read input as YAML format"`
 	InputSlurp    bool              `short:"s" long:"slurp" description:"read all inputs into an array"`
 	FromFile      bool              `short:"f" long:"from-file" description:"load query from file"`
 	ModulePaths   []string          `short:"L" long:"library-path" args:"dir" description:"directory to search modules from"`
@@ -150,18 +141,10 @@ Usage:
 		return nil
 	}
 	cli.outputRaw, cli.outputRaw0, cli.outputJoin,
-		cli.outputCompact, cli.outputIndent, cli.outputTab, cli.outputYAML =
+		cli.outputCompact, cli.outputIndent, cli.outputTab =
 		opts.OutputRaw, opts.OutputRaw0, opts.OutputJoin,
-		opts.OutputCompact, opts.OutputIndent, opts.OutputTab, opts.OutputYAML
-	var disableColor bool
-	if opts.OutputColor || opts.OutputMono {
-		disableColor = opts.OutputMono
-	} else if os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb" {
-		disableColor = true
-	} else {
-		f, ok := cli.outStream.(interface{ Fd() uintptr })
-		disableColor = !(ok && (isatty.IsTerminal(f.Fd()) || isatty.IsCygwinTerminal(f.Fd())))
-	}
+		opts.OutputCompact, opts.OutputIndent, opts.OutputTab
+	disableColor := !opts.OutputColor || opts.OutputMono || os.Getenv("NO_COLOR") != "" || os.Getenv("TERM") == "dumb"
 	cli.colors = defaultColorConfig(disableColor)
 	if !cli.colors.noColor {
 		if colors := os.Getenv("GOJQ_COLORS"); colors != "" {
@@ -177,11 +160,7 @@ Usage:
 			return newCliError(ErrKindInvalidIndent, exitCodeDefaultErr, fmt.Sprintf("negative indentation count: %d", *i))
 		}
 	}
-	if opts.OutputYAML && opts.OutputTab {
-		return newCliError(ErrKindYAMLTab, exitCodeDefaultErr, "cannot use tabs for YAML output")
-	}
-	cli.inputRaw, cli.inputStream, cli.inputYAML, cli.inputSlurp =
-		opts.InputRaw, opts.InputStream, opts.InputYAML, opts.InputSlurp
+	cli.inputRaw, cli.inputSlurp = opts.InputRaw, opts.InputSlurp
 	for k, v := range opts.Arg {
 		cli.argnames = append(cli.argnames, "$"+k)
 		cli.argvalues = append(cli.argvalues, v)
@@ -352,18 +331,13 @@ func (cli *cli) slurpFile(name string) (any, error) {
 // Returns the configured inputIter.
 func (cli *cli) createInputIter(args []string) (iter inputIter) {
 	var newIter func(io.Reader, string) inputIter
-	switch {
-	case cli.inputRaw:
+	if cli.inputRaw {
 		if cli.inputSlurp {
 			newIter = newReadAllIter
 		} else {
 			newIter = newRawInputIter
 		}
-	case cli.inputStream:
-		newIter = newStreamInputIter
-	case cli.inputYAML:
-		newIter = newYAMLInputIter
-	default:
+	} else {
 		newIter = newJSONInputIter
 	}
 	if cli.inputSlurp {
@@ -438,11 +412,6 @@ func (cli *cli) printValues(iter gojq.Iter) error {
 		if err, ok := v.(error); ok {
 			return err
 		}
-		if cli.outputYAMLSeparator {
-			cli.outStream.Write([]byte("---\n"))
-		} else {
-			cli.outputYAMLSeparator = cli.outputYAML
-		}
 		if err := m.marshal(v, cli.outStream); err != nil {
 			return err
 		}
@@ -453,12 +422,10 @@ func (cli *cli) printValues(iter gojq.Iter) error {
 				cli.exitCodeError = &exitCodeError{exitCodeOK}
 			}
 		}
-		if !cli.outputYAML {
-			if cli.outputRaw0 {
-				cli.outStream.Write([]byte{'\x00'})
-			} else if !cli.outputJoin {
-				cli.outStream.Write([]byte{'\n'})
-			}
+		if cli.outputRaw0 {
+			cli.outStream.Write([]byte{'\x00'})
+		} else if !cli.outputJoin {
+			cli.outStream.Write([]byte{'\n'})
 		}
 	}
 	return nil
@@ -470,9 +437,6 @@ func (cli *cli) printValues(iter gojq.Iter) error {
 //
 // Returns the configured marshaler instance.
 func (cli *cli) createMarshaler() marshaler {
-	if cli.outputYAML {
-		return yamlFormatter(cli.outputIndent)
-	}
 	indent := 2
 	if cli.outputCompact {
 		indent = -1
