@@ -363,7 +363,17 @@ func TestRunMain(t *testing.T) {
 	}
 }
 
-func TestReadWriteNopCloser(t *testing.T) {
+func TestDevNullAndReadWriteNopCloser(t *testing.T) {
+	dn := devNullReadWriter{}
+	if rn, rerr := dn.Read(make([]byte, 8)); rn != 0 || rerr != io.EOF {
+		t.Errorf("expected (0, io.EOF), got (%d, %v)", rn, rerr)
+	}
+	if wn, werr := dn.Write([]byte("abc")); wn != 3 || werr != nil {
+		t.Errorf("expected (3, nil), got (%d, %v)", wn, werr)
+	}
+	if cerr := dn.Close(); cerr != nil {
+		t.Errorf("expected nil Close error, got %v", cerr)
+	}
 	r := readWriteNopCloser{strings.NewReader("test")}
 	_, err := r.Write([]byte("test"))
 	if err == nil {

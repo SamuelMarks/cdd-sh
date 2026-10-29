@@ -75,7 +75,9 @@ handle_parse_routes() {
 	ast="${CDD_AST_PATH:-${LIBSCRIPT_ROOT_DIR}/ast.json}"
 	if [ ! -f "${ast}" ]; then echo '{"openapi": "3.2.0", "info": {"title": "Parsed API", "version": "0.0.4"}}' >"${ast}"; fi
 
-	parsed_paths=$(printf '%s\n' "$all_raw" | awk '/^OP:/ { print substr($0, 4) }' | jq -s '
+	printf '%s\n' "$all_raw" >"${ast}.raw"
+	awk '/^OP:/ { print substr($0, 4) }' "${ast}.raw" >"${ast}.ops"
+	parsed_paths=$(jq -s '
       group_by(.path) | map({
         path: .[0].path,
         ops: (map({
@@ -90,15 +92,18 @@ handle_parse_routes() {
           } | with_entries(select(.value != null)) | (. * (.openapi_json // {})))
         }) | from_entries)
       }) | reduce .[] as $item ({}; .[$item.path] = $item.ops)
-    ')
+    ' "${ast}.ops")
 
-	parsed_callbacks=$(printf '%s\n' "$all_raw" | awk '/^CALLBACK:/ { print substr($0, 10) }' | jq -s '
+	awk '/^CALLBACK:/ { print substr($0, 10) }' "${ast}.raw" >"${ast}.cbs"
+	parsed_callbacks=$(jq -s '
       reduce .[] as $cb ({}; .[$cb.name] = {"{url}": {($cb.method): {summary: $cb.summary}}})
-    ')
+    ' "${ast}.cbs")
 
-	parsed_webhooks=$(printf '%s\n' "$all_raw" | awk '/^WEBHOOK:/ { print substr($0, 9) }' | jq -s '
+	awk '/^WEBHOOK:/ { print substr($0, 9) }' "${ast}.raw" >"${ast}.whs"
+	parsed_webhooks=$(jq -s '
       reduce .[] as $wh ({}; .[$wh.name] = {($wh.method): {summary: $wh.summary}})
-    ')
+    ' "${ast}.whs")
+	rm -f "${ast}.raw" "${ast}.ops" "${ast}.cbs" "${ast}.whs"
 
 	jq --argjson newpaths "$parsed_paths" --argjson newcallbacks "$parsed_callbacks" --argjson newwebhooks "$parsed_webhooks" '
       .paths = $newpaths |

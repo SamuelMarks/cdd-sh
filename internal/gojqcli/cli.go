@@ -91,6 +91,71 @@ type flagopts struct {
 
 var addDefaultModulePaths = true
 
+// embeddedModuleLoader loads jq modules from EmbeddedFS first and falls back to the local filesystem module loader.
+type embeddedModuleLoader struct {
+	paths    []string
+	fallback gojq.ModuleLoader
+}
+
+// LoadInitModules delegates initial module loading to the fallback module loader.
+// Parameters:
+//   - none
+//
+// Returns the slice of parsed init queries and any load error.
+func (l *embeddedModuleLoader) LoadInitModules() ([]*gojq.Query, error) {
+	return l.fallback.(interface {
+		LoadInitModules() ([]*gojq.Query, error)
+	}).LoadInitModules()
+}
+
+// LoadModuleWithMeta loads and parses a jq module by name and metadata from EmbeddedFS or the fallback loader.
+// Parameters:
+//   - name: The jq module name to load.
+//   - meta: Optional metadata map from the import/include statement.
+//
+// Returns the parsed gojq.Query and any load or parse error.
+func (l *embeddedModuleLoader) LoadModuleWithMeta(name string, meta map[string]any) (*gojq.Query, error) {
+	if EmbeddedFS != nil {
+		searchDirs := append([]string{}, l.paths...)
+		searchDirs = append(searchDirs, "lib/_common")
+		for _, dir := range searchDirs {
+			relPath := strings.TrimPrefix(filepath.ToSlash(dir), "./")
+			relPath = strings.TrimPrefix(relPath, "/")
+			cleanPath := strings.TrimPrefix(relPath+"/"+name+".jq", "/")
+			if b, err := fs.ReadFile(EmbeddedFS, cleanPath); err == nil {
+				return gojq.Parse(string(b))
+			}
+		}
+	}
+	return l.fallback.(interface {
+		LoadModuleWithMeta(string, map[string]any) (*gojq.Query, error)
+	}).LoadModuleWithMeta(name, meta)
+}
+
+// LoadJSONWithMeta delegates JSON module loading to the fallback module loader.
+// Parameters:
+//   - name: The JSON module name to load.
+//   - meta: Optional metadata map from the import statement.
+//
+// Returns the decoded JSON value and any load error.
+func (l *embeddedModuleLoader) LoadJSONWithMeta(name string, meta map[string]any) (any, error) {
+	return l.fallback.(interface {
+		LoadJSONWithMeta(string, map[string]any) (any, error)
+	}).LoadJSONWithMeta(name, meta)
+}
+
+// newModuleLoader returns a gojq.ModuleLoader backed by EmbeddedFS and the filesystem module paths.
+// Parameters:
+//   - paths: The module search directories.
+//
+// Returns the configured gojq.ModuleLoader.
+func newModuleLoader(paths []string) gojq.ModuleLoader {
+	return &embeddedModuleLoader{
+		paths:    paths,
+		fallback: gojq.NewModuleLoader(paths),
+	}
+}
+
 // run executes the gojq CLI with the given arguments and returns the process exit code.
 // Parameters:
 //   - args: The command-line arguments slice.
@@ -272,7 +337,7 @@ Usage:
 		iter = cli.createInputIter(args)
 	}
 	defer iter.Close()
-	code, err := gojq.Compile(query, gojq.WithModuleLoader(gojq.NewModuleLoader(modulePaths)),
+	code, err := gojq.Compile(query, gojq.WithModuleLoader(newModuleLoader(modulePaths)),
 		gojq.WithEnvironLoader(os.Environ),
 		gojq.WithVariables(cli.argnames),
 		gojq.WithFunction("debug", 0, 0, cli.funcDebug),

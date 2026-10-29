@@ -92,7 +92,7 @@ func failRunner(stderr io.Writer, kind RunnerErrorKind, code uint8, msg string) 
 
 // embeddedFiles holds the embedded POSIX shell scripts, libraries, and root marker.
 //
-//go:embed cdd.sh src lib ROOT
+//go:embed cdd.sh src lib lib/_common ROOT
 var embeddedFiles embed.FS
 
 // workaroundBase holds an optional base directory prefix for WASI path resolution.
@@ -109,6 +109,37 @@ func init() {
 
 	goawkcli.SetResolvePath(func(p string) string { return resolvePath(".", p) })
 	gojqcli.SetResolvePath(func(p string) string { return resolvePath(".", p) })
+}
+
+// devNullReadWriter implements io.ReadWriteCloser as an in-memory /dev/null sink and EOF source.
+type devNullReadWriter struct{}
+
+// Read returns 0 and io.EOF for /dev/null reads.
+// Parameters:
+//   - p: The destination byte slice.
+//
+// Returns 0 and io.EOF.
+func (devNullReadWriter) Read(p []byte) (int, error) {
+	_ = p
+	return 0, io.EOF
+}
+
+// Write discards all bytes written to /dev/null and returns len(p).
+// Parameters:
+//   - p: The byte slice to discard.
+//
+// Returns the length of p and nil error.
+func (devNullReadWriter) Write(p []byte) (int, error) {
+	return len(p), nil
+}
+
+// Close is a no-op for /dev/null and returns nil.
+// Parameters:
+//   - none
+//
+// Returns nil.
+func (devNullReadWriter) Close() error {
+	return nil
 }
 
 // readWriteNopCloser wraps an io.Reader to satisfy io.ReadWriteCloser for read-only embedded files.
@@ -280,7 +311,9 @@ func fsMiddleware(next interp.ExecHandlerFunc) interp.ExecHandlerFunc {
 			for _, arg := range args[2:] {
 				target := resolvePath(dir, arg)
 				if err := os.Chmod(target, mode); err != nil {
-					return failRunner(hc.Stderr, ErrChmodFailed, 1, fmt.Sprintf("chmod: %v", err))
+					if _, statErr := os.Stat(target); statErr != nil {
+						return failRunner(hc.Stderr, ErrChmodFailed, 1, fmt.Sprintf("chmod: %v", err))
+					}
 				}
 			}
 			return nil
@@ -570,18 +603,22 @@ func runMain(scriptOverride string, args []string, exitFunc func(int)) {
 			if err == nil {
 				return info, nil
 			}
-			return interp.DefaultStatHandler()(ctx, name, followSymlinks)
+			return os.Stat(cleanName)
 		}),
 		interp.OpenHandler(func(ctx context.Context, path string, flag int, perm os.FileMode) (io.ReadWriteCloser, error) {
+			if path == "/dev/null" {
+				return devNullReadWriter{}, nil
+			}
 			cleanName := filepath.Clean(path)
+			cleanEmbedName := strings.TrimPrefix(cleanName, "/")
 			if flag == os.O_RDONLY {
-				cleanEmbedName := strings.TrimPrefix(cleanName, "/")
 				file, err := embeddedFiles.Open(cleanEmbedName)
 				if err == nil {
 					return readWriteNopCloser{file}, nil
 				}
+				return os.OpenFile(cleanName, flag, perm)
 			}
-			return interp.DefaultOpenHandler()(ctx, path, flag, perm)
+			return os.OpenFile(cleanName, flag, perm)
 		}),
 	)
 	if err != nil {
