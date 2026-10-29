@@ -264,6 +264,7 @@ Types:
   cli                            Parse a generated SDK CLI script (bin/sdk-cli).
   functions                      Parse standalone utility functions (functions.sh).
   docstrings                     Parse Markdown API documentation (docs.md).
+  docsjson                       Parse documentation code-snippet JSON (docs.json).
   tests                          Parse route unit test scripts (test_routes.sh).
   mocks                          Parse mock response JSON payloads (mocks.json).
 
@@ -510,6 +511,10 @@ dispatch_parse_openapi_target() {
 			. "${LIBSCRIPT_ROOT_DIR:-.}/src/docstrings/parse.sh"
 			handle_parse_docstrings "${_target_file}/docs.md"
 		fi
+		if [ -f "${_target_file}/docs.json" ]; then
+			. "${LIBSCRIPT_ROOT_DIR:-.}/src/docsjson/parse.sh"
+			handle_parse_docsjson "${_target_file}/docs.json"
+		fi
 	else
 		case "${_target_file}" in
 		*server.sh)
@@ -533,8 +538,13 @@ dispatch_parse_openapi_target() {
 			handle_parse_docstrings "${_target_file}"
 			;;
 		*.json)
-			. "${LIBSCRIPT_ROOT_DIR:-.}/src/openapi/parse.sh"
-			handle_parse_openapi "${_target_file}"
+			if jq -e '(.endpoints != null or .webhooks != null) and .openapi == null and .swagger == null' "${_target_file}" >/dev/null 2>&1; then
+				. "${LIBSCRIPT_ROOT_DIR:-.}/src/docsjson/parse.sh"
+				handle_parse_docsjson "${_target_file}"
+			else
+				. "${LIBSCRIPT_ROOT_DIR:-.}/src/openapi/parse.sh"
+				handle_parse_openapi "${_target_file}"
+			fi
 			;;
 		*)
 			. "${LIBSCRIPT_ROOT_DIR:-.}/src/routes/parse.sh"
@@ -583,8 +593,13 @@ dispatch_parse_arazzo_target() {
 			handle_parse_tests "${_target_file}"
 			;;
 		*.json)
-			. "${LIBSCRIPT_ROOT_DIR:-.}/src/arazzo/parse.sh"
-			handle_parse_arazzo "${_target_file}"
+			if jq -e '(.workflows | type) == "object" and .arazzo == null' "${_target_file}" >/dev/null 2>&1; then
+				. "${LIBSCRIPT_ROOT_DIR:-.}/src/docsjson/parse.sh"
+				handle_parse_docsjson "${_target_file}"
+			else
+				. "${LIBSCRIPT_ROOT_DIR:-.}/src/arazzo/parse.sh"
+				handle_parse_arazzo "${_target_file}"
+			fi
 			;;
 		*)
 			handle_parse_workflows "${_target_file}"

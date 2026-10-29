@@ -1,11 +1,11 @@
 #!/bin/sh
 # @file src/docsjson/emit.sh
-# @description Emits JSON documentation with shell code snippets from an OpenAPI or Arazzo specification.
+# @description Emits JSON documentation with structured shell code objects and realistic SDK primitive calls from an OpenAPI or Arazzo specification.
 # shellcheck disable=SC2016,SC1091
 . "${LIBSCRIPT_ROOT_DIR:-.}/lib/env.sh"
 
-# handle_to_docs_json outputs the AST as a documentation JSON format.
-# @param $@: CLI flags (-i/--input, -o/--output, --no-imports, --no-wrapping)
+# handle_to_docs_json outputs the AST or specification as a documentation JSON format.
+# @param $@: CLI flags (-i/-f/--input, -o/--output, --no-imports, --no-wrapping)
 handle_to_docs_json() {
 	input_file="${CDD_INPUT:-}"
 	output_file="${CDD_OUTPUT:-}"
@@ -16,7 +16,7 @@ handle_to_docs_json() {
 
 	while [ "$#" -gt 0 ]; do
 		case "$1" in
-		-i | --input)
+		-i | -f | --input)
 			input_file="$2"
 			shift 2
 			;;
@@ -33,69 +33,255 @@ handle_to_docs_json() {
 			shift 1
 			;;
 		*)
-			printf "Unknown option %s\n" "$1" >&2
+			echo "Unknown option $1" >&2
 			exit 1
 			;;
 		esac
 	done
 
 	if [ -z "$input_file" ]; then
-		printf "Error: -i/--input is required\n" >&2
+		echo "Error: -i/--input is required" >&2
 		exit 1
 	fi
 	if [ ! -f "$input_file" ]; then
-		printf "Error: Input file %s not found\n" "$input_file" >&2
+		echo "Error: Input file $input_file not found" >&2
 		exit 1
 	fi
 
-	res=$(jq -n -L "${LIBSCRIPT_ROOT_DIR}/lib/_common" --slurpfile spec "$input_file" \
-		--arg no_imports "$no_imports" \
-		--arg no_wrapping "$no_wrapping" '
+	jq_filter='
     include "openapi";
     include "arazzo";
+
+    def sq: [39] | implode;
+    def nl: [10] | implode;
+
+    def resolve_schema($s; $root):
+      if ($s | type) == "object" and ($s."$ref" | type) == "string" then
+        if ($s."$ref" | startswith("#/components/schemas/")) then
+          ($root.components.schemas[$s."$ref" | sub("^#/components/schemas/"; "")] // $s)
+        elif ($s."$ref" | startswith("#/definitions/")) then
+          ($root.definitions[$s."$ref" | sub("^#/definitions/"; "")] // $s)
+        elif ($s."$ref" | startswith("$components.inputs.")) then
+          (($root.arazzoComponents.inputs // $root.components.inputs // {})[$s."$ref" | ltrimstr("$components.inputs.")] // $s)
+        else
+          $s
+        end
+      else
+        ($s // {})
+      end;
+
+    def extract_prop_sample($prop; $propName; $root):
+      resolve_schema($prop; $root) as $p |
+      if ($p | type) != "object" then
+        $propName
+      elif $p.example != null then
+        $p.example
+      elif ($p.examples | type) == "array" and ($p.examples | length) > 0 then
+        $p.examples[0]
+      elif $p.default != null then
+        $p.default
+      elif ($p.enum | type) == "array" and ($p.enum | length) > 0 then
+        $p.enum[0]
+      elif $p.format == "date-time" then
+        "2024-01-01T00:00:00Z"
+      elif $p.format == "date" then
+        "2024-01-01"
+      elif $p.format == "uuid" then
+        "00000000-0000-0000-0000-000000000000"
+      elif $p.format == "email" then
+        "user@example.com"
+      elif $p.format == "uri" or $p.format == "url" then
+        "https://example.com"
+      elif $p.type == "integer" or $p.type == "number" then
+        ($p.minimum // 1)
+      elif $p.type == "boolean" then
+        true
+      elif $p.type == "array" then
+        if $p.items then [extract_prop_sample($p.items; $propName; $root)] else [] end
+      elif $p.type == "object" or ($p.properties | type) == "object" then
+        (($p.properties // {}) | with_entries(.key as $k | .value = extract_prop_sample(.value; $k; $root)))
+      else
+        $propName
+      end;
+
+    def extract_schema_sample($schema; $root):
+      resolve_schema($schema; $root) as $s |
+      if ($s | type) != "object" then
+        {}
+      elif $s.example != null then
+        $s.example
+      elif ($s.examples | type) == "array" and ($s.examples | length) > 0 then
+        $s.examples[0]
+      elif $s.default != null then
+        $s.default
+      elif ($s.enum | type) == "array" and ($s.enum | length) > 0 then
+        $s.enum[0]
+      elif $s.type == "object" or ($s.properties | type) == "object" then
+        (($s.properties // {}) | with_entries(.key as $k | .value = extract_prop_sample(.value; $k; $root)))
+      elif $s.type == "array" then
+        if $s.items then [extract_schema_sample($s.items; $root)] else [] end
+      elif $s.type == "integer" or $s.type == "number" then
+        ($s.minimum // 1)
+      elif $s.type == "boolean" then
+        true
+      else
+        {}
+      end;
+
+    def format_shell_arg($val):
+      if ($val | type) == "object" or ($val | type) == "array" then
+        " " + sq + ($val | tojson) + sq
+      else
+        " " + (($val | tostring) | tojson)
+      end;
+
+    def extract_param_arg($param; $root):
+      (if ($param."$ref" | type) == "string" and $root.components and $root.components.parameters then
+        ($root.components.parameters[$param."$ref" | sub("^#/components/parameters/"; "")] // $param)
+      else
+        $param
+      end) as $p |
+      if $p.in == "body" and $p.schema then
+        format_shell_arg(extract_schema_sample($p.schema; $root))
+      else
+        resolve_schema($p.schema // {}; $root) as $s |
+        (
+          if $p.example != null then $p.example
+          elif ($p.examples | type) == "object" and ($p.examples | length) > 0 then
+            ($p.examples | to_entries[0].value | if (type == "object") and has("value") then .value else . end)
+          elif $p.value != null then $p.value
+          elif $p.default != null then $p.default
+          elif $s.example != null then $s.example
+          elif ($s.examples | type) == "array" and ($s.examples | length) > 0 then $s.examples[0]
+          elif $s.default != null then $s.default
+          elif ($s.enum | type) == "array" and ($s.enum | length) > 0 then $s.enum[0]
+          elif $s.format == "date-time" then "2024-01-01T00:00:00Z"
+          elif $s.format == "date" then "2024-01-01"
+          elif $s.format == "uuid" then "00000000-0000-0000-0000-000000000000"
+          elif $s.format == "email" then "user@example.com"
+          elif $s.format == "uri" or $s.format == "url" then "https://example.com"
+          else ($p.name // "param")
+          end
+        ) as $val |
+        format_shell_arg($val)
+      end;
+
+    def extract_request_body_arg($rb; $root):
+      if $rb == null then
+        ""
+      else
+        (if ($rb."$ref" | type) == "string" and $root.components and $root.components.requestBodies then
+          ($root.components.requestBodies[$rb."$ref" | sub("^#/components/requestBodies/"; "")] // $rb)
+        else
+          $rb
+        end) as $resolvedRb |
+        (
+          if ($resolvedRb.content | type) == "object" and ($resolvedRb.content | length) > 0 then
+            ($resolvedRb.content["application/json"] // ($resolvedRb.content | to_entries[0].value) // {})
+          else
+            {}
+          end
+        ) as $media |
+        (
+          if $media.example != null then
+            $media.example
+          elif ($media.examples | type) == "object" and ($media.examples | length) > 0 then
+            ($media.examples | to_entries[0].value | if (type == "object") and has("value") then .value else . end)
+          elif $media.schema != null then
+            extract_schema_sample($media.schema; $root)
+          else
+            {}
+          end
+        ) as $bodyVal |
+        format_shell_arg($bodyVal)
+      end;
+
+    def build_code_obj($imports_str; $snippet_str; $no_imports; $no_wrapping):
+      {
+        "imports": (if $no_imports == "false" then $imports_str else "" end),
+        "wrapper_start": (if $no_wrapping == "false" then "main() {" else "" end),
+        "snippet": $snippet_str,
+        "wrapper_end": (if $no_wrapping == "false" then (["}", "", "main " + ("$@" | tojson)] | join(nl)) else "" end)
+      };
+
+    def build_op_entries($itemObj; $itemKey; $isWebhook; $root; $no_imports; $no_wrapping):
+      (if ($itemObj."$ref" | type) == "string" and $root.components and $root.components.pathItems then
+        ($root.components.pathItems[$itemObj."$ref" | sub("^#/components/pathItems/"; "")] // $itemObj)
+      else
+        $itemObj
+      end) as $resolvedItem |
+      ($resolvedItem.parameters // []) as $itemParams |
+      (
+        ($resolvedItem | to_entries | map(select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers" and .key != "$ref" and .key != "additionalOperations"))) +
+        (if ($resolvedItem.additionalOperations | type) == "object" then ($resolvedItem.additionalOperations | to_entries) else [] end)
+      ) | map(
+        .key as $method |
+        .value |
+        (if $isWebhook then
+          (if .operationId then .operationId else "handle_webhook_" + ($itemKey | gsub("-"; "_") | gsub("[^a-zA-Z0-9_]"; "_")) end)
+        else
+          get_docs_op_id($method; $itemKey)
+        end) as $opId |
+        (((.parameters // []) + $itemParams) | map(extract_param_arg(.; $root)) | join("")) as $paramArgs |
+        extract_request_body_arg(.requestBody; $root) as $bodyArg |
+        ("  " + $opId + $paramArgs + $bodyArg) as $snippet |
+        {
+          "key": ($method | ascii_downcase),
+          "value": build_code_obj(". ./routes.sh"; $snippet; $no_imports; $no_wrapping)
+        }
+      ) | from_entries;
+
+    $spec[0] as $root |
     {
       "endpoints": (
-        if $spec[0].paths then
-          $spec[0].paths | to_entries | map(
+        if $root.paths then
+          $root.paths | to_entries | map(
             .key as $path |
-            .value | to_entries | map(
-              select(.key != "parameters" and .key != "summary" and .key != "description" and .key != "servers") |
-              .key as $method |
-              .value |
-              get_docs_op_id($method; $path) as $opId |
-              
-              (
-                (if $no_imports == "false" then ". ./routes.sh\n\n" else "" end) +
-                (if $no_wrapping == "false" then "main() {\n" else "" end) +
-                "  " + $opId + (if .parameters then (.parameters | map(" \"dummy\"") | join("")) else "" end) + "\n" +
-                (if $no_wrapping == "false" then "}\n\nmain \"$@\"\n" else "" end)
-              ) as $finalCode |
-              
-              {
-                "key": ($method | ascii_downcase),
-                "value": $finalCode
-              }
-            ) | from_entries |
-            { "key": $path, "value": . }
+            {
+              "key": $path,
+              "value": build_op_entries(.value; $path; false; $root; $no_imports; $no_wrapping)
+            }
           ) | from_entries
         else
           {}
         end
       )
     } + (
-      if $spec[0].workflows and ($spec[0].workflows | length) > 0 then
+      if $root.webhooks and ($root.webhooks | length) > 0 then
+        {
+          "webhooks": (
+            $root.webhooks | to_entries | map(
+              .key as $whName |
+              {
+                "key": $whName,
+                "value": build_op_entries(.value; $whName; true; $root; $no_imports; $no_wrapping)
+              }
+            ) | from_entries
+          )
+        }
+      else
+        {}
+      end
+    ) + (
+      if $root.workflows and ($root.workflows | length) > 0 then
         {
           "workflows": (
-            $spec[0].workflows | map(
+            $root.workflows | map(
               .workflowId as $wfId |
               get_workflow_fn_name($wfId) as $fnName |
               (
-                (if $no_imports == "false" then ". ./workflows.sh\n\n" else "" end) +
-                (if $no_wrapping == "false" then "main() {\n" else "" end) +
-                "  " + $fnName + " \"{}\"\n" +
-                (if $no_wrapping == "false" then "}\n\nmain \"$@\"\n" else "" end)
-              ) as $wfCode |
-              { "key": $wfId, "value": $wfCode }
+                if .inputs then
+                  resolve_reusable_object($root; .inputs) as $resolvedInputs |
+                  extract_schema_sample($resolvedInputs; $root)
+                else
+                  {}
+                end
+              ) as $wfInputs |
+              ("  " + $fnName + format_shell_arg($wfInputs)) as $snippet |
+              {
+                "key": $wfId,
+                "value": build_code_obj(". ./workflows.sh"; $snippet; $no_imports; $no_wrapping)
+              }
             ) | from_entries
           )
         }
@@ -103,11 +289,14 @@ handle_to_docs_json() {
         {}
       end
     )
-  ')
+  '
 	if [ -n "$output_file" ]; then
-		printf "%s\n" "$res" >"$output_file"
+		if [ -d "$output_file" ]; then
+			output_file="${output_file%/}/docs.json"
+		fi
+		jq -n -L "${LIBSCRIPT_ROOT_DIR}/lib/_common" --slurpfile spec "$input_file" --arg no_imports "$no_imports" --arg no_wrapping "$no_wrapping" "$jq_filter" >"$output_file"
 	else
-		printf "%s\n" "$res"
+		jq -n -L "${LIBSCRIPT_ROOT_DIR}/lib/_common" --slurpfile spec "$input_file" --arg no_imports "$no_imports" --arg no_wrapping "$no_wrapping" "$jq_filter"
 	fi
 }
 

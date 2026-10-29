@@ -113,7 +113,7 @@ def normalize_arazzo_root:
     arazzoInfo: (
       ($doc.info // {}) | {
         title: (.title // "Arazzo Workflow Specification"),
-        version: (.version // "0.1.0"),
+        version: (.version // "0.0.4"),
         summary: (.summary // null),
         description: (.description // null)
       } + (with_entries(select(.key | startswith("x-")))) | with_entries(select(.value != null))
@@ -155,7 +155,7 @@ def extract_arazzo_spec:
           title: (.title // "Arazzo Workflow Specification"),
           summary: (.summary // null),
           description: (.description // null),
-          version: (.version // "0.1.0")
+          version: (.version // "0.0.4")
         } + (with_entries(select(.key | startswith("x-")))) | with_entries(select(.value != null))
       ),
       sourceDescriptions: (

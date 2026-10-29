@@ -49,7 +49,7 @@ handle_parse_workflows() {
 	}
 	BEGIN {
 		arazzo_ver = "1.1.0"; self_uri = ""; info_title = "Arazzo Workflow Specification"
-		info_summary = ""; info_desc = ""; info_ver = "0.1.0"; info_ext = "{}"
+		info_summary = ""; info_desc = ""; info_ver = "0.0.4"; info_ext = "{}"
 		root_ext = "{}"; comps_json = "{}"
 		wf_id = ""; step_id = ""
 		heur_wf = ""; heur_step_idx = 0
@@ -205,7 +205,7 @@ handle_parse_workflows() {
 					title: (if .[2] != "" then .[2] else "Arazzo Workflow Specification" end),
 					summary: (if .[3] != "" then .[3] else null end),
 					description: (if .[4] != "" then .[4] else null end),
-					version: (if .[5] != "" then .[5] else "0.1.0" end)
+					version: (if .[5] != "" then .[5] else "0.0.4" end)
 				} + ((.[6] // "{}") | fromjson? // {}) | with_entries(select(.value != null))
 			),
 			arazzoExtensions: ((.[7] // "{}") | fromjson? // {}),

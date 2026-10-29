@@ -239,6 +239,7 @@ sh tests/test_cors.sh
 sh tests/test_sync.sh
 sh tests/test_validation_server.sh
 sh tests/test_arazzo.sh
+sh tests/test_docs_json.sh
 sh tests/test_coverage_exhaustive.sh
 
 if [ "${RUN_SLOW_TESTS:-0}" = "1" ]; then

@@ -1045,6 +1045,44 @@ func TestRunMain_ArazzoRoundTrip(t *testing.T) {
 	}
 }
 
+func TestRunMain_ToDocsJsonDirOutAndRoundTrip(t *testing.T) {
+	tempDir := t.TempDir()
+	workOut := filepath.Join(tempDir, "out")
+	if err := os.MkdirAll(workOut, 0755); err != nil {
+		t.Fatal(err)
+	}
+	astPath := filepath.Join(tempDir, "ast.json")
+	t.Setenv("CDD_AST_PATH", astPath)
+
+	var exitCode int
+	exitFn := func(c int) { exitCode = c }
+
+	runMain(script, []string{"to_docs_json", "-i", "tests/test_docs_json.json", "-o", workOut}, exitFn)
+	if exitCode != 0 {
+		t.Fatalf("expected exitCode 0 for to_docs_json with directory -o, got %d", exitCode)
+	}
+	docsFile := filepath.Join(workOut, "docs.json")
+	data, err := os.ReadFile(docsFile)
+	if err != nil {
+		t.Fatalf("expected %s to exist: %v", docsFile, err)
+	}
+	if !strings.Contains(string(data), "showPetById") || !strings.Contains(string(data), "wrapper_start") {
+		t.Errorf("expected docs.json to contain structured showPetById snippet, got %s", string(data))
+	}
+
+	runMain(script, []string{"parse", "docsjson", docsFile}, exitFn)
+	if exitCode != 0 {
+		t.Fatalf("expected exitCode 0 for parse docsjson, got %d", exitCode)
+	}
+	astData, err := os.ReadFile(astPath)
+	if err != nil {
+		t.Fatalf("expected %s to exist: %v", astPath, err)
+	}
+	if !strings.Contains(string(astData), "\"showPetById\"") {
+		t.Errorf("expected parsed AST to contain showPetById, got %s", string(astData))
+	}
+}
+
 func TestPOSIXShellSyntaxAudit(t *testing.T) {
 	parser := syntax.NewParser(syntax.Variant(syntax.LangPOSIX))
 	dirs := []string{"cdd.sh", "test.sh", "run_in_dash.sh", "setup_boiler.sh", "update_shields.sh", "lib", "src", "tests"}

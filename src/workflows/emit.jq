@@ -9,7 +9,7 @@ include "arazzo";
 "# @info_title \($arz.info.title // "Arazzo Workflows")\n" +
 (if $arz.info.summary then "# @info_summary \($arz.info.summary)\n" else "" end) +
 (if $arz.info.description then "# @info_description \($arz.info.description | gsub("\n"; " "))\n" else "" end) +
-"# @info_version \($arz.info.version // "0.1.0")\n" +
+"# @info_version \($arz.info.version // "0.0.4")\n" +
 (
   (($arz.info // {}) | with_entries(select(.key | startswith("x-")))) as $infoExt |
   if ($infoExt | length) > 0 then "# @info_extensions \($infoExt | tojson)\n" else "" end

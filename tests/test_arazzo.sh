@@ -211,7 +211,20 @@ sh "${ROOT_DIR}/cdd.sh" to_arazzo -i "${SRV_OUT}/src/server.sh" -o "${TMP_ARAZZO
 # Test to_docs_json with Arazzo workflows
 DOCS_OUT="${TMP_ARAZZO_DIR}/docs_out"
 sh "${ROOT_DIR}/cdd.sh" from_arazzo to_docs_json -i "${ROOT_DIR}/tests/test_arazzo.json" -o "${DOCS_OUT}"
-[ "$(jq -r '.workflows.orderCheckoutFlow' "${DOCS_OUT}/docs.json" | grep -c 'workflow_order_checkout_flow')" -ge 1 ]
+[ "$(jq -r '.workflows.orderCheckoutFlow.imports' "${DOCS_OUT}/docs.json")" = ". ./workflows.sh" ]
+[ "$(jq -r '.workflows.orderCheckoutFlow.wrapper_start' "${DOCS_OUT}/docs.json")" = "main() {" ]
+[ "$(jq -r '.workflows.orderCheckoutFlow.snippet' "${DOCS_OUT}/docs.json" | grep -c 'workflow_order_checkout_flow')" -ge 1 ]
+[ "$(jq -r '.workflows.orderCheckoutFlow.snippet' "${DOCS_OUT}/docs.json" | grep -c 'adoptable-puppy')" -ge 1 ]
+[ "$(jq -r '.workflows.orderCheckoutFlow.wrapper_end' "${DOCS_OUT}/docs.json")" = "$(printf '}\n\nmain "$@"')" ]
+
+DOCS_DIRECT_DIR="${TMP_ARAZZO_DIR}/docs_direct"
+mkdir -p "${DOCS_DIRECT_DIR}"
+sh "${ROOT_DIR}/cdd.sh" to_docs_json --no-imports --no-wrapping -i "${ROOT_DIR}/tests/test_arazzo.json" -o "${DOCS_DIRECT_DIR}"
+[ -f "${DOCS_DIRECT_DIR}/docs.json" ]
+[ "$(jq -r '.workflows.authSetupFlow.imports' "${DOCS_DIRECT_DIR}/docs.json")" = "" ]
+[ "$(jq -r '.workflows.authSetupFlow.wrapper_start' "${DOCS_DIRECT_DIR}/docs.json")" = "" ]
+[ "$(jq -r '.workflows.authSetupFlow.wrapper_end' "${DOCS_DIRECT_DIR}/docs.json")" = "" ]
+[ "$(jq -r '.workflows.authSetupFlow.snippet' "${DOCS_DIRECT_DIR}/docs.json" | grep -c 'alice')" -ge 1 ]
 
 echo "8. Testing CLI workflow run flags (--step, --format yaml/table, --verbose, --input-file, --data-file) and error branches..."
 printf '{"username":"charlie","itemName":"Bulldog","quantity":1}\n' >"${TMP_ARAZZO_DIR}/wf_inputs.json"
