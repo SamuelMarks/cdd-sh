@@ -24,10 +24,12 @@ jq -e '
   .endpoints["/pets"].get.wrapper_start == "main() {" and
   .endpoints["/pets"].get.snippet == "  listPets" and
   .endpoints["/pets"].get.wrapper_end == $wend and
+  .endpoints["/pets"].get.code == ([". ./routes.sh", "", "main() {", "  listPets", $wend] | join($nl)) and
   .endpoints["/pets/{petId}"].get.imports == ". ./routes.sh" and
   .endpoints["/pets/{petId}"].get.wrapper_start == "main() {" and
   .endpoints["/pets/{petId}"].get.snippet == ("  showPetById " + ("petId" | tojson)) and
-  .endpoints["/pets/{petId}"].get.wrapper_end == $wend
+  .endpoints["/pets/{petId}"].get.wrapper_end == $wend and
+  .endpoints["/pets/{petId}"].get.code == ([". ./routes.sh", "", "main() {", "  showPetById " + ("petId" | tojson), $wend] | join($nl))
 ' "${TMP_DOCS_DIR}/default_docs.json" >/dev/null
 
 echo "Testing to_docs_json --no-imports and --no-wrapping flags..."
@@ -35,26 +37,49 @@ sh "${ROOT_DIR}/cdd.sh" to_docs_json --no-imports -i "${ROOT_DIR}/tests/test_doc
 jq -e '
   ([10] | implode) as $nl |
   (["}", "", "main " + ("$@" | tojson)] | join($nl)) as $wend |
-  .endpoints["/pets/{petId}"].get.imports == "" and
-  .endpoints["/pets/{petId}"].get.wrapper_start == "main() {" and
-  .endpoints["/pets/{petId}"].get.snippet == ("  showPetById " + ("petId" | tojson)) and
-  .endpoints["/pets/{petId}"].get.wrapper_end == $wend
+  .endpoints["/pets/{petId}"].get as $op |
+  ([$op.imports, $op.wrapper_start, $op.snippet, $op.wrapper_end] | map(select(. != "")) | join($nl)) as $ui_assembled |
+  $op.imports == "" and
+  $op.wrapper_start == "main() {" and
+  $op.snippet == ("  showPetById " + ("petId" | tojson)) and
+  $op.wrapper_end == $wend and
+  $op.code == (["main() {", "  showPetById " + ("petId" | tojson), $wend] | join($nl)) and
+  ($op.code | startswith($nl) | not) and
+  ($op.code | endswith($nl) | not) and
+  ($ui_assembled | startswith($nl) | not) and
+  ($ui_assembled | endswith($nl) | not)
 ' "${TMP_DOCS_DIR}/no_imports.json" >/dev/null
 
 sh "${ROOT_DIR}/cdd.sh" to_docs_json --no-wrapping -i "${ROOT_DIR}/tests/test_docs_json.json" -o "${TMP_DOCS_DIR}/no_wrapping.json"
 jq -e '
-  .endpoints["/pets/{petId}"].get.imports == ". ./routes.sh" and
-  .endpoints["/pets/{petId}"].get.wrapper_start == "" and
-  .endpoints["/pets/{petId}"].get.snippet == ("  showPetById " + ("petId" | tojson)) and
-  .endpoints["/pets/{petId}"].get.wrapper_end == ""
+  ([10] | implode) as $nl |
+  .endpoints["/pets/{petId}"].get as $op |
+  ([$op.imports, $op.wrapper_start, $op.snippet, $op.wrapper_end] | map(select(. != "")) | join($nl)) as $ui_assembled |
+  $op.imports == ". ./routes.sh" and
+  $op.wrapper_start == "" and
+  $op.snippet == ("  showPetById " + ("petId" | tojson)) and
+  $op.wrapper_end == "" and
+  $op.code == ([". ./routes.sh", "", "  showPetById " + ("petId" | tojson)] | join($nl)) and
+  ($op.code | startswith($nl) | not) and
+  ($op.code | endswith($nl) | not) and
+  ($ui_assembled | startswith($nl) | not) and
+  ($ui_assembled | endswith($nl) | not)
 ' "${TMP_DOCS_DIR}/no_wrapping.json" >/dev/null
 
 sh "${ROOT_DIR}/cdd.sh" to_docs_json --no-imports --no-wrapping -i "${ROOT_DIR}/tests/test_docs_json.json" -o "${TMP_DOCS_DIR}/no_both.json"
 jq -e '
-  .endpoints["/pets/{petId}"].get.imports == "" and
-  .endpoints["/pets/{petId}"].get.wrapper_start == "" and
-  .endpoints["/pets/{petId}"].get.snippet == ("  showPetById " + ("petId" | tojson)) and
-  .endpoints["/pets/{petId}"].get.wrapper_end == ""
+  ([10] | implode) as $nl |
+  .endpoints["/pets/{petId}"].get as $op |
+  ([$op.imports, $op.wrapper_start, $op.snippet, $op.wrapper_end] | map(select(. != "")) | join($nl)) as $ui_assembled |
+  $op.imports == "" and
+  $op.wrapper_start == "" and
+  $op.snippet == ("  showPetById " + ("petId" | tojson)) and
+  $op.wrapper_end == "" and
+  $op.code == ("  showPetById " + ("petId" | tojson)) and
+  ($op.code | startswith($nl) | not) and
+  ($op.code | endswith($nl) | not) and
+  ($ui_assembled | startswith($nl) | not) and
+  ($ui_assembled | endswith($nl) | not)
 ' "${TMP_DOCS_DIR}/no_both.json" >/dev/null
 
 echo "Testing to_docs_json directory -o output path handling..."

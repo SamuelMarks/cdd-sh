@@ -197,11 +197,17 @@ handle_to_docs_json() {
       end;
 
     def build_code_obj($imports_str; $snippet_str; $no_imports; $no_wrapping):
+      (if $no_imports == "false" then $imports_str else "" end) as $imp |
+      (if $no_wrapping == "false" then "main() {" else "" end) as $wstart |
+      (if $no_wrapping == "false" then (["}", "", "main " + ("$@" | tojson)] | join(nl)) else "" end) as $wend |
       {
-        "imports": (if $no_imports == "false" then $imports_str else "" end),
-        "wrapper_start": (if $no_wrapping == "false" then "main() {" else "" end),
+        "imports": $imp,
+        "wrapper_start": $wstart,
         "snippet": $snippet_str,
-        "wrapper_end": (if $no_wrapping == "false" then (["}", "", "main " + ("$@" | tojson)] | join(nl)) else "" end)
+        "wrapper_end": $wend,
+        "code": (
+          ((if $imp != "" then [$imp, ""] else [] end) + ([ $wstart, $snippet_str, $wend ] | map(select(. != "")))) | join(nl)
+        )
       };
 
     def build_op_entries($itemObj; $itemKey; $isWebhook; $root; $no_imports; $no_wrapping):
